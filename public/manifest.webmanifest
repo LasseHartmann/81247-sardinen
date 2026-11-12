@@ -4,8 +4,8 @@
   "description": "Taktisches Outdoor-Versteckspiel im Münchner Postleitzahlengebiet 81247",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#020617",
+  "background_color": "#DCE1E6",
+  "theme_color": "#DCE1E6",
   "lang": "de",
   "icons": [
     {

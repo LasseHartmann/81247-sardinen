@@ -184,8 +184,13 @@ export const App: React.FC = () => {
   // 1. Lade- & Authentifizierungs-Weichen
   if (authLoading || (isSessionUnlocked && memberLoading)) {
     return (
-      <div className="flex h-[100dvh] items-center justify-center bg-[#020617] text-sm font-bold text-cyan-300">
-        81247 Sardinen wird geladen ...
+      <div className="cmf-drafting-bg flex h-[100dvh] items-center justify-center p-4">
+        <div className="cmf-oled flex items-center gap-3 px-5 py-3 shadow-xl">
+          <span className="nothing-red-dot" />
+          <span className="font-dot text-sm text-[#F8FAFC]">
+            81247 SARDINEN WIRD GELADEN ...
+          </span>
+        </div>
       </div>
     );
   }
@@ -206,21 +211,21 @@ export const App: React.FC = () => {
   // Schutz gegen doppelte Nutzung desselben Namens auf einem anderen Gerät
   if (seatConflictError) {
     return (
-      <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#020617] p-6 text-center text-slate-100">
-        <div className="w-full max-w-md space-y-4 rounded-3xl border border-amber-500/50 bg-slate-900 p-6 shadow-2xl">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-300">
+      <div className="cmf-drafting-bg flex h-[100dvh] flex-col items-center justify-center p-6 text-center text-[var(--text-main)]">
+        <div className="cmf-chassis w-full max-w-md space-y-4 p-6">
+          <div className="cmf-oled mx-auto flex h-12 w-12 items-center justify-center text-[var(--cmf-amber)]">
             <Layers className="h-6 w-6" />
           </div>
-          <h1 className="text-lg font-black text-white">
+          <h1 className="font-dot text-lg text-[var(--text-main)]">
             Spielername bereits aktiv
           </h1>
-          <p className="text-xs leading-relaxed text-slate-300">
+          <p className="text-xs leading-relaxed text-[var(--text-muted)]">
             {seatConflictError}
           </p>
           <button
             type="button"
             onClick={() => void exitOrLogout()}
-            className="inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
+            className="cmf-btn-secondary font-tech inline-flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold uppercase"
           >
             <LogOut className="h-4 w-4" />
             Abmelden / Anderen Namen wählen
@@ -246,9 +251,9 @@ export const App: React.FC = () => {
       ownMember.playerId === 'lasse' || ownMember.playerId === 'linus';
 
     return (
-      <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#020617] p-6 text-center text-sm text-slate-300">
-        <div className="w-full max-w-md space-y-4 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
-          <p className="font-bold text-white">
+      <div className="cmf-drafting-bg flex h-[100dvh] flex-col items-center justify-center p-6 text-center text-sm text-[var(--text-main)]">
+        <div className="cmf-chassis w-full max-w-md space-y-4 p-6">
+          <p className="font-industrial text-base text-[var(--text-main)]">
             Hallo {ownMember.name}! Die Lobby wurde noch nicht initialisiert.
           </p>
           {canInitAsAdmin && !ownMember.isHost ? (
@@ -265,7 +270,7 @@ export const App: React.FC = () => {
             >
               <label
                 htmlFor="boot-admin-code"
-                className="block text-xs font-bold text-amber-300"
+                className="block font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
               >
                 Admin-Code eingeben, um die Lobby zu starten:
               </label>
@@ -278,31 +283,31 @@ export const App: React.FC = () => {
                   value={bootAdminCode}
                   onChange={(e) => setBootAdminCode(e.target.value)}
                   placeholder="Admin-Code"
-                  className="min-h-[44px] flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-bold text-white focus:border-amber-400 focus:outline-none"
+                  className="cmf-input font-tech min-h-[44px] flex-1 px-3 py-2 text-sm font-bold tracking-widest"
                 />
                 <button
                   type="submit"
                   disabled={!bootAdminCode.trim()}
-                  className="min-h-[44px] rounded-xl bg-amber-500 px-4 py-2 text-xs font-black text-slate-950 disabled:opacity-40"
+                  className="cmf-btn-primary font-dot min-h-[44px] px-4 py-2 text-xs font-bold"
                 >
-                  Admin freischalten
+                  Freischalten
                 </button>
               </div>
               {bootAdminErr && (
-                <p className="text-xs font-semibold text-rose-300">
+                <p className="font-tech text-xs font-bold text-[var(--cmf-orange)]">
                   {bootAdminErr}
                 </p>
               )}
             </form>
           ) : (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-[var(--text-muted)]">
               Bitte warte kurz, bis Lasse oder Linus den Spielraum per Admin-Code gestartet haben ...
             </p>
           )}
           <button
             type="button"
             onClick={() => void exitOrLogout()}
-            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-800 py-2.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
+            className="cmf-btn-secondary font-tech mt-2 w-full py-2.5 text-xs font-bold uppercase"
           >
             Namen wechseln
           </button>
@@ -486,7 +491,7 @@ export const App: React.FC = () => {
     publicState.status === 'LOBBY' ? 'LOBBY' : timer.computedPhase;
 
   return (
-    <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[#020617] text-slate-100">
+    <div className="cmf-drafting-bg flex h-[100dvh] w-full flex-col overflow-hidden text-[var(--text-main)]">
       {/* Offline-Banner, Pausen-Banner & Controller-Warteschlangen-Banner */}
       <StatusBanners
         connected={gameState.connected}
@@ -501,7 +506,7 @@ export const App: React.FC = () => {
         onClearOwnMessage={handleClearOwnEmergencyMessage}
       />
 
-      {/* Kompaktes schwebendes Top-HUD */}
+      {/* Kompaktes Top-HUD im Raw-Light-Hardware-Design */}
       <TopHud
         publicState={publicState}
         timer={timer}
@@ -563,7 +568,7 @@ export const App: React.FC = () => {
             layoutInvalidationKey={`${activeTab}_${publicState.status}`}
           />
 
-          {/* Schwebende Aktions-Buttons auf der Karte */}
+          {/* Schwebende OLED-/Hardware-Aktions-Pills auf der Karte */}
           <div className="pointer-events-none absolute top-3 right-3 left-3 z-[400] flex flex-col gap-2">
             <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center justify-between gap-2">
               {canUseMapClicks && (
@@ -581,13 +586,19 @@ export const App: React.FC = () => {
                           }
                     )
                   }
-                  className={`pointer-events-auto inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold shadow-lg backdrop-blur ${
+                  className={`pointer-events-auto inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 font-tech text-[11px] font-bold tracking-wider uppercase shadow-lg ${
                     mapClickMode.kind === 'TEST_LOCATION'
-                      ? 'border-amber-400 bg-amber-500 text-slate-950'
-                      : 'border-slate-700 bg-slate-950/90 text-cyan-300 hover:bg-slate-900'
+                      ? 'cmf-btn-primary font-dot'
+                      : 'cmf-oled text-[#F8FAFC]'
                   }`}
                 >
-                  <Crosshair className="h-4 w-4" />
+                  <Crosshair
+                    className={`h-3.5 w-3.5 ${
+                      mapClickMode.kind === 'TEST_LOCATION'
+                        ? 'text-white'
+                        : 'text-[var(--cmf-orange)]'
+                    }`}
+                  />
                   {mapClickMode.kind === 'TEST_LOCATION'
                     ? 'Kartenklick abbrechen'
                     : 'Test-Standort per Klick'}
@@ -595,9 +606,9 @@ export const App: React.FC = () => {
               )}
 
               {isJoinedSardines && (
-                <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/60 bg-cyan-950/90 px-3 py-1.5 text-xs font-extrabold text-cyan-200 shadow-lg">
-                  <Sparkles className="h-4 w-4 text-cyan-400" />
-                  Bei den Sardinen! Versteck & QR-Code freigeschaltet
+                <div className="cmf-oled pointer-events-auto inline-flex items-center gap-2 px-3.5 py-1.5 font-tech text-[11px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg">
+                  <Sparkles className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                  Bei den Sardinen // HQ & QR freigeschaltet
                 </div>
               )}
             </div>
@@ -629,21 +640,21 @@ export const App: React.FC = () => {
               effectivePhase === 'HIDING' &&
               ownMember.side === 'SEEKER' &&
               !isJoinedSardines && (
-                <div className="pointer-events-auto mx-auto mt-2 w-full max-w-md rounded-2xl border border-cyan-500/50 bg-slate-950/92 p-5 text-center shadow-2xl backdrop-blur-md">
-                  <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-500/20 text-cyan-300">
-                    <EyeOff className="h-6 w-6" />
+                <div className="cmf-chassis pointer-events-auto mx-auto mt-2 w-full max-w-md p-5 text-center">
+                  <div className="cmf-oled mx-auto mb-3 flex h-12 w-12 items-center justify-center text-[var(--cmf-amber)]">
+                    <EyeOff className="h-5 w-5" />
                   </div>
-                  <h2 className="text-lg font-black text-white">
+                  <h2 className="font-dot text-lg text-[var(--text-main)]">
                     Die Sardinen verstecken sich ...
                   </h2>
-                  <p className="mt-1 text-xs text-slate-300">
-                    Keine Verstecker-Bewegungen sichtbar. Nutzt die Zeit, euch innerhalb des grünen 81247-Polygons strategisch zu verteilen!
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">
+                    Keine Verstecker-Bewegungen sichtbar. Nutzt die Zeit, euch innerhalb der markierten 81247-Zone strategisch zu verteilen!
                   </p>
-                  <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900 py-2.5 font-mono text-2xl font-black text-cyan-300">
+                  <div className="cmf-oled mt-3.5 py-3 font-dot text-2xl text-[var(--cmf-amber)]">
                     {formatDurationClock(timer.hidingRemainingMs)}
                   </div>
-                  <p className="mt-2 text-[11px] text-slate-400">
-                    Offene Suche & Hinweis-Shop starten automatisch bei 10:00.
+                  <p className="mt-2 font-tech text-[10px] tracking-wider text-[var(--text-muted)] uppercase">
+                    OFFENE SUCHE & HINWEISE STARTEN AUTOMATISCH BEI 10:00
                   </p>
                 </div>
               )}
@@ -653,32 +664,32 @@ export const App: React.FC = () => {
           {publicState.status !== 'LOBBY' &&
             ownMember.side === 'HIDER' &&
             !hiderPrivate?.anchorPoint && (
-              <div className="pointer-events-auto absolute inset-x-3 bottom-3 z-[420] mx-auto max-w-lg rounded-2xl border border-cyan-400/60 bg-slate-950/95 p-4 shadow-2xl backdrop-blur-md">
-                <div className="flex items-center justify-between gap-2">
+              <div className="cmf-chassis pointer-events-auto absolute inset-x-3 bottom-3 z-[420] mx-auto max-w-lg p-4">
+                <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-2.5">
                   <div className="flex items-center gap-2">
-                    <Anchor className="h-5 w-5 text-cyan-400" />
-                    <h3 className="text-sm font-extrabold text-white">
+                    <Anchor className="h-4 w-4 text-[var(--cmf-orange)]" />
+                    <h3 className="font-industrial text-sm text-[var(--text-main)]">
                       Sardinen-Versteck (Anchor Point) wählen
                     </h3>
                   </div>
-                  <span className="rounded-lg bg-slate-900 px-2 py-0.5 font-mono text-xs text-cyan-300">
-                    GPS: {geo.currentFix ? `±${Math.round(geo.currentFix.accuracy)} m` : '...'}
+                  <span className="cmf-oled px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--cmf-teal)]">
+                    GPS: {geo.currentFix ? `±${Math.round(geo.currentFix.accuracy)}M` : '...'}
                   </span>
                 </div>
 
                 {geo.currentFix &&
                   geo.currentFix.accuracy > ANCHOR_ACCURACY_WARNING_METERS && (
-                    <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-500/50 bg-amber-950/50 p-2.5 text-xs text-amber-200">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                    <div className="cmf-well mt-2.5 flex items-start gap-2 p-2.5 text-xs text-[var(--text-main)]">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cmf-amber)]" />
                       <div>
-                        <p className="font-bold">
+                        <p className="font-semibold">
                           Ungenaues GPS-Signal (±{Math.round(geo.currentFix.accuracy)} m, z. B. unter Bäumen an der Würm).
                         </p>
-                        <div className="mt-1.5 flex flex-wrap gap-2">
+                        <div className="mt-2 flex flex-wrap gap-2">
                           <button
                             type="button"
                             onClick={geo.retryGpsPermission}
-                            className="rounded-lg bg-slate-800 px-2.5 py-1 font-bold text-white"
+                            className="cmf-btn-secondary font-tech px-2.5 py-1 text-[11px] font-bold text-[var(--text-main)] uppercase"
                           >
                             Erneut messen
                           </button>
@@ -695,9 +706,9 @@ export const App: React.FC = () => {
                                   'Tippe im 35m-Umkreis auf eure exakte Position im Polygon',
                               });
                             }}
-                            className="rounded-lg bg-amber-500 px-2.5 py-1 font-bold text-slate-950"
+                            className="cmf-btn-active font-tech px-2.5 py-1 text-[11px] font-bold uppercase"
                           >
-                            Präzise auf Karte feinjustieren
+                            Auf Karte feinjustieren
                           </button>
                         </div>
                       </div>
@@ -705,7 +716,7 @@ export const App: React.FC = () => {
                   )}
 
                 {anchorFeedbackError && (
-                  <div className="mt-2 rounded-xl border border-rose-500/50 bg-rose-950/60 p-2.5 text-xs font-semibold text-rose-200">
+                  <div className="cmf-badge-orange mt-2.5 rounded-xl p-2.5 text-xs font-semibold">
                     {anchorFeedbackError}
                   </div>
                 )}
@@ -715,7 +726,7 @@ export const App: React.FC = () => {
                     type="button"
                     data-testid="lock-anchor-btn"
                     onClick={() => void handleLockAnchorByHider(false)}
-                    className="flex min-h-[46px] flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-xs font-black text-slate-950 shadow hover:bg-cyan-400"
+                    className="cmf-btn-primary font-dot flex min-h-[46px] flex-1 items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
                   >
                     <CheckCircle2 className="h-4 w-4" />
                     Versteck jetzt hier fixieren
@@ -724,9 +735,9 @@ export const App: React.FC = () => {
                     type="button"
                     data-testid="lock-anchor-and-start-search-btn"
                     onClick={() => void handleLockAnchorByHider(true)}
-                    className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl border border-emerald-400/60 bg-emerald-950/60 px-3.5 py-2.5 text-xs font-extrabold text-emerald-200 hover:bg-emerald-900/60"
+                    className="cmf-btn-active font-tech flex min-h-[46px] items-center justify-center gap-1.5 px-3.5 py-2.5 text-[11px] font-bold uppercase"
                   >
-                    Fixieren & Suche sofort starten
+                    Fixieren & Suche starten
                   </button>
                 </div>
               </div>
@@ -741,7 +752,7 @@ export const App: React.FC = () => {
                   type="button"
                   data-testid="quick-show-sardinen-qr-btn"
                   onClick={() => setActiveTab('QR')}
-                  className="inline-flex min-h-[46px] items-center gap-2 rounded-2xl border-2 border-cyan-400 bg-slate-950/95 px-4 py-2.5 text-xs font-black text-cyan-300 shadow-2xl hover:bg-slate-900"
+                  className="cmf-btn-primary font-dot inline-flex min-h-[46px] items-center gap-2 px-4 py-2.5 text-xs font-bold"
                 >
                   <QrCode className="h-4 w-4" />
                   Sardinen-QR-Code zeigen

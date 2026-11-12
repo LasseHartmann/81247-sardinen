@@ -63,34 +63,49 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   };
 
   return (
-    <div className="flex h-[100dvh] w-full flex-col items-center justify-center overflow-y-auto bg-[#020617] p-4 text-slate-100">
-      <div className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900/95 p-6 shadow-2xl">
-        <div className="text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-500/40 bg-cyan-950/60 text-2xl shadow-lg">
-            🐟
-          </div>
-          <h1 className="text-2xl font-black tracking-wider text-white">
-            81247 SARDINEN
-          </h1>
-          <p className="mt-1 text-xs font-medium text-slate-400">
-            Taktisches Outdoor-Versteckspiel • Obermenzing / Blutenburg / Pipping
-          </p>
+    <div className="cmf-drafting-bg flex h-[100dvh] w-full flex-col items-center justify-center overflow-y-auto p-4 text-[var(--text-main)]">
+      <div className="cmf-chassis w-full max-w-md p-6 sm:p-7">
+        {/* Hardware-Kopfzeile mit Serien-Tag & OLED-Emblem */}
+        <div className="flex items-center justify-between">
+          <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--cmf-teal)]" />
+            SEKTOR 81247 // MUC
+          </span>
+          <span className="font-tech text-[10px] font-medium tracking-widest text-[var(--text-muted)] uppercase">
+            SYS.V2 // LIVE
+          </span>
         </div>
+
+        <div className="mt-5 flex items-center gap-3.5">
+          <div className="cmf-oled flex h-14 w-14 shrink-0 items-center justify-center">
+            <span className="font-dot text-lg text-[var(--cmf-orange)]">81</span>
+          </div>
+          <div>
+            <h1 className="font-dot text-2xl leading-tight font-bold text-[var(--text-main)]">
+              81247 SARDINEN
+            </h1>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+              Taktisches Outdoor-Versteckspiel • Obermenzing / Blutenburg / Pipping
+            </p>
+          </div>
+        </div>
+
+        <div className="my-5 border-t cmf-divider" />
 
         {logoutNotice && (
           <div
             role="status"
-            className="mt-4 rounded-xl border border-cyan-500/50 bg-cyan-950/50 px-3.5 py-2.5 text-xs font-semibold text-cyan-200"
+            className="cmf-badge-teal mb-4 rounded-xl px-3.5 py-2.5 text-xs font-medium leading-relaxed"
           >
             {logoutNotice}
           </div>
         )}
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="mt-5 space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div>
             <label
               htmlFor="player-name-input"
-              className="mb-1.5 block text-xs font-bold text-slate-300"
+              className="mb-1.5 block font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
             >
               Dein Vorname
             </label>
@@ -109,24 +124,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 setTypedName(e.target.value);
               }}
               placeholder="Namen eingeben ..."
-              className="min-h-[50px] w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-base font-bold text-white placeholder:font-normal placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+              className="cmf-input min-h-[50px] w-full px-4 py-3 text-base font-semibold"
             />
           </div>
 
           {pendingHiderPasswordFor && (
-            <div className="space-y-1.5 rounded-2xl border border-cyan-500/50 bg-cyan-950/30 p-3.5">
+            <div className="cmf-module space-y-2 p-3.5">
               <div className="flex items-center justify-between">
                 <label
                   htmlFor="hider-login-password-input"
-                  className="flex items-center gap-1.5 text-xs font-extrabold text-cyan-300"
+                  className="flex items-center gap-1.5 font-tech text-[11px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase"
                 >
                   <Lock className="h-3.5 w-3.5" />
-                  Verstecker-Passwort für {pendingHiderPasswordFor}
+                  Verstecker-Passwort // {pendingHiderPasswordFor}
                 </label>
                 <button
                   type="button"
                   onClick={() => setShowPw((v) => !v)}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-slate-200"
+                  className="inline-flex items-center gap-1 font-tech text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
                 >
                   {showPw ? (
                     <>
@@ -148,13 +163,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 value={hiderPassword}
                 onChange={(e) => setHiderPassword(e.target.value)}
                 placeholder="Geheimes Verstecker-Passwort ..."
-                className="min-h-[46px] w-full rounded-xl border border-cyan-500/40 bg-slate-950 px-3.5 py-2.5 text-sm font-bold text-white placeholder:font-normal placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+                className="cmf-input cmf-input-orange font-tech min-h-[46px] w-full px-3.5 py-2.5 text-sm font-bold"
               />
             </div>
           )}
 
           {!firebaseAvailable && (
-            <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-xs text-amber-200">
+            <div className="cmf-badge-amber rounded-xl p-3 text-xs font-medium">
               Hinweis: Firebase-Umgebungsvariablen sind noch nicht hinterlegt.
             </div>
           )}
@@ -162,7 +177,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           {loginError && (
             <div
               role="alert"
-              className="rounded-xl border border-rose-500/50 bg-rose-950/60 px-3.5 py-2.5 text-xs font-semibold text-rose-200"
+              className="cmf-badge-orange rounded-xl px-3.5 py-2.5 text-xs font-semibold"
             >
               {loginError}
             </div>
@@ -177,7 +192,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               !effectiveName.trim() ||
               Boolean(pendingHiderPasswordFor && !hiderPassword.trim())
             }
-            className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-extrabold text-slate-950 shadow-lg hover:bg-cyan-400 disabled:opacity-40"
+            className="cmf-btn-primary font-dot flex min-h-[50px] w-full items-center justify-center gap-2 px-4 py-3 text-sm font-bold"
           >
             <LogIn className="h-4 w-4" />
             {submitting
@@ -216,28 +231,28 @@ export const PendingApprovalScreen: React.FC<PendingApprovalScreenProps> = ({
   };
 
   return (
-    <div className="flex h-[100dvh] w-full flex-col items-center justify-center overflow-y-auto bg-[#020617] p-4 text-slate-100">
-      <div className="w-full max-w-lg space-y-4 rounded-3xl border border-amber-500/40 bg-slate-900 p-6 shadow-2xl">
+    <div className="cmf-drafting-bg flex h-[100dvh] w-full flex-col items-center justify-center overflow-y-auto p-4 text-[var(--text-main)]">
+      <div className="cmf-chassis w-full max-w-lg space-y-4 p-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400">
+          <div className="cmf-oled flex h-12 w-12 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
             <ShieldCheck className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-lg font-extrabold text-white">
+            <h1 className="font-industrial text-lg text-[var(--text-main)]">
               Verbinde Spielerkonto ...
             </h1>
-            <p className="text-xs text-amber-300">
+            <p className="text-xs text-[var(--text-muted)]">
               Warte auf Freischaltung durch Lasse oder Linus (oder aktualisiere die Firebase-Regeln).
             </p>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/25 p-4 space-y-2.5">
+        <div className="cmf-well p-4">
           <button
             type="button"
             disabled={claiming}
             onClick={() => void handleClaimHost()}
-            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-black text-slate-950 shadow hover:bg-emerald-400 disabled:opacity-40"
+            className="cmf-btn-primary font-dot flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
           >
             <Crown className="h-4 w-4" />
             {claiming ? 'Aktiviere ...' : 'Als Spielleiter aktivieren'}
@@ -245,7 +260,7 @@ export const PendingApprovalScreen: React.FC<PendingApprovalScreenProps> = ({
         </div>
 
         {loginError && (
-          <div className="rounded-xl border border-rose-500/50 bg-rose-950/60 p-3 text-xs font-semibold text-rose-200">
+          <div className="cmf-badge-orange rounded-xl p-3 text-xs font-semibold">
             {loginError}
           </div>
         )}
@@ -253,7 +268,7 @@ export const PendingApprovalScreen: React.FC<PendingApprovalScreenProps> = ({
         <button
           type="button"
           onClick={() => void onLogout()}
-          className="inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
+          className="cmf-btn-secondary font-tech inline-flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold uppercase"
         >
           <LogOut className="h-4 w-4" />
           Anderen Namen eingeben
@@ -342,6 +357,14 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
     unassignedMembers.length === 0;
 
   const readyCount = memberList.filter((m) => readySet.has(m.playerId)).length;
+  const readyRatio = memberList.length > 0 ? readyCount / memberList.length : 0;
+  // 3-stage hardware color progression: --cmf-teal -> --cmf-amber -> --cmf-orange
+  const meterColor =
+    readyRatio < 0.5
+      ? 'var(--cmf-teal)'
+      : readyRatio < 1
+        ? 'var(--cmf-amber)'
+        : 'var(--cmf-orange)';
 
   const canShowAdminUnlock =
     !ownMember.isHost &&
@@ -387,16 +410,17 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   };
 
   return (
-    <div className="pointer-events-auto mx-auto max-h-[calc(100dvh-150px)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/94 p-4 text-slate-100 shadow-2xl backdrop-blur-md">
+    <div className="cmf-chassis pointer-events-auto mx-auto max-h-[calc(100dvh-146px)] w-full max-w-lg overflow-y-auto p-4 sm:p-5 text-[var(--text-main)]">
+      {/* Kopfzeile */}
       <div className="flex items-center justify-between gap-2">
         <div>
-          <span className="text-[11px] font-extrabold tracking-wider text-cyan-400 uppercase">
-            Lobby • 81247 Sardinen
+          <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+            LOBBY // SEKTOR 81247
           </span>
-          <h2 className="flex items-center gap-2 text-base font-black text-white">
+          <h2 className="font-industrial flex items-center gap-2 text-lg text-[var(--text-main)]">
             <span>Hallo {ownMember.name}!</span>
             {ownMember.isHost && (
-              <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-extrabold text-emerald-300">
+              <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
                 ADMIN
               </span>
             )}
@@ -405,59 +429,88 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         <button
           type="button"
           onClick={() => void onLogout()}
-          className="inline-flex min-h-[38px] items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+          className="cmf-btn-secondary font-tech inline-flex min-h-[36px] items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase"
         >
           <LogOut className="h-3.5 w-3.5" />
           Abmelden
         </button>
       </div>
 
-      {/* Eigene Rolle */}
-      <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-xs">
+      {/* Eingebettete schwarze OLED-Insel: Rollen-Status & Bereitschafts-Telemetrie */}
+      <div className="cmf-oled mt-3 p-3.5 space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span>
-            Deine Rolle:{' '}
+          <div className="text-xs">
+            <span className="font-tech text-[10px] tracking-wider text-[#9AA4AE] uppercase block">
+              ZUGEWIESENE ROLLE
+            </span>
             <strong
-              className={
-                ownMember.side === 'HIDER' ? 'text-cyan-300' : 'text-amber-300'
-              }
+              className={`font-industrial text-sm ${
+                ownMember.side === 'HIDER'
+                  ? 'text-[var(--cmf-orange)]'
+                  : 'text-[#F8FAFC]'
+              }`}
             >
               {ownMember.side === 'HIDER'
-                ? '🐟 Verstecker (Die Sardinen)'
+                ? 'VERSTECKER // DIE SARDINEN'
                 : ownMember.teamId
                   ? (teamsPublic[ownMember.teamId]?.name ?? ownMember.teamId)
-                  : 'Wartet auf Team-Zuteilung durch Lasse / Linus'}
+                  : 'Wartet auf Zuteilung durch Lasse / Linus'}
             </strong>
-          </span>
-          {hasPasswordSet && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/20 px-2.5 py-0.5 text-[11px] font-bold text-cyan-300">
+          </div>
+
+          {hasPasswordSet ? (
+            <span className="cmf-badge-teal inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
               <Lock className="h-3 w-3" />
-              Verstecker-Passwort aktiv
+              PW GESICHERT
+            </span>
+          ) : (
+            <span className="cmf-badge-amber-oled inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
+              PW AUSSTEHEND
             </span>
           )}
         </div>
+
+        {hasPasswordSet && (
+          <div className="border-t border-dashed border-[#27272A] pt-2">
+            <div className="mb-1 flex items-center justify-between font-tech text-[10px] uppercase">
+              <span className="text-[#9AA4AE]">BEREITSCHAFTS-STATUS</span>
+              <span className="font-dot text-xs text-[#F8FAFC]">
+                BEREIT {readyCount} / {memberList.length}
+              </span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-[#181B20] p-[1px]">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${Math.round(readyRatio * 100)}%`,
+                  backgroundColor: meterColor,
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Besetzte Teams Übersicht (nur Teams, in denen jemand ist!) */}
       {occupiedTeams.length > 0 && (
-        <div className="mt-3 space-y-1.5">
-          <div className="text-[11px] font-extrabold tracking-wider text-slate-400 uppercase">
+        <div className="mt-3.5 space-y-1.5">
+          <div className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
             Aktive Sucher-Teams ({occupiedTeams.length})
           </div>
           <div className="grid gap-1.5 sm:grid-cols-2">
             {occupiedTeams.map((t) => (
               <div
                 key={t.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/70 px-2.5 py-1.5 text-xs"
+                className="cmf-well flex items-center justify-between gap-2 px-3 py-2 text-xs"
               >
-                <span className="flex items-center gap-1.5 font-bold text-white">
+                <span className="font-tech flex items-center gap-1.5 text-[11px] font-bold text-[var(--text-main)] uppercase">
                   <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/60"
                     style={{ backgroundColor: t.color }}
                   />
                   {t.name.replace(/\s*\(.*\)/, '')}
                 </span>
-                <span className="truncate text-[11px] text-slate-300">
+                <span className="truncate text-[11px] font-medium text-[var(--text-muted)]">
                   {t.assignedNames.join(', ')}
                 </span>
               </div>
@@ -470,26 +523,26 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
       {ownMember.side === 'HIDER' && (!hasPasswordSet || pwFormOpen) && (
         <form
           onSubmit={(e) => void handleSaveHiderPassword(e)}
-          className="mt-3 space-y-2.5 rounded-xl border border-cyan-400/60 bg-cyan-950/35 p-3.5"
+          className="cmf-module mt-3.5 space-y-2.5 p-3.5"
         >
-          <div className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-xs font-extrabold text-cyan-300">
-              <Lock className="h-4 w-4" />
+          <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-2">
+            <span className="flex items-center gap-1.5 font-tech text-[11px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
+              <Lock className="h-3.5 w-3.5" />
               Verstecker-Passwort festlegen
             </span>
             {hasPasswordSet && (
               <button
                 type="button"
                 onClick={() => setPwFormOpen(false)}
-                className="text-[11px] font-semibold text-slate-400 hover:text-slate-200"
+                className="font-tech text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
               >
-                Abbrechen
+                [Abbrechen]
               </button>
             )}
           </div>
-          <p className="text-[11px] leading-relaxed text-slate-300">
-            Wird euer <strong>QR-Code & Fang-Code</strong> zum Finden sowie das{' '}
-            <strong>Login-Passwort für alle Verstecker-Accounts</strong>. Nach dem Speichern werden alle Spieler einmalig ausgeloggt!
+          <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+            Wird euer <strong className="text-[var(--text-main)]">QR-Code & Fang-Code</strong> zum Finden sowie das{' '}
+            <strong className="text-[var(--text-main)]">Login-Passwort für alle Verstecker-Accounts</strong>. Nach dem Speichern werden alle Spieler einmalig ausgeloggt!
           </p>
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -500,12 +553,12 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                 value={pwDraft}
                 onChange={(e) => setPwDraft(e.target.value)}
                 placeholder="Geheimes Passwort (mind. 3 Zeichen)"
-                className="min-h-[42px] w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 pr-9 text-xs font-bold text-white placeholder:font-normal placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+                className="cmf-input cmf-input-orange font-tech min-h-[42px] w-full px-3 py-2 pr-9 text-xs font-bold"
               />
               <button
                 type="button"
                 onClick={() => setShowPwDraft((v) => !v)}
-                className="absolute top-1/2 right-2.5 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                className="absolute top-1/2 right-2.5 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-main)]"
                 title={showPwDraft ? 'Verbergen' : 'Anzeigen'}
               >
                 {showPwDraft ? (
@@ -519,13 +572,15 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
               type="submit"
               data-testid="save-hider-password-btn"
               disabled={pwSaving || pwDraft.trim().length < 3}
-              className="min-h-[42px] shrink-0 rounded-lg bg-cyan-500 px-3.5 py-2 text-xs font-black text-slate-950 hover:bg-cyan-400 disabled:opacity-40"
+              className="cmf-btn-primary font-dot min-h-[42px] shrink-0 px-3.5 py-2 text-xs font-bold"
             >
               {pwSaving ? 'Speichere ...' : 'Festlegen'}
             </button>
           </div>
           {pwError && (
-            <p className="text-xs font-semibold text-rose-300">{pwError}</p>
+            <p className="font-tech text-[11px] font-bold text-[var(--cmf-orange)]">
+              {pwError}
+            </p>
           )}
         </form>
       )}
@@ -535,7 +590,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
           <button
             type="button"
             onClick={() => setPwFormOpen(true)}
-            className="text-[11px] font-semibold text-cyan-400 underline hover:text-cyan-300"
+            className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] underline hover:text-[var(--cmf-orange)] uppercase"
           >
             Verstecker-Passwort ändern
           </button>
@@ -543,21 +598,21 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
       )}
 
       {ownMember.side !== 'HIDER' && !hasPasswordSet && hiderMembers.length > 0 && (
-        <div className="mt-3 rounded-xl border border-cyan-500/30 bg-cyan-950/25 p-3 text-xs text-cyan-200">
-          Die Verstecker legen gerade ihr geheimes Passwort fest. Danach werdet ihr kurz ausgeloggt und könnt auf <strong>„Bereit“</strong> drücken!
+        <div className="cmf-well mt-3.5 p-3 text-xs text-[var(--text-muted)]">
+          Die Verstecker legen gerade ihr geheimes Passwort fest. Danach werdet ihr kurz ausgeloggt und könnt auf <strong className="text-[var(--text-main)]">„Bereit“</strong> drücken!
         </div>
       )}
 
       {/* Spielerliste mit Online- & Bereit-Status */}
-      <div className="mt-3">
-        <div className="mb-1.5 flex items-center justify-between text-xs font-bold text-slate-300">
+      <div className="mt-3.5 border-t cmf-divider pt-3">
+        <div className="mb-2 flex items-center justify-between font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
           <span className="flex items-center gap-1.5">
-            <Users className="h-3.5 w-3.5 text-cyan-400" />
+            <Users className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
             Spieler ({memberList.length} / 11)
           </span>
           {hasPasswordSet && (
-            <span className="font-extrabold text-emerald-300">
-              Bereit: {readyCount} / {memberList.length}
+            <span className="text-[var(--cmf-teal)]">
+              BEREIT: {readyCount}/{memberList.length}
             </span>
           )}
         </div>
@@ -568,27 +623,27 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
             return (
               <span
                 key={m.uid}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs ${
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs ${
                   playerReady
-                    ? 'border-emerald-500/60 bg-emerald-950/40'
-                    : 'border-slate-800 bg-slate-900'
+                    ? 'cmf-badge-teal font-semibold'
+                    : 'cmf-well text-[var(--text-main)]'
                 }`}
               >
                 <span
                   className={`h-2 w-2 rounded-full ${
-                    online ? 'bg-emerald-400' : 'bg-slate-600'
+                    online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
                   }`}
                 />
-                <span className="font-semibold text-white">{m.name}</span>
-                <span className="text-[10px] text-slate-400">
+                <span className="font-semibold text-[var(--text-main)]">{m.name}</span>
+                <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
                   {m.side === 'HIDER'
-                    ? '🐟'
+                    ? 'HQ'
                     : m.teamId
                       ? m.teamId.replace('team-', 'T')
                       : '–'}
                 </span>
                 {hasPasswordSet && playerReady && (
-                  <span className="text-[11px] font-black text-emerald-400">
+                  <span className="font-tech text-[11px] font-bold text-[var(--cmf-teal)]">
                     ✓
                   </span>
                 )}
@@ -600,9 +655,9 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
 
       {/* BEREIT-Button für alle Spieler -> startet automatisch sobald alle bereit sind! */}
       {hasPasswordSet && (
-        <div className="mt-3 space-y-1.5">
+        <div className="mt-3.5 space-y-1.5">
           {!canPressReady ? (
-            <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-2.5 text-center text-xs text-amber-200">
+            <div className="cmf-badge-amber rounded-xl p-2.5 text-center text-xs font-medium">
               {unassignedMembers.length > 0
                 ? `Noch nicht alle Spieler eingeteilt (${unassignedMembers.map((u) => u.name).join(', ')}).`
                 : hiderMembers.length === 0
@@ -622,15 +677,17 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                   setTogglingReady(false);
                 }
               }}
-              className={`flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-black shadow-lg transition disabled:opacity-50 ${
-                isOwnReady
-                  ? 'border-2 border-emerald-400 bg-emerald-600 text-white hover:bg-emerald-500'
-                  : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
+              className={`font-dot flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-3 text-sm font-bold ${
+                isOwnReady ? 'cmf-btn-active' : 'cmf-btn-primary'
               }`}
             >
-              <CheckCircle2 className="h-5 w-5" />
+              <CheckCircle2
+                className={`h-4 w-4 ${
+                  isOwnReady ? 'text-[var(--cmf-teal)]' : 'text-white'
+                }`}
+              />
               {isOwnReady
-                ? `Du bist bereit! (${readyCount}/${memberList.length} – startet automatisch)`
+                ? `Bereit bestätigt (${readyCount}/${memberList.length})`
                 : `Ich bin bereit! (${readyCount}/${memberList.length})`}
             </button>
           )}
@@ -647,22 +704,22 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                 setAdminError(null);
                 setAdminPromptOpen(true);
               }}
-              className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-amber-500/50 bg-amber-950/40 px-4 py-2 text-xs font-extrabold text-amber-300 hover:bg-amber-900/50"
+              className="cmf-btn-secondary font-tech flex min-h-[42px] w-full items-center justify-center gap-2 px-4 py-2 text-xs font-bold uppercase"
             >
-              <KeyRound className="h-4 w-4" />
+              <KeyRound className="h-4 w-4 text-[var(--cmf-amber)]" />
               Admin-Code eingeben
             </button>
           ) : (
             <form
               onSubmit={(e) => void handleUnlockSubmit(e)}
-              className="space-y-2 rounded-xl border border-amber-500/50 bg-slate-900 p-3"
+              className="cmf-module space-y-2 p-3"
             >
               <div className="flex items-center justify-between">
                 <label
                   htmlFor="admin-code-input"
-                  className="text-xs font-extrabold text-amber-300"
+                  className="font-tech text-[11px] font-bold text-[var(--text-main)] uppercase"
                 >
-                  Admin-Code für {ownMember.name}
+                  Admin-Code // {ownMember.name}
                 </label>
                 <button
                   type="button"
@@ -671,9 +728,9 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                     setAdminError(null);
                     setAdminCode('');
                   }}
-                  className="text-[11px] font-semibold text-slate-400 hover:text-slate-200"
+                  className="font-tech text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
                 >
-                  Abbrechen
+                  [Abbrechen]
                 </button>
               </div>
               <div className="flex gap-2">
@@ -686,19 +743,21 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                   value={adminCode}
                   onChange={(e) => setAdminCode(e.target.value)}
                   placeholder="4-stelliger Code"
-                  className="min-h-[42px] flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-bold tracking-widest text-white placeholder:tracking-normal placeholder:font-normal placeholder:text-slate-500 focus:border-amber-400 focus:outline-none"
+                  className="cmf-input font-tech min-h-[42px] flex-1 px-3 py-2 text-sm font-bold tracking-widest"
                 />
                 <button
                   type="submit"
                   data-testid="submit-admin-code-btn"
                   disabled={unlocking || !adminCode.trim()}
-                  className="min-h-[42px] rounded-lg bg-amber-500 px-4 py-2 text-xs font-black text-slate-950 hover:bg-amber-400 disabled:opacity-40"
+                  className="cmf-btn-primary font-dot min-h-[42px] px-4 py-2 text-xs font-bold"
                 >
                   {unlocking ? '...' : 'Freischalten'}
                 </button>
               </div>
               {adminError && (
-                <p className="text-xs font-semibold text-rose-300">{adminError}</p>
+                <p className="font-tech text-[11px] font-bold text-[var(--cmf-orange)]">
+                  {adminError}
+                </p>
               )}
             </form>
           )}
@@ -710,9 +769,9 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
           type="button"
           data-testid="open-host-panel-btn"
           onClick={onOpenHostTab}
-          className="mt-3 flex min-h-[44px] w-full items-center justify-center rounded-xl bg-amber-500 px-4 py-2 text-xs font-black text-slate-950 shadow hover:bg-amber-400"
+          className="cmf-btn-active font-tech mt-3 flex min-h-[44px] w-full items-center justify-center px-4 py-2 text-xs font-bold tracking-wider uppercase"
         >
-          Zum Admin-Bereich (Teams einteilen & Spieler verwalten)
+          Admin-Konsole öffnen (Teams & Steuerung)
         </button>
       )}
     </div>

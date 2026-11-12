@@ -31,7 +31,7 @@ export const EmergencyMessageBanner: React.FC<EmergencyMessageBannerProps> = ({
     <div
       role="alert"
       data-testid="emergency-messages-container"
-      className="z-30 flex flex-col border-b-2 border-rose-500 bg-rose-950/95 text-rose-100 shadow-xl"
+      className="z-30 flex flex-col border-b-2 border-[var(--cmf-orange)] bg-[#0B0D10] text-[#F8FAFC] shadow-lg"
     >
       {messages.map((msg) => {
         const isSender = msg.uid === ownUid;
@@ -40,16 +40,17 @@ export const EmergencyMessageBanner: React.FC<EmergencyMessageBannerProps> = ({
           <div
             key={msg.uid}
             data-testid={`emergency-msg-${msg.playerId}`}
-            className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-2 border-b border-rose-500/30 px-3 py-2.5 last:border-b-0"
+            className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-2 border-b border-dashed border-[#27272A] px-3 py-2.5 last:border-b-0"
           >
             <div className="flex items-start gap-2.5">
-              <AlertOctagon className="mt-0.5 h-5 w-5 shrink-0 text-rose-400" />
+              <span className="nothing-red-dot mt-1.5" />
+              <AlertOctagon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
               <div className="text-xs leading-snug">
-                <span className="font-black tracking-wide text-rose-300 uppercase">
-                  Notfallnachricht von {msg.senderName}
-                  {timeStr ? ` (${timeStr})` : ''}:
+                <span className="font-tech text-[11px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
+                  NOTFALL // {msg.senderName}
+                  {timeStr ? ` [${timeStr}]` : ''}:
                 </span>{' '}
-                <span className="font-bold text-white">{msg.text}</span>
+                <span className="font-semibold text-[#F8FAFC]">{msg.text}</span>
               </div>
             </div>
 
@@ -58,7 +59,7 @@ export const EmergencyMessageBanner: React.FC<EmergencyMessageBannerProps> = ({
                 type="button"
                 data-testid="delete-own-emergency-msg-btn"
                 onClick={() => void onClearOwnMessage()}
-                className="inline-flex min-h-[34px] shrink-0 items-center gap-1.5 rounded-lg border border-rose-400/60 bg-rose-900/80 px-2.5 py-1 text-xs font-extrabold text-white hover:bg-rose-800"
+                className="cmf-btn-primary font-dot inline-flex min-h-[34px] shrink-0 items-center gap-1.5 px-3 py-1 text-[11px]"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Nachricht löschen

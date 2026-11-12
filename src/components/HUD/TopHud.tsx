@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Clock,
   Crosshair,
   KeyRound,
   Radar,
@@ -55,8 +54,9 @@ export const TopHud: React.FC<TopHudProps> = ({
 }) => {
   const activePhase =
     publicState.status === 'LOBBY' ? 'LOBBY' : timer.computedPhase;
-  const isSardineSide =
-    ownMember.side === 'HIDER' || ownTeam?.status === 'JOINED_SARDINES';
+  const isRunning = publicState.status === 'RUNNING';
+  const isPaused = publicState.status === 'PAUSED';
+
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [adminCode, setAdminCode] = useState('');
   const [adminErr, setAdminErr] = useState<string | null>(null);
@@ -85,51 +85,54 @@ export const TopHud: React.FC<TopHudProps> = ({
   };
 
   return (
-    <header className="pointer-events-auto z-20 border-b border-slate-800/90 bg-slate-950/92 px-3 py-2 backdrop-blur-md">
+    <header className="pointer-events-auto z-20 border-b-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]">
       <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-2">
-        {/* Spielzeit & Aktuelle Phase */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5">
-            <Clock className="h-4 w-4 text-cyan-400" />
+        {/* Eingebettete schwarze OLED-Telemetrie-Insel: Timer + Phase + Radar */}
+        <div className="cmf-oled flex items-center gap-2.5 px-3 py-1.5">
+          <div className="flex items-center gap-2">
+            {isRunning ? (
+              <span className="nothing-red-dot" title="Live-Sitzung aktiv" />
+            ) : (
+              <span
+                className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+                  isPaused ? 'bg-[var(--cmf-amber)]' : 'bg-[var(--cmf-teal)]'
+                }`}
+              />
+            )}
             <span
               data-testid="hud-net-clock"
-              className="font-mono text-base font-black tracking-tight text-white"
+              className="font-dot text-base leading-none text-[#F8FAFC] sm:text-lg"
             >
               {formatDurationClock(timer.netElapsedMs)}
             </span>
           </div>
 
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`inline-block h-2 w-2 rounded-full ${
-                  isSardineSide ? 'bg-cyan-400' : 'bg-amber-400'
-                }`}
-              />
-              <span className="text-xs font-extrabold text-slate-100">
-                {getPhaseLabelDe(activePhase)}
-              </span>
-            </div>
-            <div className="flex items-center gap-1 text-[11px] text-slate-400">
-              <Radar className="h-3 w-3 text-rose-400" />
-              <span>
+          <div className="h-6 border-l border-dashed border-[#27272A]" />
+
+          <div className="flex flex-col leading-tight">
+            <span className="font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase">
+              {getPhaseLabelDe(activePhase)}
+            </span>
+            <span className="flex items-center gap-1 font-tech text-[10px] text-[var(--cmf-amber)]">
+              <Radar className="h-3 w-3 shrink-0 text-[var(--cmf-teal)]" />
+              <span className="truncate max-w-[140px] sm:max-w-none">
                 {timer.nextStageRemainingMs !== null
                   ? `${timer.nextStageLabel} (${formatDurationClock(timer.nextStageRemainingMs)})`
                   : timer.nextStageLabel}
               </span>
-            </div>
+            </span>
           </div>
         </div>
 
-        {/* Rechte Status-Leiste: Strafzeit, GPS, Netz, Notfall & Admin */}
+        {/* Rechte Hardware-Statusleiste: Strafzeit, GPS, Funk, Notfall & Admin */}
         <div className="flex items-center gap-1.5">
           {ownTeam && (
             <div
               title="Aufgelaufene Hinweis-Strafzeit deines Teams"
-              className={`rounded-lg border px-2 py-1 text-xs font-extrabold ${
+              className={`rounded-lg px-2 py-1 text-[11px] font-bold tracking-wide uppercase ${
                 ownTeam.penaltyMs > 0
-                  ? 'border-rose-500/50 bg-rose-950/60 text-rose-300'
-                  : 'border-slate-800 bg-slate-900 text-slate-300'
+                  ? 'cmf-badge-orange'
+                  : 'cmf-well font-tech text-[var(--text-muted)]'
               }`}
             >
               {formatPenaltyMinutes(ownTeam.penaltyMs)}
@@ -138,21 +141,23 @@ export const TopHud: React.FC<TopHudProps> = ({
 
           <div
             title="GPS-Status & Genauigkeit"
-            className="hidden sm:inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-300"
+            className={`hidden sm:inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold uppercase ${
+              gpsStatus === 'DENIED' ? 'cmf-badge-orange' : 'cmf-badge-teal'
+            }`}
           >
             {gpsStatus === 'DENIED' ? (
               <>
-                <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
-                <span className="text-rose-300">Kein GPS</span>
+                <AlertTriangle className="h-3 w-3" />
+                <span>NO GPS</span>
               </>
             ) : (
               <>
-                <Crosshair className="h-3.5 w-3.5 text-emerald-400" />
+                <Crosshair className="h-3 w-3" />
                 <span>
                   {gpsStatus === 'MANUAL_TEST'
-                    ? 'Testpin'
+                    ? 'TESTPIN'
                     : ownFix
-                      ? `±${Math.round(ownFix.accuracy)}m`
+                      ? `±${Math.round(ownFix.accuracy)}M`
                       : 'GPS...'}
                 </span>
               </>
@@ -161,12 +166,12 @@ export const TopHud: React.FC<TopHudProps> = ({
 
           <div
             title={connected ? 'Live verbunden' : 'Offline'}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-800 bg-slate-900"
+            className="cmf-well flex h-8 w-8 items-center justify-center"
           >
             {connected ? (
-              <Wifi className="h-4 w-4 text-emerald-400" />
+              <Wifi className="h-4 w-4 text-[var(--cmf-teal)]" />
             ) : (
-              <WifiOff className="h-4 w-4 text-rose-400" />
+              <WifiOff className="h-4 w-4 text-[var(--nothing-red)]" />
             )}
           </div>
 
@@ -178,13 +183,17 @@ export const TopHud: React.FC<TopHudProps> = ({
               setEmergencyDrawerOpen((v) => !v);
             }}
             title="Notfallnachricht an alle senden oder eigene löschen"
-            className={`inline-flex min-h-[38px] items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-extrabold transition ${
+            className={`inline-flex min-h-[36px] items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold tracking-wider uppercase ${
               ownEmergencyMessage
-                ? 'border-rose-400 bg-rose-600 text-white'
-                : 'border-rose-500/50 bg-rose-950/50 text-rose-300 hover:bg-rose-900/60'
+                ? 'cmf-btn-primary font-dot'
+                : 'cmf-btn-secondary font-tech text-[var(--text-main)]'
             }`}
           >
-            <AlertOctagon className="h-4 w-4" />
+            <AlertOctagon
+              className={`h-3.5 w-3.5 ${
+                ownEmergencyMessage ? 'text-white' : 'text-[var(--cmf-orange)]'
+              }`}
+            />
             <span>Notfall</span>
           </button>
 
@@ -197,33 +206,36 @@ export const TopHud: React.FC<TopHudProps> = ({
                 setAdminModalOpen((v) => !v);
               }}
               title="Admin-Code eingeben"
-              className="inline-flex min-h-[38px] items-center gap-1 rounded-xl border border-amber-500/40 bg-amber-950/50 px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-900/60"
+              className={`inline-flex min-h-[36px] items-center gap-1 px-2.5 py-1.5 font-tech text-[11px] font-bold tracking-wider uppercase ${
+                adminModalOpen ? 'cmf-btn-active' : 'cmf-btn-secondary'
+              }`}
             >
-              <KeyRound className="h-4 w-4" />
+              <KeyRound className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
               <span className="hidden xs:inline">Admin</span>
             </button>
           )}
         </div>
       </div>
 
+      {/* Aufklappbares Hardware-Modul: Notfallnachricht */}
       {emergencyDrawerOpen && (
-        <div className="mx-auto mt-2 max-w-xl rounded-xl border border-rose-500/60 bg-slate-900 p-3 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold text-rose-300">
-              Notfallnachricht (dauerhaft für alle sichtbar)
+        <div className="cmf-module mx-auto mt-2 max-w-xl p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between border-b cmf-divider pb-2">
+            <span className="font-tech text-[11px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
+              NOTFALL-KANAL // DAUERHAFT FÜR ALLE SICHTBAR
             </span>
             <button
               type="button"
               onClick={() => setEmergencyDrawerOpen(false)}
-              className="text-[11px] font-semibold text-slate-400 hover:text-slate-200"
+              className="font-tech text-[11px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
             >
-              Schließen
+              [Schließen]
             </button>
           </div>
 
           {ownEmergencyMessage && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-500/40 bg-rose-950/50 px-3 py-2 text-xs">
-              <span className="text-rose-100">
+            <div className="cmf-well flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs">
+              <span className="text-[var(--text-main)]">
                 Aktiv gesendet: <strong>{ownEmergencyMessage.text}</strong>
               </span>
               <button
@@ -232,7 +244,7 @@ export const TopHud: React.FC<TopHudProps> = ({
                   await onClearOwnEmergencyMessage();
                   setEmergencyDrawerOpen(false);
                 }}
-                className="inline-flex min-h-[34px] items-center gap-1 rounded-lg bg-rose-600 px-2.5 py-1 text-xs font-black text-white hover:bg-rose-500"
+                className="cmf-btn-active font-tech inline-flex min-h-[34px] items-center gap-1 px-2.5 py-1 text-[11px] font-bold uppercase"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Eigene Nachricht löschen
@@ -256,13 +268,13 @@ export const TopHud: React.FC<TopHudProps> = ({
                   ? 'Nachricht aktualisieren ...'
                   : 'Was ist passiert? (z. B. Verletzung, Hilfe benötigt, Standort ...)'
               }
-              className="min-h-[40px] flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white placeholder:text-slate-500 focus:border-rose-400 focus:outline-none"
+              className="cmf-input cmf-input-orange min-h-[40px] flex-1 px-3 py-1.5 text-xs font-medium"
             />
             <button
               type="submit"
               data-testid="send-emergency-message-btn"
               disabled={sendingEmergency || !emergencyDraft.trim()}
-              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-black text-white hover:bg-rose-500 disabled:opacity-40"
+              className="cmf-btn-primary font-dot inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-1.5 text-xs"
             >
               <Send className="h-3.5 w-3.5" />
               {sendingEmergency ? 'Sende ...' : 'An alle senden'}
@@ -271,6 +283,7 @@ export const TopHud: React.FC<TopHudProps> = ({
         </div>
       )}
 
+      {/* Aufklappbares Hardware-Modul: Admin-Entsperrung */}
       {adminModalOpen && canUnlockAdmin && onUnlockAdmin && (
         <form
           onSubmit={async (e) => {
@@ -284,7 +297,7 @@ export const TopHud: React.FC<TopHudProps> = ({
               setAdminErr(res.error ?? 'Falscher Admin-Code.');
             }
           }}
-          className="mx-auto mt-2 flex max-w-md items-center gap-2 rounded-xl border border-amber-500/50 bg-slate-900 p-2"
+          className="cmf-module mx-auto mt-2 flex max-w-md flex-wrap items-center gap-2 p-2.5"
         >
           <input
             type="password"
@@ -293,17 +306,19 @@ export const TopHud: React.FC<TopHudProps> = ({
             value={adminCode}
             onChange={(e) => setAdminCode(e.target.value)}
             placeholder="Admin-Code eingeben"
-            className="min-h-[38px] flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-bold text-white focus:border-amber-400 focus:outline-none"
+            className="cmf-input font-tech min-h-[38px] flex-1 px-3 py-1.5 text-xs font-bold tracking-widest"
           />
           <button
             type="submit"
             disabled={!adminCode.trim()}
-            className="min-h-[38px] rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-black text-slate-950 disabled:opacity-40"
+            className="cmf-btn-primary font-dot min-h-[38px] px-4 py-1.5 text-xs"
           >
             OK
           </button>
           {adminErr && (
-            <span className="text-[11px] font-bold text-rose-300">{adminErr}</span>
+            <span className="w-full font-tech text-[11px] font-bold text-[var(--cmf-orange)]">
+              {adminErr}
+            </span>
           )}
         </form>
       )}

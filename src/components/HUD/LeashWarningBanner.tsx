@@ -13,32 +13,32 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
   leashState,
   publicLeashAlertActive,
 }) => {
-  // 1. Rotes Vollbreiten-Warnbanner für Verstecker beim Verlassen des 20m-Radius
+  // 1. Signal-Orange Vollbreiten-Warnbanner für Verstecker beim Verlassen des 20m-Radius
   if (isOwnSideHider && leashState.warningActive) {
     return (
       <div
         role="alert"
-        className="w-full border-b-2 border-rose-300 bg-rose-600 px-4 py-2.5 text-white shadow-xl"
+        className="z-20 w-full border-b-2 border-[#E04300] bg-[var(--cmf-orange)] px-4 py-2.5 text-white shadow-md"
       >
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <AlertOctagon className="h-6 w-6 shrink-0 animate-pulse" />
+            <AlertOctagon className="h-5 w-5 shrink-0 animate-pulse" />
             <div>
-              <p className="text-sm font-black tracking-wide uppercase">
+              <p className="font-dot text-sm font-bold tracking-wider uppercase">
                 ACHTUNG: Zurück ins 20m-Versteck!
               </p>
-              <p className="text-xs text-rose-100">
-                Aktuelle Abweichung: ca. {leashState.distanceFromAnchorMeters ?? '>20'} m
+              <p className="font-tech text-[11px] text-white/90">
+                ABWEICHUNG: ~{leashState.distanceFromAnchorMeters ?? '>20'}M
                 {leashState.publicAlertTriggered
-                  ? ' • Alle Teams wurden neutral informiert!'
-                  : ' • Kehre sofort in den Kreis zurück.'}
+                  ? ' // ALLE TEAMS WURDEN INFORMIERT'
+                  : ' // SOFORT IN DEN RADIUS ZURÜCKKEHREN'}
               </p>
             </div>
           </div>
           {leashState.countdownSecondsLeft !== null &&
             leashState.countdownSecondsLeft > 0 && (
-              <div className="rounded-lg bg-slate-950/75 px-3 py-1 text-right font-mono text-lg font-black text-rose-200">
-                {leashState.countdownSecondsLeft}s
+              <div className="cmf-oled px-3 py-1 text-right font-dot text-lg text-[var(--cmf-amber)]">
+                {leashState.countdownSecondsLeft}S
               </div>
             )}
         </div>
@@ -51,9 +51,9 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
     return (
       <div
         role="status"
-        className="w-full border-b border-rose-500/60 bg-rose-950/90 px-4 py-2 text-center text-xs font-semibold text-rose-200 shadow-lg backdrop-blur"
+        className="z-20 w-full border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-4 py-2 text-center font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase backdrop-blur-md"
       >
-        Die Verstecker haben ihren 20m-Versteckradius vorübergehend verlassen!
+        WARNUNG // Die Verstecker haben ihren 20m-Versteckradius vorübergehend verlassen!
       </div>
     );
   }

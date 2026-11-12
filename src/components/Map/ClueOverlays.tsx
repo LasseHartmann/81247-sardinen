@@ -7,9 +7,9 @@ function resolveStyleOptions(
 ): L.PathOptions {
   if (featureRole === 'divider') {
     return {
-      color: '#f43f5e',
-      weight: 3,
-      dashArray: '8 6',
+      color: '#FF4D00',
+      weight: 2.5,
+      dashArray: '6, 6',
       fillOpacity: 0,
     };
   }
@@ -17,46 +17,37 @@ function resolveStyleOptions(
   switch (overlayStyle) {
     case 'EXCLUDED_AREA':
       return {
-        color: '#f43f5e',
+        color: '#FF4D00',
         weight: 2,
-        fillColor: '#f43f5e',
-        fillOpacity: 0.24,
+        dashArray: '6, 6',
+        fillColor: '#FF4D00',
+        fillOpacity: 0.13,
       };
     case 'HIT_AREA':
-      return {
-        color: '#10b981',
-        weight: 2.5,
-        fillColor: '#10b981',
-        fillOpacity: 0.22,
-      };
     case 'RING_BAND':
+    case 'GREEN_AREAS':
       return {
-        color: '#06b6d4',
-        weight: 2.5,
-        fillColor: '#06b6d4',
-        fillOpacity: 0.2,
+        color: '#00A896',
+        weight: 2,
+        dashArray: '6, 6',
+        fillColor: '#00A896',
+        fillOpacity: 0.14,
       };
     case 'TRANSIT_BUFFERS':
       return {
-        color: '#38bdf8',
-        weight: 1.8,
-        dashArray: '4 4',
-        fillColor: '#38bdf8',
-        fillOpacity: 0.16,
-      };
-    case 'GREEN_AREAS':
-      return {
-        color: '#22c55e',
+        color: '#F0A500',
         weight: 2,
-        fillColor: '#22c55e',
-        fillOpacity: 0.22,
+        dashArray: '6, 6',
+        fillColor: '#F0A500',
+        fillOpacity: 0.14,
       };
     default:
       return {
-        color: '#f59e0b',
+        color: '#00A896',
         weight: 2,
-        fillColor: '#f59e0b',
-        fillOpacity: 0.18,
+        dashArray: '6, 6',
+        fillColor: '#00A896',
+        fillOpacity: 0.14,
       };
   }
 }
@@ -84,7 +75,7 @@ export function syncClueOverlaysToLayerGroup(
         ),
     });
 
-    geoLayer.bindTooltip(`${clue.title}: ${clue.answerText}`, {
+    geoLayer.bindTooltip(`${clue.title.toUpperCase()} // ${clue.answerText}`, {
       sticky: true,
       direction: 'top',
     });

@@ -36,28 +36,31 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   );
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-950/95 p-4 text-slate-100">
-      <div className="mx-auto max-w-2xl space-y-5 pb-8">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400">
+    <div className="cmf-drafting-bg h-full overflow-y-auto p-4 text-[var(--text-main)]">
+      <div className="mx-auto max-w-2xl space-y-5 pb-10">
+        <div className="cmf-chassis flex items-center gap-3.5 p-5">
+          <div className="cmf-oled flex h-12 w-12 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
             <Trophy className="h-6 w-6" />
           </div>
           <div>
-            <h2 className="text-lg font-black tracking-tight">
-              Offizielle Rangliste — 81247 Sardinen
+            <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+              TELEMETRIE // WERTUNG
+            </span>
+            <h2 className="font-dot text-lg text-[var(--text-main)] sm:text-xl">
+              Offizielle Rangliste — 81247
             </h2>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-[var(--text-muted)]">
               Gesamtzeit = Netto-Suchzeit (ab 10:00) + gültige Hinweis-Strafzeiten
             </p>
           </div>
         </div>
 
         {ranked.length === 0 ? (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 text-center">
-            <p className="text-sm font-bold text-slate-200">
+          <div className="cmf-module p-6 text-center">
+            <p className="font-industrial text-sm text-[var(--text-main)]">
               Noch kein Sucher-Team bei den Sardinen eingetroffen!
             </p>
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
               Sobald ein Team den QR-Code der Verstecker scannt oder das Verstecker-Passwort eingibt, erscheint hier die offizielle Wertung.
             </p>
           </div>
@@ -65,59 +68,69 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           <div className="space-y-3">
             {ranked.map((entry, idx) => {
               const rank = idx + 1;
-              const medal =
-                rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
               return (
                 <div
                   key={entry.teamId}
                   data-testid={`leaderboard-row-${entry.teamId}`}
-                  className={`rounded-2xl border p-4 shadow-lg ${
+                  className={`cmf-module p-4 ${
                     rank === 1
-                      ? 'border-amber-400/60 bg-gradient-to-r from-amber-950/40 to-slate-900'
-                      : 'border-slate-800 bg-slate-900/90'
+                      ? 'border-[1.5px] !border-[var(--cmf-orange)]'
+                      : ''
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl font-black">{medal}</span>
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-dot text-sm ${
+                          rank === 1
+                            ? 'bg-[var(--cmf-orange)] text-white shadow'
+                            : 'cmf-well text-[var(--text-main)]'
+                        }`}
+                      >
+                        #{rank}
+                      </div>
                       <div>
                         <div className="flex items-center gap-2">
                           <span
-                            className="inline-block h-3 w-3 rounded-full"
+                            className="inline-block h-3 w-3 rounded-full border border-white/60"
                             style={{ backgroundColor: entry.color }}
                           />
-                          <span className="text-base font-extrabold text-white">
+                          <span className="font-industrial text-base text-[var(--text-main)]">
                             {entry.teamName}
                           </span>
                         </div>
-                        <span className="text-[11px] font-semibold text-cyan-300">
-                          Bei den Sardinen • {entry.clueCount} Hinweise genutzt
+                        <span className="font-tech text-[11px] font-medium text-[var(--cmf-teal)] uppercase">
+                          BEI DEN SARDINEN // {entry.clueCount} HINWEISE
                         </span>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <span className="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">
-                        Gesamtzeit
+                    <div className="cmf-oled px-3.5 py-2 text-right">
+                      <span className="font-tech block text-[9px] font-bold tracking-wider text-[#9AA4AE] uppercase">
+                        GESAMTZEIT
                       </span>
-                      <span className="font-mono text-xl font-black text-emerald-400">
+                      <span className="font-dot text-lg text-[#F8FAFC]">
                         {formatDurationClock(entry.totalTimeMs)}
                       </span>
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-800/80 pt-2.5 text-xs">
-                    <div className="flex items-center gap-1.5 text-slate-300">
-                      <Clock className="h-3.5 w-3.5 text-cyan-400" />
-                      <span>Netto-Suchzeit:</span>
-                      <strong className="font-mono text-white">
+                  <div className="mt-3 grid grid-cols-2 gap-2 border-t cmf-divider pt-3 text-xs">
+                    <div className="cmf-well flex items-center justify-between px-3 py-1.5">
+                      <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
+                        <Clock className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                        Netto:
+                      </span>
+                      <strong className="font-tech text-[var(--text-main)]">
                         {formatDurationClock(entry.searchTimeMs)}
                       </strong>
                     </div>
-                    <div className="flex items-center gap-1.5 text-slate-300">
-                      <AlertCircle className="h-3.5 w-3.5 text-rose-400" />
-                      <span>Strafzeit:</span>
-                      <strong className="font-mono text-rose-300">
+                    <div className="cmf-well flex items-center justify-between px-3 py-1.5">
+                      <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
+                        <AlertCircle className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                        Strafzeit:
+                      </span>
+                      <strong className="font-tech text-[var(--cmf-orange)]">
                         {formatPenaltyMinutes(entry.penaltyMs)}
                       </strong>
                     </div>
@@ -130,29 +143,37 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
         {stillSearching.length > 0 && (
           <div className="space-y-2.5">
-            <h3 className="flex items-center gap-1.5 text-xs font-bold tracking-wider text-slate-400 uppercase">
-              <Users className="h-4 w-4" /> Aktuell noch auf der Suche
+            <h3 className="flex items-center gap-2 px-1 font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+              <span className="nothing-red-dot" />
+              <Users className="h-3.5 w-3.5" />
+              Aktuell noch auf der Suche ({stillSearching.length})
             </h3>
             {stillSearching.map((team) => (
               <div
                 key={team.id}
-                className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3 text-xs"
+                className="cmf-module flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs"
               >
                 <div className="flex items-center gap-2.5">
                   <span
-                    className="inline-block h-3 w-3 rounded-full"
+                    className="inline-block h-3 w-3 rounded-full border border-white/60"
                     style={{ backgroundColor: team.color }}
                   />
-                  <span className="font-bold text-slate-200">{team.name}</span>
-                  <span className="text-slate-400">
-                    ({team.memberPlayerIds.length} Spieler)
+                  <span className="font-industrial text-sm text-[var(--text-main)]">
+                    {team.name}
+                  </span>
+                  <span className="font-tech text-[11px] text-[var(--text-muted)]">
+                    [{team.memberPlayerIds.length} SPIELER]
                   </span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-slate-400">
-                    Hinweise: <strong className="text-white">{team.clueCount}</strong>
+                <div className="flex items-center gap-2.5">
+                  <span className="font-tech text-[11px] text-[var(--text-muted)] uppercase">
+                    HINWEISE: <strong className="text-[var(--text-main)]">{team.clueCount}</strong>
                   </span>
-                  <span className="rounded-md bg-rose-950/60 px-2 py-0.5 font-bold text-rose-300">
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-[11px] font-bold uppercase ${
+                      team.penaltyMs > 0 ? 'cmf-badge-orange' : 'cmf-badge-teal'
+                    }`}
+                  >
                     {formatPenaltyMinutes(team.penaltyMs)}
                   </span>
                 </div>

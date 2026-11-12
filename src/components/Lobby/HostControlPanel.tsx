@@ -285,14 +285,15 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   }).filter((t) => t.memberNames.length > 0);
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-950/95 p-4 text-slate-100">
-      <div className="mx-auto max-w-3xl space-y-5 pb-10">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="cmf-drafting-bg h-full overflow-y-auto p-4 text-[var(--text-main)]">
+      <div className="mx-auto max-w-3xl space-y-5 pb-12">
+        {/* Kopfzeile */}
+        <div className="cmf-chassis flex flex-wrap items-center justify-between gap-3 p-5">
           <div>
-            <span className="text-xs font-black tracking-wider text-emerald-400 uppercase">
-              Spielleiter-Zentrale (Host)
+            <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
+              SPIELLEITER // KONSOLE
             </span>
-            <h2 className="text-xl font-black text-white">
+            <h2 className="font-dot mt-1.5 text-xl text-[var(--text-main)]">
               Rundensteuerung & Teams
             </h2>
           </div>
@@ -301,9 +302,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               type="button"
               data-testid="lock-admin-console-btn"
               onClick={onLeaveAndLockConsole}
-              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-amber-500/50 bg-amber-950/40 px-3 py-2 text-xs font-extrabold text-amber-300 hover:bg-amber-900/50"
+              className="cmf-btn-secondary font-tech inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-2 text-xs font-bold uppercase"
             >
-              <Lock className="h-3.5 w-3.5" />
+              <Lock className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
               Konsole sperren & verlassen
             </button>
           )}
@@ -311,28 +312,28 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
 
         {/* 1. Offene Beitrittswünsche */}
         {openRequests.length > 0 && (
-          <section className="rounded-2xl border border-amber-400/50 bg-amber-950/30 p-4">
-            <h3 className="flex items-center gap-2 text-sm font-extrabold text-amber-300">
-              <UserPlus className="h-4 w-4" />
+          <section className="cmf-module p-4 sm:p-5 space-y-3">
+            <h3 className="font-industrial flex items-center gap-2 text-sm text-[var(--text-main)]">
+              <UserPlus className="h-4 w-4 text-[var(--cmf-orange)]" />
               Offene Beitrittswünsche ({openRequests.length})
             </h3>
-            <div className="mt-3 space-y-2">
+            <div className="space-y-2">
               {openRequests.map((req) => (
                 <div
                   key={req.uid}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900 p-3"
+                  className="cmf-well flex flex-wrap items-center justify-between gap-2 p-3"
                 >
                   <div>
-                    <p className="text-sm font-bold text-white">{req.name}</p>
-                    <p className="font-mono text-[11px] text-slate-400">
-                      UID: {req.uid}
+                    <p className="text-sm font-bold text-[var(--text-main)]">{req.name}</p>
+                    <p className="font-tech text-[10px] text-[var(--text-muted)]">
+                      UID // {req.uid}
                     </p>
                   </div>
                   <button
                     type="button"
                     data-testid={`approve-player-${req.playerId}`}
                     onClick={() => void adapter.approveJoinRequest(req)}
-                    className="min-h-[42px] rounded-xl bg-emerald-500 px-3.5 py-2 text-xs font-extrabold text-slate-950 hover:bg-emerald-400"
+                    className="cmf-btn-primary font-dot min-h-[40px] px-3.5 py-2 text-xs font-bold"
                   >
                     Spieler freischalten
                   </button>
@@ -343,13 +344,13 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
         )}
 
         {/* 2. Rundenstart, Bereitschafts-Status, Pause & Reset */}
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-extrabold text-white">
-              Spielstatus: {publicState.status} ({publicState.currentPhase})
+        <section className="cmf-module p-4 sm:p-5 space-y-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
+            <h3 className="font-industrial text-base text-[var(--text-main)]">
+              Systemsteuerung
             </h3>
-            <label className="flex items-center gap-2 text-xs text-slate-300">
-              <span>Versteckzeit (Min.):</span>
+            <label className="flex items-center gap-2 font-tech text-xs font-medium text-[var(--text-muted)]">
+              <span>VERSTECKZEIT (MIN):</span>
               <input
                 type="number"
                 min={1}
@@ -368,32 +369,49 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                     })
                     .catch(() => {});
                 }}
-                className="w-16 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-center font-bold text-white"
+                className="cmf-input font-tech w-16 px-2 py-1 text-center text-xs font-bold"
               />
             </label>
           </div>
 
+          {/* OLED Status- & Bereitschafts-Anzeige */}
+          <div className="cmf-oled flex flex-wrap items-center justify-between gap-3 p-3.5">
+            <div className="flex items-center gap-2.5">
+              {publicState.status === 'RUNNING' ? (
+                <span className="nothing-red-dot" />
+              ) : (
+                <span className="h-2 w-2 rounded-full bg-[var(--cmf-teal)]" />
+              )}
+              <span className="font-tech text-xs font-bold tracking-wider text-[#F8FAFC] uppercase">
+                STATUS: {publicState.status} // {publicState.currentPhase}
+              </span>
+            </div>
+
+            {publicState.status === 'LOBBY' && (
+              <span className="font-dot text-sm text-[var(--cmf-teal)]">
+                BEREIT: {readyCount} / {enabledMembers.length}
+              </span>
+            )}
+          </div>
+
           {publicState.status === 'LOBBY' && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/40 bg-emerald-950/25 px-3 py-2.5 text-xs">
-              <span className="flex items-center gap-1.5 font-semibold text-emerald-200">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+            <div className="cmf-well flex items-center gap-2 px-3.5 py-2.5 text-xs text-[var(--text-muted)]">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+              <span>
                 {activeHiderLock?.passwordHash
                   ? 'Runde startet automatisch, sobald alle Spieler in der Lobby auf „Bereit“ gedrückt haben!'
                   : 'Wartet darauf, dass die Verstecker in der Lobby ihr Passwort festlegen.'}
-              </span>
-              <span className="font-mono font-black text-emerald-300">
-                Bereit: {readyCount} / {enabledMembers.length}
               </span>
             </div>
           )}
 
           {hiderCount === 0 && (
-            <div className="rounded-xl border border-rose-500/50 bg-rose-950/50 p-3 text-xs font-semibold text-rose-200">
+            <div className="cmf-badge-orange rounded-xl p-3 text-xs font-semibold">
               Hinweis: Mindestens ein Spieler sollte als Verstecker („Die Sardinen“) eingeteilt sein.
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2.5">
+          <div className="flex flex-wrap gap-2.5 pt-1">
             {publicState.status === 'LOBBY' ||
             publicState.status === 'FINISHED' ? (
               <button
@@ -401,7 +419,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 data-testid="host-start-round-btn"
                 disabled={hiderCount === 0 || occupiedTeams.length === 0}
                 onClick={() => void handleStartRound()}
-                className="inline-flex min-h-[46px] items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-black text-slate-950 shadow-lg hover:bg-emerald-400 disabled:opacity-40"
+                className="cmf-btn-primary font-dot inline-flex min-h-[46px] items-center gap-2 px-4 py-2.5 text-xs font-bold"
               >
                 <Play className="h-4 w-4" />
                 Runde manuell sofort starten
@@ -411,15 +429,15 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => void handleTogglePause()}
-                  className="inline-flex min-h-[46px] items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-extrabold text-slate-950 hover:bg-amber-400"
+                  className="cmf-btn-active font-dot inline-flex min-h-[46px] items-center gap-2 px-4 py-2.5 text-xs font-bold"
                 >
                   {publicState.status === 'PAUSED' ? (
                     <>
-                      <Play className="h-4 w-4" /> Spiel fortsetzen
+                      <Play className="h-4 w-4 text-[var(--cmf-teal)]" /> Spiel fortsetzen
                     </>
                   ) : (
                     <>
-                      <Pause className="h-4 w-4" /> Spiel pausieren
+                      <Pause className="h-4 w-4 text-[var(--cmf-amber)]" /> Spiel pausieren
                     </>
                   )}
                 </button>
@@ -428,7 +446,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => void handleForceStartOpenSearch()}
-                    className="inline-flex min-h-[46px] items-center gap-2 rounded-xl border border-cyan-500/50 bg-cyan-950/60 px-4 py-2.5 text-xs font-bold text-cyan-200 hover:bg-cyan-900/60"
+                    className="cmf-btn-primary font-dot inline-flex min-h-[46px] items-center gap-2 px-4 py-2.5 text-xs font-bold"
                   >
                     <FastForward className="h-4 w-4" />
                     Offene Suche sofort freigeben
@@ -440,7 +458,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             <button
               type="button"
               onClick={() => void handleResetRound()}
-              className="inline-flex min-h-[46px] items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
+              className="cmf-btn-secondary font-tech inline-flex min-h-[46px] items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase"
             >
               <RotateCcw className="h-4 w-4" />
               Runde zurücksetzen
@@ -449,15 +467,15 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
         </section>
 
         {/* 3. Indoor-Testmodus Schalter */}
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4">
+        <section className="cmf-module p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-start gap-2.5">
-              <MousePointerClick className="mt-0.5 h-5 w-5 shrink-0 text-cyan-400" />
+              <MousePointerClick className="mt-0.5 h-5 w-5 shrink-0 text-[var(--cmf-teal)]" />
               <div>
-                <h3 className="text-sm font-bold text-white">
+                <h3 className="font-industrial text-sm text-[var(--text-main)]">
                   Testmodus: Standort per Kartenklick setzen erlauben
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                   Ideal für Indoor-Generalproben vor dem Spieltag. Im echten Outdoor-Spiel in 81247 bitte deaktivieren!
                 </p>
               </div>
@@ -472,10 +490,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                   allowTestClicks: !publicState.allowTestClicks,
                 })
               }
-              className={`min-h-[42px] shrink-0 rounded-xl px-4 py-2 text-xs font-extrabold transition ${
+              className={`font-tech min-h-[40px] shrink-0 px-4 py-2 text-xs font-bold tracking-wider uppercase ${
                 publicState.allowTestClicks
-                  ? 'bg-cyan-500 text-slate-950'
-                  : 'bg-slate-800 text-slate-300'
+                  ? 'cmf-btn-active'
+                  : 'cmf-btn-secondary'
               }`}
             >
               {publicState.allowTestClicks ? 'AKTIV' : 'AUS'}
@@ -484,20 +502,20 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
         </section>
 
         {/* 4. Spieler- & Team-Zuweisung + Nur besetzte Teams anzeigen */}
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+        <section className="cmf-module p-4 sm:p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
             <div>
-              <h3 className="text-sm font-extrabold text-white">
+              <h3 className="font-industrial text-base text-[var(--text-main)]">
                 Spieler- & Team-Zuweisung
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[var(--text-muted)]">
                 Unten werden automatisch nur die Teams angezeigt, in denen mindestens ein Spieler eingeteilt ist.
               </p>
             </div>
             <button
               type="button"
               onClick={() => void adapter.cleanupOrphanedPresence()}
-              className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-[11px] font-semibold text-slate-300 hover:text-white"
+              className="cmf-btn-secondary font-tech inline-flex min-h-[36px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Sitzungen bereinigen
@@ -518,22 +536,22 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               return (
                 <div
                   key={m.uid}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2.5 text-xs"
+                  className="cmf-well flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-xs"
                 >
                   <div className="flex items-center gap-2">
                     <span
                       className={`h-2.5 w-2.5 rounded-full ${
-                        online ? 'bg-emerald-400' : 'bg-slate-600'
+                        online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
                       }`}
                     />
-                    <span className="font-bold text-white">{m.name}</span>
+                    <span className="font-bold text-[var(--text-main)]">{m.name}</span>
                     {m.isHost && (
-                      <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
+                      <span className="cmf-badge-teal rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
                         Host
                       </span>
                     )}
                     {isReady && (
-                      <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
+                      <span className="cmf-badge-teal rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
                         ✓ Bereit
                       </span>
                     )}
@@ -544,9 +562,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                       aria-label={`Rolle für ${m.name}`}
                       value={currentValue}
                       onChange={(e) => void handleAssignMember(m, e.target.value)}
-                      className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white"
+                      className="cmf-input min-h-[38px] px-2.5 py-1.5 text-xs font-semibold"
                     >
-                      <option value="HIDER">🐟 Verstecker (Die Sardinen)</option>
+                      <option value="HIDER">Verstecker (Die Sardinen)</option>
                       {TEAM_PALETTE.map((t) => (
                         <option key={t.id} value={t.id}>
                           Sucher: {t.name}
@@ -561,7 +579,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                         data-testid={`kick-player-${m.playerId}`}
                         onClick={() => void handleKickMember(m)}
                         title={`${m.name} aus der Runde kicken`}
-                        className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-950/40 px-2.5 py-1.5 text-xs font-bold text-rose-300 hover:bg-rose-900/60 hover:text-white"
+                        className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-[var(--cmf-orange)] uppercase"
                       >
                         <UserX className="h-3.5 w-3.5" />
                         <span>Kicken</span>
@@ -574,39 +592,35 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </div>
 
           {/* Teams-Anzeige: zeigt ausschließlich Teams an, in denen jemand drinnen ist! */}
-          <div className="space-y-2 pt-1">
-            <h4 className="text-xs font-extrabold tracking-wider text-slate-400 uppercase">
+          <div className="space-y-2 border-t cmf-divider pt-3">
+            <h4 className="font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
               Besetzte Sucher-Teams ({occupiedTeams.length})
             </h4>
             {occupiedTeams.length === 0 ? (
-              <p className="rounded-xl border border-slate-800/80 bg-slate-950/50 p-3 text-xs text-slate-400">
+              <p className="cmf-well p-3 text-xs text-[var(--text-muted)]">
                 Aktuell ist noch kein Sucher-Team besetzt.
               </p>
             ) : (
               <div className="grid gap-2.5 sm:grid-cols-2">
                 {occupiedTeams.map((team) => (
-                  <div
-                    key={team.id}
-                    className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs"
-                  >
+                  <div key={team.id} className="cmf-well p-3 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2 font-bold text-white">
+                      <span className="font-industrial flex items-center gap-2 text-sm text-[var(--text-main)]">
                         <span
-                          className="h-3 w-3 rounded-full"
+                          className="h-3 w-3 rounded-full border border-white/60"
                           style={{ backgroundColor: team.color }}
                         />
                         {team.name}
                       </span>
-                      <span className="text-[11px] font-semibold text-emerald-300">
-                        {team.memberNames.length}{' '}
-                        {team.memberNames.length === 1 ? 'Spieler' : 'Spieler'}
+                      <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
+                        {team.memberNames.length} Spieler
                       </span>
                     </div>
-                    <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
-                      <Radio className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+                    <div className="mt-2 flex items-center gap-1.5 font-tech text-[11px] text-[var(--text-muted)]">
+                      <Radio className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
                       <span>
-                        GPS-Durchschnitt aus:{' '}
-                        <strong className="text-slate-200">
+                        GPS-AVG:{' '}
+                        <strong className="text-[var(--text-main)]">
                           {team.memberNames.join(', ')}
                         </strong>
                       </span>

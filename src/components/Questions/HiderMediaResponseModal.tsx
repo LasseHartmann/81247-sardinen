@@ -106,7 +106,7 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
       setErrorMsg(
         err instanceof Error
           ? err.message
-          : 'Mikrofon nicht verfügbar. Nutze unten das Demo-Audio.'
+          : 'Mikrofon nicht verfügbar.'
       );
     } finally {
       setBusy(false);
@@ -138,23 +138,23 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
 
   return (
     <div className="fixed inset-x-0 bottom-16 z-[600] mx-auto max-w-lg p-3">
-      <div className="rounded-2xl border-2 border-cyan-400 bg-slate-950/95 p-4 text-slate-100 shadow-2xl backdrop-blur-md">
-        <div className="flex items-center justify-between gap-2">
+      <div className="cmf-chassis p-4 sm:p-5 text-[var(--text-main)]">
+        <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
           <div>
-            <span className="text-[11px] font-black tracking-wider text-cyan-300 uppercase">
-              Dringende Medienanfrage ({team?.name ?? req.teamId})
+            <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
+              MEDIENANFRAGE // {team?.name ?? req.teamId}
             </span>
-            <h3 className="text-base font-extrabold text-white">
+            <h3 className="font-industrial text-base text-[var(--text-main)]">
               {getQuestionLabelDe(req.questionType)}
             </h3>
           </div>
-          <div className="flex items-center gap-1 rounded-xl bg-rose-950/80 px-3 py-1.5 font-mono text-sm font-black text-rose-200">
-            <Clock className="h-4 w-4 text-rose-400" />
+          <div className="cmf-oled flex items-center gap-1.5 px-3 py-1.5 font-dot text-sm text-[var(--cmf-amber)]">
+            <Clock className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
             {formatDurationClock(remainingMs)}
           </div>
         </div>
 
-        <p className="mt-1.5 text-xs text-slate-300">
+        <p className="mt-2.5 text-xs text-[var(--text-muted)]">
           {isAudio
             ? 'Nimm 10 Sekunden unverfälschte Umgebungsgeräusche auf (max. 25 KB).'
             : req.questionType === 'MEDIA_SKY'
@@ -163,14 +163,14 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
         </p>
 
         {errorMsg && (
-          <div className="mt-2 rounded-lg border border-rose-500/50 bg-rose-950/60 p-2 text-xs text-rose-200">
+          <div className="cmf-badge-orange mt-2.5 rounded-lg p-2.5 text-xs font-semibold">
             {errorMsg}
           </div>
         )}
 
-        <div className="mt-3 space-y-2">
+        <div className="mt-3.5 space-y-2">
           {!isAudio ? (
-            <label className="flex min-h-[46px] w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-xs font-black text-slate-950 shadow hover:bg-cyan-400">
+            <label className="cmf-btn-primary font-dot flex min-h-[46px] w-full cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold">
               <Camera className="h-4 w-4" />
               {busy ? 'Komprimiere & sende ...' : 'Kamera öffnen / Foto auswählen'}
               <input
@@ -186,17 +186,18 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
             <button
               type="button"
               onClick={handleStopAudioEarly}
-              className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-black text-white"
+              className="cmf-oled font-dot flex min-h-[46px] w-full items-center justify-center gap-2.5 px-4 py-2.5 text-xs font-bold text-[#F8FAFC]"
             >
-              <Square className="h-4 w-4" />
-              Aufnahme läuft ({recordingSeconds} / 10s) — Jetzt absenden
+              <span className="nothing-red-dot" />
+              <Square className="h-3.5 w-3.5 text-[var(--nothing-red)]" />
+              AUFNAHME ({recordingSeconds} / 10S) — JETZT ABSENDEN
             </button>
           ) : (
             <button
               type="button"
               disabled={busy}
               onClick={() => void handleStartAudio()}
-              className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-xs font-black text-slate-950 hover:bg-cyan-400 disabled:opacity-40"
+              className="cmf-btn-primary font-dot flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
             >
               <Mic className="h-4 w-4" />
               10s Mikrofon-Aufnahme starten
@@ -207,9 +208,9 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
             type="button"
             disabled={busy || recordingSeconds !== null}
             onClick={() => void handleReject()}
-            className="inline-flex min-h-[42px] w-full items-center justify-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-950/40 px-3 py-2 text-[11px] font-bold text-rose-200 hover:bg-rose-900/50 disabled:opacity-40"
+            className="cmf-btn-secondary font-tech inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase"
           >
-            <XCircle className="h-3.5 w-3.5" />
+            <XCircle className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
             Anfrage ablehnen (-5 Min. Erstattung + Gratis-Donut-Ring)
           </button>
         </div>

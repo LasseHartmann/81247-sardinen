@@ -28,13 +28,11 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerRegionId = 'sardinen-qr-reader-region';
 
-  // Abonniere Rückmeldung unserer eingereichten Catch-Anfrage
   useEffect(() => {
     if (!activeRequestId) return;
     return adapter.subscribeOwnCatchRequest(activeRequestId, setWatchedCatch);
   }, [adapter, activeRequestId]);
 
-  // Sauberer Kamera-Cleanup beim Schließen oder Komponenten-Unmount!
   useEffect(() => {
     if (!cameraActive) return;
 
@@ -104,52 +102,52 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
 
   if (!ownTeam) {
     return (
-      <div className="flex h-full items-center justify-center bg-slate-950 p-6 text-center text-sm text-slate-400">
-        Du bist aktuell keinem Sucher-Team zugewiesen.
+      <div className="cmf-drafting-bg flex h-full items-center justify-center p-6 text-center">
+        <div className="cmf-module max-w-sm p-5 text-sm text-[var(--text-muted)]">
+          Du bist aktuell keinem Sucher-Team zugewiesen.
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-950 p-4 text-slate-100">
-      <div className="mx-auto max-w-md space-y-5 pb-10">
-        <div>
-          <span className="text-xs font-extrabold tracking-wider text-amber-400 uppercase">
-            Sardinen gefunden?
+    <div className="cmf-drafting-bg h-full overflow-y-auto p-4 text-[var(--text-main)]">
+      <div className="mx-auto max-w-md space-y-4 pb-10">
+        <div className="cmf-chassis p-5">
+          <span className="cmf-badge-orange inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
+            SARDINEN GEFUNDEN?
           </span>
-          <h2 className="text-xl font-black text-white">
+          <h2 className="font-dot mt-1.5 text-xl text-[var(--text-main)]">
             QR-Code scannen oder Verstecker-Passwort eingeben
           </h2>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-[var(--text-muted)]">
             Sobald der Code bestätigt ist, stoppt eure Suchzeit sofort und ihr wechselt gemeinsam in das Sardinen-Versteck!
           </p>
         </div>
 
         {!gameRunning && (
-          <div className="rounded-xl border border-amber-500/40 bg-amber-950/40 p-3 text-xs text-amber-200">
+          <div className="cmf-badge-amber rounded-2xl p-3.5 text-xs font-medium">
             Hinweis: Ein Catch kann erst während einer laufenden Suchrunde gewertet werden.
           </div>
         )}
 
         {/* Kamera-Scanner */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-white">
+        <div className="cmf-module p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-industrial text-sm text-[var(--text-main)]">
               1. Per Smartphone-Kamera scannen
             </span>
             <button
               type="button"
               disabled={!gameRunning}
               onClick={() => setCameraActive((a) => !a)}
-              className={`inline-flex min-h-[44px] items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-extrabold transition disabled:opacity-40 ${
-                cameraActive
-                  ? 'bg-rose-600 text-white'
-                  : 'bg-cyan-500 text-slate-950 hover:bg-cyan-400'
+              className={`font-dot inline-flex min-h-[42px] items-center gap-2 px-3.5 py-2 text-xs font-bold ${
+                cameraActive ? 'cmf-btn-active' : 'cmf-btn-primary'
               }`}
             >
               {cameraActive ? (
                 <>
-                  <CameraOff className="h-4 w-4" /> Kamera stoppen
+                  <CameraOff className="h-4 w-4 text-[var(--nothing-red)]" /> Kamera stoppen
                 </>
               ) : (
                 <>
@@ -162,12 +160,12 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
           {cameraActive && (
             <div
               id={scannerRegionId}
-              className="overflow-hidden rounded-xl border border-cyan-500/50 bg-black"
+              className="cmf-oled overflow-hidden p-1"
             />
           )}
 
           {cameraError && (
-            <p className="rounded-lg border border-amber-500/40 bg-amber-950/50 p-2.5 text-xs text-amber-200">
+            <p className="cmf-badge-amber rounded-xl p-2.5 text-xs font-medium">
               {cameraError}
             </p>
           )}
@@ -179,13 +177,13 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
             e.preventDefault();
             void submitCode(manualCode);
           }}
-          className="rounded-2xl border border-slate-800 bg-slate-900 p-4 space-y-3"
+          className="cmf-module p-4 space-y-3"
         >
           <label
             htmlFor="manual-short-code"
-            className="flex items-center gap-2 text-sm font-bold text-white"
+            className="font-industrial flex items-center gap-2 text-sm text-[var(--text-main)]"
           >
-            <KeyRound className="h-4 w-4 text-amber-400" />
+            <KeyRound className="h-4 w-4 text-[var(--cmf-orange)]" />
             2. Verstecker-Passwort / Fang-Code eingeben
           </label>
           <div className="flex gap-2">
@@ -197,13 +195,13 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
               placeholder="Passwort / Fang-Code ..."
-              className="min-h-[48px] flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3.5 font-mono text-lg font-black tracking-wider text-white placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none"
+              className="cmf-input cmf-input-orange font-tech min-h-[48px] flex-1 px-3.5 text-base font-bold tracking-wider"
             />
             <button
               type="submit"
               data-testid="submit-catch-code-btn"
               disabled={!gameRunning || manualCode.trim().length < 3}
-              className="min-h-[48px] rounded-xl bg-emerald-500 px-5 text-sm font-black text-slate-950 hover:bg-emerald-400 disabled:opacity-40"
+              className="cmf-btn-primary font-dot min-h-[48px] px-5 text-xs font-bold"
             >
               Prüfen
             </button>
@@ -214,25 +212,27 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
         {watchedCatch && (
           <div
             data-testid="catch-feedback-box"
-            className={`rounded-2xl border p-4 text-xs font-semibold ${
+            className={`rounded-2xl p-4 text-xs font-semibold ${
               watchedCatch.status === 'ACCEPTED'
-                ? 'border-emerald-400 bg-emerald-950/60 text-emerald-200'
+                ? 'cmf-badge-teal'
                 : watchedCatch.status === 'INVALID'
-                  ? 'border-rose-500 bg-rose-950/60 text-rose-200'
-                  : 'border-cyan-500/40 bg-cyan-950/40 text-cyan-200'
+                  ? 'cmf-badge-orange'
+                  : 'cmf-oled text-[#F8FAFC]'
             }`}
           >
             {watchedCatch.status === 'PENDING' ||
             watchedCatch.status === 'PROCESSING' ? (
-              <span>Code wird vom Controller-Gerät geprüft ...</span>
+              <span className="font-tech uppercase">
+                Code wird vom Controller-Gerät geprüft ...
+              </span>
             ) : watchedCatch.status === 'ACCEPTED' ? (
-              <span className="flex items-center gap-2 text-sm font-extrabold">
-                <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+              <span className="flex items-center gap-2 text-sm font-bold">
+                <CheckCircle2 className="h-5 w-5 text-[var(--cmf-teal)]" />
                 TREFFER! Ihr seid jetzt offiziell bei den Sardinen!
               </span>
             ) : (
               <span className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                <AlertCircle className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
                 Ungültiger Code: {watchedCatch.errorMessage ?? 'Bitte erneut prüfen.'}
               </span>
             )}

@@ -19,8 +19,10 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
 }) => {
   if (!hiderPrivate || !hiderPrivate.qrSecret || !hiderPrivate.shortCode) {
     return (
-      <div className="flex h-full items-center justify-center bg-slate-950 p-6 text-center text-sm text-slate-400">
-        QR-Geheimnis wird geladen (oder Spiel befindet sich noch in der Vorbereitung) ...
+      <div className="cmf-drafting-bg flex h-full items-center justify-center p-6 text-center">
+        <div className="cmf-module max-w-sm p-5 font-tech text-xs text-[var(--text-muted)]">
+          QR-GEHEIMNIS WIRD GELADEN (ODER SPIEL NOCH IN VORBEREITUNG) ...
+        </div>
       </div>
     );
   }
@@ -40,62 +42,66 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
   );
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-950 p-4 text-slate-100">
-      <div className="mx-auto flex max-w-md flex-col items-center space-y-5 pb-10 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/50 bg-cyan-950/60 px-3.5 py-1 text-xs font-extrabold text-cyan-300">
-          <QrCode className="h-4 w-4" />
-          Bei den Sardinen • Offizieller Catch-Code
-        </div>
+    <div className="cmf-drafting-bg h-full overflow-y-auto p-4 text-[var(--text-main)]">
+      <div className="mx-auto max-w-md space-y-4 pb-10">
+        <div className="cmf-chassis flex flex-col items-center p-5 sm:p-6 text-center space-y-4">
+          <div className="cmf-badge-teal inline-flex items-center gap-2 rounded-full px-3.5 py-1 text-[10px] font-bold tracking-wider uppercase">
+            <QrCode className="h-3.5 w-3.5" />
+            SARDINEN HQ // OFFIZIELLER CATCH-CODE
+          </div>
 
-        <h2 className="text-xl font-black text-white">
-          Sardinen-QR-Code zeigen
-        </h2>
-        <p className="text-xs text-slate-300">
-          Zeige diesen Bildschirm nur Sucher-Teams, die euch im Versteck tatsächlich physisch gefunden haben!
-        </p>
+          <div>
+            <h2 className="font-dot text-xl text-[var(--text-main)]">
+              Sardinen-QR-Code zeigen
+            </h2>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              Zeige diesen Bildschirm nur Sucher-Teams, die euch im Versteck tatsächlich physisch gefunden haben!
+            </p>
+          </div>
 
-        {/* Maximaler Kontrast (Schwarz auf reinem Weiß) für Sonnenlicht im Freien */}
-        <div className="rounded-3xl border-4 border-cyan-400 bg-white p-6 shadow-2xl">
-          <QRCodeSVG
-            value={qrValue}
-            size={232}
-            bgColor="#ffffff"
-            fgColor="#000000"
-            level="M"
-            includeMargin={false}
-          />
-        </div>
+          {/* Maximaler Kontrast (Schwarz auf reinem Weiß) im gefrästen Polycarbonat-Rahmen */}
+          <div className="rounded-2xl border-2 border-[var(--shell-border)] bg-white p-5 shadow-sm">
+            <QRCodeSVG
+              value={qrValue}
+              size={224}
+              bgColor="#ffffff"
+              fgColor="#14171A"
+              level="M"
+              includeMargin={false}
+            />
+          </div>
 
-        {/* Groß gedrucktes Verstecker-Passwort / Fang-Code */}
-        <div className="w-full rounded-2xl border border-slate-800 bg-slate-900 p-4">
-          <span className="block text-[11px] font-bold tracking-wider text-slate-400 uppercase">
-            Euer Verstecker-Passwort / Fang-Code (falls Kamera blendet)
-          </span>
-          <div
-            data-testid="hider-short-code"
-            className="mt-1.5 break-all font-mono text-2xl font-black tracking-wider text-cyan-300"
-          >
-            {hiderPrivate.shortCode}
+          {/* Eingebettete schwarze OLED-Insel für Verstecker-Passwort / Fang-Code */}
+          <div className="cmf-oled w-full p-4 text-center">
+            <span className="font-tech block text-[10px] font-bold tracking-wider text-[#9AA4AE] uppercase">
+              VERSTECKER-PASSWORT // FANG-CODE (FALLS KAMERA BLENDET)
+            </span>
+            <div
+              data-testid="hider-short-code"
+              className="font-tech mt-1.5 break-all text-2xl font-bold tracking-wider text-[var(--cmf-teal)]"
+            >
+              {hiderPrivate.shortCode}
+            </div>
           </div>
         </div>
 
-        <div className="w-full rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-left text-xs">
-          <div className="flex items-center gap-2 font-bold text-emerald-300">
-            <Users className="h-4 w-4" />
+        <div className="cmf-module p-4 text-xs">
+          <div className="flex items-center gap-2 border-b cmf-divider pb-2.5 font-industrial text-sm text-[var(--text-main)]">
+            <Users className="h-4 w-4 text-[var(--cmf-teal)]" />
             Bereits im Versteck angekommene Teams ({joinedTeams.length})
           </div>
           {joinedTeams.length === 0 ? (
-            <p className="mt-1.5 text-slate-400">
+            <p className="mt-2.5 text-[var(--text-muted)]">
               Noch kein Sucher-Team hat den Code gescannt. Bleibt ruhig im 20m-Radius!
             </p>
           ) : (
-            <ul className="mt-2 space-y-1.5">
+            <ul className="mt-2.5 space-y-1.5">
               {joinedTeams.map((t) => (
                 <li
                   key={t.id}
-                  className="flex items-center gap-2 font-semibold text-white"
+                  className="cmf-well flex items-center gap-2 px-3 py-2 font-semibold text-[var(--text-main)]"
                 >
-                  <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                  <ShieldCheck className="h-4 w-4 text-[var(--cmf-teal)]" />
                   <span>{t.name}</span>
                 </li>
               ))}

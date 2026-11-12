@@ -9,70 +9,78 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Eigene Position (blau/cyan pulsierender Punkt, 100% HTML/CSS ohne Leaflet-PNGs).
+ * Eigene Position — Aktiver CMF-Signal-Orange Fokus-Pin (#FF4D00) mit scharfem weißem Rand.
  */
 export function createOwnPositionIcon(isHider: boolean): L.DivIcon {
-  const ringColor = isHider ? '#06b6d4' : '#38bdf8';
-  return L.divIcon({
-    className: 'sardinen-div-icon',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    html: `
-      <div style="position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;">
-        <span style="position:absolute;inset:0;border-radius:9999px;background:${ringColor};opacity:0.28;transform:scale(1.15);"></span>
-        <span style="width:14px;height:14px;border-radius:9999px;background:${ringColor};border:2.5px solid #f8fafc;box-shadow:0 0 10px ${ringColor};"></span>
-      </div>
-    `,
-  });
-}
-
-/**
- * Geheimer Anchor-Point-Marker („Sardinen-Versteck") für Verstecker, Host und gefangene Teams.
- */
-export function createAnchorPointIcon(): L.DivIcon {
-  return L.divIcon({
-    className: 'sardinen-div-icon',
-    iconSize: [38, 38],
-    iconAnchor: [19, 19],
-    html: `
-      <div style="width:38px;height:38px;border-radius:9999px;background:#020617;border:2.5px solid #06b6d4;box-shadow:0 0 14px rgba(6,182,212,0.75);display:flex;align-items:center;justify-content:center;color:#06b6d4;font-weight:800;font-size:13px;">
-        🐟
-      </div>
-    `,
-  });
-}
-
-/**
- * Team-Beacon-Marker für eigene Sucher-Position bzw. Hider/Host-Übersicht.
- */
-export function createTeamBeaconIcon(teamName: string, color: string): L.DivIcon {
-  const shortLabel = escapeHtml(teamName.replace(/\s*\(.*\)/, ''));
-  return L.divIcon({
-    className: 'sardinen-div-icon',
-    iconSize: [86, 34],
-    iconAnchor: [43, 17],
-    html: `
-      <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
-        <div style="padding:2px 7px;border-radius:9999px;background:#020617e6;border:2px solid ${color};color:#f8fafc;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.65);">
-          ${shortLabel}
-        </div>
-        <div style="width:10px;height:10px;border-radius:9999px;background:${color};border:2px solid #ffffff;margin-top:2px;"></div>
-      </div>
-    `,
-  });
-}
-
-/**
- * Auswahl-Pin für Kartenteiler- oder Thermometer-Punkte.
- */
-export function createSelectionPinIcon(label: string, color = '#f59e0b'): L.DivIcon {
-  const safe = escapeHtml(label);
+  const coreColor = '#FF4D00';
+  const ringBorder = isHider ? '#00A896' : '#FF4D00';
   return L.divIcon({
     className: 'sardinen-div-icon',
     iconSize: [30, 30],
     iconAnchor: [15, 15],
     html: `
-      <div style="width:30px;height:30px;border-radius:9999px;background:${color};border:2px solid #020617;color:#020617;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,0.65);">
+      <div style="position:relative;width:30px;height:30px;display:flex;align-items:center;justify-content:center;">
+        <span style="position:absolute;inset:1px;border-radius:9999px;background:rgba(255,77,0,0.20);border:1.5px dashed ${ringBorder};"></span>
+        <span style="width:15px;height:15px;border-radius:9999px;background:${coreColor};border:2.5px solid #FFFFFF;box-shadow:0 3px 10px rgba(20,25,30,0.35);"></span>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Geheimer Anchor-Point-Marker („Sardinen-Versteck") — Primärer Hardware-Pin in #FF4D00 mit weißem Text/Rand.
+ */
+export function createAnchorPointIcon(): L.DivIcon {
+  return L.divIcon({
+    className: 'sardinen-div-icon',
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+    html: `
+      <div style="width:40px;height:40px;border-radius:9999px;background:#FF4D00;border:2.5px solid #FFFFFF;box-shadow:0 6px 18px rgba(255,77,0,0.38);display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;letter-spacing:0.04em;">
+        HQ
+      </div>
+    `,
+  });
+}
+
+/**
+ * Sekundärer Team-Beacon-Marker (#14171A mit hellem Text und dezentem grauem Hardware-Rand).
+ */
+export function createTeamBeaconIcon(teamName: string, color: string): L.DivIcon {
+  const shortLabel = escapeHtml(teamName.replace(/\s*\(.*\)/, '').toUpperCase());
+  return L.divIcon({
+    className: 'sardinen-div-icon',
+    iconSize: [96, 36],
+    iconAnchor: [48, 18],
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:9999px;background:#14171A;border:1px solid #9AA4AE;color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.05em;white-space:nowrap;box-shadow:0 4px 12px rgba(20,25,30,0.28);">
+          <span style="width:6px;height:6px;border-radius:9999px;background:${color};display:inline-block;"></span>
+          <span>${shortLabel}</span>
+        </div>
+        <div style="width:10px;height:10px;border-radius:9999px;background:#14171A;border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 5px rgba(20,25,30,0.3);"></div>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Auswahl-Pin für Kartenteiler- oder Thermometer-Punkte (#FF4D00 primär / #14171A sekundär).
+ */
+export function createSelectionPinIcon(
+  label: string,
+  variant: 'primary' | 'secondary' = 'primary'
+): L.DivIcon {
+  const safe = escapeHtml(label);
+  const isPrimary = variant === 'primary';
+  const bg = isPrimary ? '#FF4D00' : '#14171A';
+  const border = isPrimary ? '2.5px solid #FFFFFF' : '1.5px solid #9AA4AE';
+  return L.divIcon({
+    className: 'sardinen-div-icon',
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    html: `
+      <div style="width:30px;height:30px;border-radius:9999px;background:${bg};border:${border};color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(20,25,30,0.32);">
         ${safe}
       </div>
     `,

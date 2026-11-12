@@ -51,6 +51,13 @@ export interface GameMapProps {
   layoutInvalidationKey?: string | number;
 }
 
+function resolveRadarHardwareColor(stage: number): string {
+  // 3-stage hardware color progression: --cmf-teal -> --cmf-amber -> --cmf-orange
+  if (stage <= 2) return '#00A896';
+  if (stage <= 4) return '#F0A500';
+  return '#FF4D00';
+}
+
 export const GameMap: React.FC<GameMapProps> = ({
   playArea,
   playAreaConfirmed,
@@ -86,7 +93,6 @@ export const GameMap: React.FC<GameMapProps> = ({
   const clickModeRef = useRef(clickMode);
   clickModeRef.current = clickMode;
 
-  // Initialisiere Leaflet-Karte einmalig mit expliziter Container-Prüfung und ResizeObserver
   useEffect(() => {
     const el = containerRef.current;
     if (!el || mapRef.current) return;
@@ -103,7 +109,8 @@ export const GameMap: React.FC<GameMapProps> = ({
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       keepBuffer: 1,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OSM</a> // 81247',
     }).addTo(map);
 
     boundaryLayerRef.current = L.layerGroup().addTo(map);
@@ -139,7 +146,6 @@ export const GameMap: React.FC<GameMapProps> = ({
     };
   }, []);
 
-  // Layout-/Tab-Wechsel sauber an Leaflet melden
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -151,7 +157,7 @@ export const GameMap: React.FC<GameMapProps> = ({
 
   const hasFittedInitialBoundsRef = useRef(false);
 
-  // 1. Spielfeld-Polygon + invertierte dunkle Weltmaske
+  // 1. Spielfeld-Polygon + mattierte Außenmaske im Raw-Light-Hardware-Look
   useEffect(() => {
     const group = boundaryLayerRef.current;
     const map = mapRef.current;
@@ -162,18 +168,20 @@ export const GameMap: React.FC<GameMapProps> = ({
     L.geoJSON(mask, {
       style: {
         stroke: false,
-        fillColor: '#020617',
-        fillOpacity: 0.62,
+        fillColor: '#9AA4AE',
+        fillOpacity: 0.34,
       },
       interactive: false,
     }).addTo(group);
 
+    const strokeColor = playAreaConfirmed ? '#00A896' : '#F0A500';
     const polyLayer = L.geoJSON(playArea, {
       style: {
-        color: playAreaConfirmed ? '#10b981' : '#f59e0b',
-        weight: 3,
-        dashArray: playAreaConfirmed ? undefined : '8 6',
-        fillOpacity: 0.02,
+        color: strokeColor,
+        weight: 2.5,
+        dashArray: '6, 6',
+        fillColor: '#00A896',
+        fillOpacity: 0.04,
       },
       interactive: false,
     }).addTo(group);
@@ -203,11 +211,11 @@ export const GameMap: React.FC<GameMapProps> = ({
     if (liveConePreview) {
       L.geoJSON(liveConePreview, {
         style: {
-          color: '#06b6d4',
+          color: '#00A896',
           weight: 2,
-          dashArray: '5 5',
-          fillColor: '#06b6d4',
-          fillOpacity: 0.18,
+          dashArray: '6, 6',
+          fillColor: '#00A896',
+          fillOpacity: 0.14,
         },
         interactive: false,
       }).addTo(group);
@@ -215,25 +223,25 @@ export const GameMap: React.FC<GameMapProps> = ({
 
     if (selectedSplitPoint) {
       L.marker([selectedSplitPoint.lat, selectedSplitPoint.lng], {
-        icon: createSelectionPinIcon('T', '#f59e0b'),
+        icon: createSelectionPinIcon('T', 'primary'),
       })
-        .bindTooltip('Gewählter Teilungspunkt')
+        .bindTooltip('TEILUNGSPUNKT [T]')
         .addTo(group);
     }
 
     if (thermoPointA) {
       L.marker([thermoPointA.lat, thermoPointA.lng], {
-        icon: createSelectionPinIcon('A', '#38bdf8'),
+        icon: createSelectionPinIcon('A', 'primary'),
       })
-        .bindTooltip('Thermometer Startpunkt A')
+        .bindTooltip('THERMOMETER START [A]')
         .addTo(group);
     }
 
     if (thermoPointB) {
       L.marker([thermoPointB.lat, thermoPointB.lng], {
-        icon: createSelectionPinIcon('B', '#10b981'),
+        icon: createSelectionPinIcon('B', 'secondary'),
       })
-        .bindTooltip('Thermometer Endpunkt B')
+        .bindTooltip('THERMOMETER ENDE [B]')
         .addTo(group);
     }
 
@@ -243,29 +251,30 @@ export const GameMap: React.FC<GameMapProps> = ({
           [thermoPointA.lat, thermoPointA.lng],
           [thermoPointB.lat, thermoPointB.lng],
         ],
-        { color: '#38bdf8', weight: 2.5, dashArray: '4 4' }
+        { color: '#FF4D00', weight: 2, dashArray: '6, 6' }
       ).addTo(group);
     }
   }, [liveConePreview, selectedSplitPoint, thermoPointA, thermoPointB]);
 
-  // 4. Schrumpf-Radar-Kreis (öffentlich ab 25:00)
+  // 4. Schrumpf-Radar-Kreis (öffentlich ab 25:00 — 3-stufige Hardware-Farbprogression)
   useEffect(() => {
     const group = radarLayerRef.current;
     if (!group) return;
     group.clearLayers();
 
     if (publishedRadar) {
+      const stageColor = resolveRadarHardwareColor(publishedRadar.stage);
       L.circle([publishedRadar.center.lat, publishedRadar.center.lng], {
         radius: publishedRadar.radiusMeters,
-        color: '#f43f5e',
-        weight: 3,
-        dashArray: '6 4',
-        fillColor: '#f43f5e',
-        fillOpacity: 0.11,
+        color: stageColor,
+        weight: 2.5,
+        dashArray: '6, 6',
+        fillColor: stageColor,
+        fillOpacity: 0.14,
         interactive: false,
       })
         .bindTooltip(
-          `Radar Stufe ${publishedRadar.stage} (${publishedRadar.radiusMeters} m)`
+          `RADAR STUFE ${publishedRadar.stage} // ${publishedRadar.radiusMeters}M`
         )
         .addTo(group);
     }
@@ -280,10 +289,11 @@ export const GameMap: React.FC<GameMapProps> = ({
     if (showAnchorAndLeash && anchorPoint) {
       L.circle([anchorPoint.lat, anchorPoint.lng], {
         radius: LEASH_RADIUS_METERS,
-        color: '#06b6d4',
-        weight: 2.5,
-        fillColor: '#06b6d4',
-        fillOpacity: 0.18,
+        color: '#00A896',
+        weight: 2,
+        dashArray: '6, 6',
+        fillColor: '#00A896',
+        fillOpacity: 0.14,
         interactive: false,
       }).addTo(group);
 
@@ -291,7 +301,7 @@ export const GameMap: React.FC<GameMapProps> = ({
         icon: createAnchorPointIcon(),
       })
         .bindPopup(
-          `<strong>Sardinen-Versteck (Anchor Point)</strong><br/>20m-Versteckradius aktiv (±${anchorPoint.accuracy} m)`
+          `<strong>SARDINEN-VERSTECK // HQ</strong><br/>RADIUS: 20M (±${anchorPoint.accuracy}M)`
         )
         .addTo(group);
     }
@@ -306,14 +316,14 @@ export const GameMap: React.FC<GameMapProps> = ({
 
       const contributorInfo =
         loc.activeContributorCount && loc.activeContributorCount > 1
-          ? ` (Ø aus ${loc.activeContributorCount} Spielern)`
+          ? ` [AVG:${loc.activeContributorCount}]`
           : '';
 
       L.marker([loc.lat, loc.lng], {
         icon: createTeamBeaconIcon(pub.name, pub.color),
       })
         .bindPopup(
-          `<strong>${pub.name}</strong>${contributorInfo}<br/>Genauigkeit: ±${Math.round(loc.accuracy)} m`
+          `<strong>${pub.name.toUpperCase()}</strong>${contributorInfo}<br/>GPS: ±${Math.round(loc.accuracy)}M`
         )
         .addTo(group);
     }
@@ -321,9 +331,10 @@ export const GameMap: React.FC<GameMapProps> = ({
     if (ownFix) {
       L.circle([ownFix.lat, ownFix.lng], {
         radius: Math.min(80, Math.max(4, ownFix.accuracy)),
-        color: isOwnSideHider ? '#06b6d4' : '#38bdf8',
-        weight: 1,
-        fillColor: isOwnSideHider ? '#06b6d4' : '#38bdf8',
+        color: '#00A896',
+        weight: 1.5,
+        dashArray: '4, 4',
+        fillColor: '#00A896',
         fillOpacity: 0.1,
         interactive: false,
       }).addTo(group);
@@ -331,9 +342,7 @@ export const GameMap: React.FC<GameMapProps> = ({
       L.marker([ownFix.lat, ownFix.lng], {
         icon: createOwnPositionIcon(isOwnSideHider),
       })
-        .bindTooltip(
-          `Dein Standort (±${Math.round(ownFix.accuracy)} m)`
-        )
+        .bindTooltip(`POS // ±${Math.round(ownFix.accuracy)}M`)
         .addTo(group);
     }
   }, [
@@ -347,15 +356,18 @@ export const GameMap: React.FC<GameMapProps> = ({
   ]);
 
   return (
-    <div className="relative h-full w-full bg-[#020617]">
+    <div className="relative h-full w-full bg-[var(--bg-page)]">
       <div
         ref={containerRef}
         data-testid="leaflet-map-container"
         className="h-full w-full z-0"
       />
       {clickMode.kind !== 'NONE' && (
-        <div className="pointer-events-none absolute bottom-20 left-1/2 -translate-x-1/2 z-[450] rounded-full border border-amber-400/70 bg-slate-950/90 px-4 py-1.5 text-xs font-semibold text-amber-300 shadow-lg backdrop-blur">
-          {clickMode.label ?? 'Tippe auf die Karte, um den Punkt zu setzen'}
+        <div className="cmf-oled pointer-events-none absolute bottom-20 left-1/2 -translate-x-1/2 z-[450] flex items-center gap-2 px-4 py-2 text-[11px] font-tech tracking-wide uppercase shadow-xl">
+          <span className="h-2 w-2 rounded-full bg-[var(--cmf-amber)]" />
+          <span className="text-[#F8FAFC]">
+            {clickMode.label ?? 'Tippe auf die Karte, um den Punkt zu setzen'}
+          </span>
         </div>
       )}
     </div>

@@ -24,7 +24,7 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
 
   if (sorted.length === 0) {
     return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-center text-xs text-slate-400">
+      <div className="cmf-module p-5 text-center text-xs text-[var(--text-muted)]">
         Noch keine ausgewerteten Hinweise vorhanden. Gekaufte Hinweise und deren Karten-Overlays erscheinen sofort hier.
       </div>
     );
@@ -46,19 +46,17 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
           <div
             key={clue.id}
             data-testid={`clue-card-${clue.questionType}`}
-            className="rounded-2xl border border-slate-800 bg-slate-900/95 p-3.5 shadow-md"
+            className="cmf-module p-4"
           >
             <div className="flex items-start justify-between gap-2">
               <div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-extrabold text-white">
+                  <span className="font-industrial text-sm text-[var(--text-main)]">
                     {clue.title}
                   </span>
                   <span
-                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
-                      clue.penaltyMs === 0
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'bg-rose-950/80 text-rose-300'
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                      clue.penaltyMs === 0 ? 'cmf-badge-teal' : 'cmf-badge-orange'
                     }`}
                   >
                     {clue.penaltyMs === 0
@@ -68,25 +66,25 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
                   {clue.usedOfflineOsmFallback && (
                     <span
                       title="Aus kuratierten 81247-Ortsdaten ausgewertet"
-                      className="inline-flex items-center gap-1 rounded-md bg-slate-800 px-1.5 py-0.5 text-[10px] text-amber-300"
+                      className="cmf-badge-amber inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
                     >
-                      <Database className="h-3 w-3" /> 81247-Offline-Daten
+                      <Database className="h-3 w-3" /> 81247-OSM
                     </span>
                   )}
                 </div>
 
-                <p className="mt-1 text-sm font-black text-cyan-300">
+                <p className="mt-1.5 text-sm font-bold text-[var(--cmf-teal)]">
                   {clue.answerText}
                 </p>
                 {clue.detailText && (
-                  <p className="mt-0.5 text-xs text-slate-400">
+                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                     {clue.detailText}
                   </p>
                 )}
               </div>
 
               <div className="flex flex-col items-end gap-1.5">
-                <span className="font-mono text-[10px] text-slate-500">
+                <span className="font-tech text-[10px] font-medium text-[var(--text-muted)]">
                   @{formatDurationClock(relTimeMs)}
                 </span>
 
@@ -94,10 +92,8 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
                   <button
                     type="button"
                     onClick={() => onToggleClueOverlay(clue.id)}
-                    className={`inline-flex min-h-[36px] items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold transition ${
-                      isHidden
-                        ? 'border-slate-700 bg-slate-800 text-slate-400'
-                        : 'border-cyan-500/50 bg-cyan-950/60 text-cyan-200'
+                    className={`font-tech inline-flex min-h-[34px] items-center gap-1 px-2.5 py-1 text-[10px] font-bold uppercase ${
+                      isHidden ? 'cmf-btn-secondary' : 'cmf-btn-active'
                     }`}
                   >
                     {isHidden ? (
@@ -106,7 +102,7 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
                       </>
                     ) : (
                       <>
-                        <Eye className="h-3.5 w-3.5" /> Auf Karte
+                        <Eye className="h-3.5 w-3.5 text-[var(--cmf-teal)]" /> Auf Karte
                       </>
                     )}
                   </button>
@@ -116,24 +112,28 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
 
             {/* Eingebettete Foto-/Audio-Wiedergabe + Speicherbereinigung */}
             {clue.hasMedia && (
-              <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
+              <div className="cmf-well mt-3 p-3">
                 {mediaDataUrl ? (
                   <div className="space-y-2.5">
                     {clue.mediaKind === 'IMAGE' ? (
                       <div className="space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-cyan-300">
-                          <ImageIcon className="h-3.5 w-3.5" /> Übermitteltes Verstecker-Foto (EXIF-bereinigt)
+                        <div className="flex items-center gap-1.5 font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                          <ImageIcon className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                          Übermitteltes Verstecker-Foto (EXIF-bereinigt)
                         </div>
-                        <img
-                          src={mediaDataUrl}
-                          alt={clue.title}
-                          className="max-h-64 w-full rounded-lg border border-slate-800 object-contain"
-                        />
+                        <div className="cmf-oled overflow-hidden p-1.5">
+                          <img
+                            src={mediaDataUrl}
+                            alt={clue.title}
+                            className="max-h-64 w-full rounded-lg object-contain"
+                          />
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-cyan-300">
-                          <Volume2 className="h-3.5 w-3.5" /> 10s Umgebungsgeräusche
+                        <div className="flex items-center gap-1.5 font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                          <Volume2 className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                          10s Umgebungsgeräusche
                         </div>
                         <audio
                           controls
@@ -150,15 +150,15 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
                         onClick={() =>
                           void onAcknowledgeMedia(clue.teamId, clue.requestId)
                         }
-                        className="inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/50 px-3 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-900/50"
+                        className="cmf-btn-active font-tech inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
                       >
-                        <Check className="h-4 w-4" />
-                        Gesehen / Lokal gespeichert (RTDB-Speicher bereinigen)
+                        <Check className="h-4 w-4 text-[var(--cmf-teal)]" />
+                        Gesehen / Lokal gespeichert (Speicher bereinigen)
                       </button>
                     )}
                   </div>
                 ) : (
-                  <p className="text-[11px] text-slate-400">
+                  <p className="font-tech text-[11px] text-[var(--text-muted)]">
                     Mediendatei wurde als gesehen bestätigt und speicherschonend aus der Datenbank bereinigt.
                   </p>
                 )}

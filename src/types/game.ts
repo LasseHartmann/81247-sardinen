@@ -71,6 +71,38 @@ export interface PresenceSession {
   online: boolean;
   lastSeen: number;
   deviceInfo?: string;
+  kind?:
+    | 'TAB'
+    | 'EMERGENCY_ALERT'
+    | 'READY_STATE'
+    | 'HIDER_PW_LOCK'
+    | 'ROUND_START_META';
+  playerId?: string;
+  senderName?: string;
+  emergencyText?: string;
+  readyToken?: string;
+  sessionId?: string;
+  passwordHash?: string;
+  hiderPlayerIds?: string[];
+  logoutGen?: string;
+  gameStartTimestamp?: number;
+  activeTeamIds?: string[];
+}
+
+export interface EmergencyMessage {
+  uid: string;
+  playerId: string;
+  senderName: string;
+  text: string;
+  createdAt: number;
+}
+
+export interface HiderLoginLock {
+  sessionId: string;
+  passwordHash: string;
+  hiderPlayerIds: string[];
+  logoutGen: string;
+  setAt: number;
 }
 
 export interface TeamPublic {
@@ -143,6 +175,7 @@ export interface PublicGameState {
   allowTestClicks: boolean;
   leashAlertActive: boolean;
   activeTeamIds: string[];
+  hiderLock?: HiderLoginLock | null;
 }
 
 export interface ControllerLease {

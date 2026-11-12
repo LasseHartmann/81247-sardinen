@@ -63,39 +63,6 @@ export function createTeamBeaconIcon(teamName: string, color: string): L.DivIcon
 }
 
 /**
- * Verschiebbarer Eckpunkt-Marker für den Host-Polygon-Editor.
- */
-export function createPolygonVertexIcon(index: number, deleteMode: boolean): L.DivIcon {
-  const bg = deleteMode ? '#f43f5e' : '#10b981';
-  return L.divIcon({
-    className: 'sardinen-div-icon',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    html: `
-      <div style="width:24px;height:24px;border-radius:9999px;background:${bg};border:2px solid #020617;color:#020617;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px rgba(0,0,0,0.7);cursor:pointer;">
-        ${deleteMode ? '×' : index + 1}
-      </div>
-    `,
-  });
-}
-
-/**
- * Kanten-Mittelpunkt („+") zum Einfügen eines neuen Eckpunkts im Host-Polygon-Editor.
- */
-export function createPolygonMidpointIcon(): L.DivIcon {
-  return L.divIcon({
-    className: 'sardinen-div-icon',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
-    html: `
-      <div style="width:20px;height:20px;border-radius:9999px;background:#0f172a;border:1.5px dashed #10b981;color:#10b981;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;opacity:0.9;">
-        +
-      </div>
-    `,
-  });
-}
-
-/**
  * Auswahl-Pin für Kartenteiler- oder Thermometer-Punkte.
  */
 export function createSelectionPinIcon(label: string, color = '#f59e0b'): L.DivIcon {

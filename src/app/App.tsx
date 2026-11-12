@@ -14,6 +14,7 @@ import {
   ANCHOR_ACCURACY_WARNING_METERS,
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
 } from '../config/gameConfig';
+import { computeHiderPasswordHash } from '../config/players';
 import { isPointInPlayArea } from '../geo/boundary';
 import { buildCone45Polygon } from '../geo/clueGeometry';
 import { distanceMeters } from '../geo/distance';
@@ -26,8 +27,13 @@ import { useGameState } from '../hooks/useGameState';
 import { useGameTimer } from '../hooks/useGameTimer';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useWakeLock } from '../hooks/useWakeLock';
+import {
+  buildReadyToken,
+  deduplicateEnabledMembers,
+} from '../services/databaseAdapter';
 import type { BottomNavTab, ClueRecord, ClueRequest, LatLng } from '../types/game';
 import { formatDurationClock } from '../utils/formatting';
+import { EmergencyMessageBanner } from '../components/Common/EmergencyMessageBanner';
 import { StatusBanners } from '../components/Common/StatusBanners';
 import { LeashWarningBanner } from '../components/HUD/LeashWarningBanner';
 import { TopHud } from '../components/HUD/TopHud';
@@ -38,7 +44,6 @@ import {
   LoginScreen,
   PendingApprovalScreen,
 } from '../components/Lobby/LobbyView';
-import { applyEditedVerticesToPolygon } from '../components/Lobby/PlayAreaEditor';
 import { GameMap, type MapClickInteractionMode } from '../components/Map/GameMap';
 import { BottomNav } from '../components/Navigation/BottomNav';
 import { HiderQrView } from '../components/QR/HiderQrModal';
@@ -52,11 +57,16 @@ export const App: React.FC = () => {
     firebaseAvailable,
     authUser,
     authLoading,
+    isSessionUnlocked,
     ownMember,
     memberLoading,
     seatConflictError,
     loginError,
+    logoutNotice,
+    pendingHiderPasswordFor,
+    clearPendingHiderPrompt,
     loginByTypedName,
+    syncWithActiveHiderLock,
     unlockAdminWithCode,
     lockAdminConsole,
     claimInitialHost,
@@ -65,6 +75,10 @@ export const App: React.FC = () => {
 
   const gameState = useGameState(adapter, ownMember);
   const { publicState, hiderPrivate } = gameState;
+
+  useEffect(() => {
+    syncWithActiveHiderLock(gameState.activeHiderLock);
+  }, [gameState.activeHiderLock, syncWithActiveHiderLock]);
 
   const timer = useGameTimer(adapter, publicState);
 
@@ -101,7 +115,9 @@ export const App: React.FC = () => {
   });
 
   // Hält das Display während Lobby & laufendem Spiel zuverlässig an!
-  const shouldKeepScreenAwake = Boolean(authUser && ownMember?.enabled);
+  const shouldKeepScreenAwake = Boolean(
+    authUser && isSessionUnlocked && ownMember?.enabled
+  );
   useWakeLock(shouldKeepScreenAwake);
 
   // UI-Navigation & lokale Karten-Interaktionszustände
@@ -124,9 +140,6 @@ export const App: React.FC = () => {
     null
   );
 
-  // Host-Polygon-Editor Zustände
-  const [polygonEditActive, setPolygonEditActive] = useState(false);
-  const [polygonDeleteVertexMode, setPolygonDeleteVertexMode] = useState(false);
   const [bootAdminCode, setBootAdminCode] = useState('');
   const [bootAdminErr, setBootAdminErr] = useState<string | null>(null);
 
@@ -141,29 +154,21 @@ export const App: React.FC = () => {
     [unlockAdminWithCode]
   );
 
-  // Sobald der Admin die Spielleiter-Konsole verlässt (Tabwechsel oder App in Hintergrund,
-  // außer er bearbeitet gerade aktiv das Polygon auf der Karte), werden die Admin-Rechte
-  // automatisch wieder gesperrt -> beim nächsten Öffnen muss der Code erneut eingegeben werden.
+  // Sobald der Admin die Spielleiter-Konsole verlässt (Tabwechsel oder App in Hintergrund),
+  // werden die Admin-Rechte automatisch wieder gesperrt -> beim nächsten Öffnen muss der Code erneut eingegeben werden.
   const prevTabRef = useRef<BottomNavTab>(activeTab);
   useEffect(() => {
     const prevTab = prevTabRef.current;
     prevTabRef.current = activeTab;
-    if (
-      ownMember?.isHost &&
-      prevTab === 'HOST' &&
-      activeTab !== 'HOST' &&
-      !polygonEditActive
-    ) {
+    if (ownMember?.isHost && prevTab === 'HOST' && activeTab !== 'HOST') {
       void lockAdminConsole();
     }
-  }, [activeTab, lockAdminConsole, ownMember?.isHost, polygonEditActive]);
+  }, [activeTab, lockAdminConsole, ownMember?.isHost]);
 
   useEffect(() => {
     if (!ownMember?.isHost) return;
     const handleVisibilityOrHide = () => {
       if (document.visibilityState === 'hidden') {
-        setPolygonEditActive(false);
-        setPolygonDeleteVertexMode(false);
         setActiveTab('MAP');
         void lockAdminConsole();
       }
@@ -177,7 +182,7 @@ export const App: React.FC = () => {
   }, [lockAdminConsole, ownMember?.isHost]);
 
   // 1. Lade- & Authentifizierungs-Weichen
-  if (authLoading || memberLoading) {
+  if (authLoading || (isSessionUnlocked && memberLoading)) {
     return (
       <div className="flex h-[100dvh] items-center justify-center bg-[#020617] text-sm font-bold text-cyan-300">
         81247 Sardinen wird geladen ...
@@ -185,11 +190,14 @@ export const App: React.FC = () => {
     );
   }
 
-  if (!authUser) {
+  if (!authUser || !isSessionUnlocked) {
     return (
       <LoginScreen
         firebaseAvailable={firebaseAvailable}
         loginError={loginError}
+        logoutNotice={logoutNotice}
+        pendingHiderPasswordFor={pendingHiderPasswordFor}
+        onClearPendingHiderPrompt={clearPendingHiderPrompt}
         onLoginByName={loginByTypedName}
       />
     );
@@ -414,6 +422,66 @@ export const App: React.FC = () => {
     });
   };
 
+  const ownEmergencyMessage =
+    gameState.emergencyMessages.find((m) => m.uid === ownMember.uid) ?? null;
+
+  const handleSendEmergencyMessage = async (text: string) => {
+    await adapter.sendEmergencyMessage({
+      uid: ownMember.uid,
+      playerId: ownMember.playerId,
+      senderName: ownMember.name,
+      text,
+      createdAt: adapter.getServerNow(),
+    });
+  };
+
+  const handleClearOwnEmergencyMessage = async () => {
+    await adapter.clearOwnEmergencyMessage(ownMember.uid);
+  };
+
+  const handleSetHiderPassword = async (rawPassword: string) => {
+    const cleanPassword = rawPassword.trim();
+    const passwordHash = computeHiderPasswordHash(cleanPassword);
+    const hiderPlayerIds = deduplicateEnabledMembers(
+      gameState.members,
+      gameState.presence
+    )
+      .filter((m) => m.side === 'HIDER')
+      .map((m) => m.playerId);
+
+    const newLock = await adapter.setHiderPasswordAndTriggerLogout({
+      uid: ownMember.uid,
+      sessionId: publicState.sessionId,
+      cleanPassword,
+      passwordHash,
+      hiderPlayerIds,
+      nowMs: adapter.getServerNow(),
+    });
+    syncWithActiveHiderLock(newLock);
+  };
+
+  const handleToggleOwnReady = async (nextReady: boolean) => {
+    if (nextReady && gameState.activeHiderLock) {
+      const token = buildReadyToken(
+        publicState.sessionId,
+        gameState.activeHiderLock.logoutGen
+      );
+      await adapter.setPlayerReadyState(
+        ownMember.uid,
+        ownMember.playerId,
+        token,
+        adapter.getServerNow()
+      );
+    } else {
+      await adapter.setPlayerReadyState(
+        ownMember.uid,
+        ownMember.playerId,
+        null,
+        adapter.getServerNow()
+      );
+    }
+  };
+
   const effectivePhase =
     publicState.status === 'LOBBY' ? 'LOBBY' : timer.computedPhase;
 
@@ -426,6 +494,13 @@ export const App: React.FC = () => {
         gameStatus={publicState.status}
       />
 
+      {/* Dauerhaft für alle sichtbare Notfallnachrichten */}
+      <EmergencyMessageBanner
+        messages={gameState.emergencyMessages}
+        ownUid={ownMember.uid}
+        onClearOwnMessage={handleClearOwnEmergencyMessage}
+      />
+
       {/* Kompaktes schwebendes Top-HUD */}
       <TopHud
         publicState={publicState}
@@ -435,6 +510,9 @@ export const App: React.FC = () => {
         connected={gameState.connected}
         ownFix={geo.currentFix}
         gpsStatus={geo.gpsStatus}
+        ownEmergencyMessage={ownEmergencyMessage}
+        onSendEmergencyMessage={handleSendEmergencyMessage}
+        onClearOwnEmergencyMessage={handleClearOwnEmergencyMessage}
         onUnlockAdmin={handleUnlockAndEnterConsole}
       />
 
@@ -482,19 +560,6 @@ export const App: React.FC = () => {
             thermoPointB={thermoPointB}
             clickMode={mapClickMode}
             onMapCoordinateClick={handleMapCoordinateClick}
-            polygonEditActive={polygonEditActive && ownMember.isHost}
-            polygonDeleteVertexMode={polygonDeleteVertexMode}
-            onPolygonVerticesChange={async (verts) => {
-              const nextPoly = applyEditedVerticesToPolygon(verts);
-              await adapter.savePublicStateByHost({
-                ...publicState,
-                playArea: {
-                  ...publicState.playArea,
-                  polygon: nextPoly,
-                  confirmed: false,
-                },
-              });
-            }}
             layoutInvalidationKey={`${activeTab}_${publicState.status}`}
           />
 
@@ -529,20 +594,6 @@ export const App: React.FC = () => {
                 </button>
               )}
 
-              {polygonEditActive && ownMember.isHost && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPolygonEditActive(false);
-                    setPolygonDeleteVertexMode(false);
-                    setActiveTab('HOST');
-                  }}
-                  className="pointer-events-auto inline-flex min-h-[40px] items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-1.5 text-xs font-black text-slate-950 shadow-lg hover:bg-emerald-400"
-                >
-                  Polygon-Bearbeitung fertig (zurück zur Konsole)
-                </button>
-              )}
-
               {isJoinedSardines && (
                 <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/60 bg-cyan-950/90 px-3 py-1.5 text-xs font-extrabold text-cyan-200 shadow-lg">
                   <Sparkles className="h-4 w-4 text-cyan-400" />
@@ -552,7 +603,7 @@ export const App: React.FC = () => {
             </div>
 
             {/* LOBBY-Statuskarte auf der Karte */}
-            {publicState.status === 'LOBBY' && !polygonEditActive && (
+            {publicState.status === 'LOBBY' && (
               <div className="mt-1">
                 <LobbyStatusCard
                   publicState={publicState}
@@ -560,6 +611,10 @@ export const App: React.FC = () => {
                   members={gameState.members}
                   presence={gameState.presence}
                   teamsPublic={gameState.teamsPublic}
+                  activeHiderLock={gameState.activeHiderLock}
+                  readyPlayerIds={gameState.readyPlayerIds}
+                  onSetHiderPassword={handleSetHiderPassword}
+                  onToggleOwnReady={handleToggleOwnReady}
                   onOpenHostTab={
                     showHostTab ? () => setActiveTab('HOST') : undefined
                   }
@@ -765,21 +820,15 @@ export const App: React.FC = () => {
             adapter={adapter}
             ownMember={ownMember}
             publicState={publicState}
+            hiderPrivate={hiderPrivate}
+            activeHiderLock={gameState.activeHiderLock}
+            readyPlayerIds={gameState.readyPlayerIds}
             members={gameState.members}
             joinRequests={gameState.joinRequests}
             presence={gameState.presence}
             teamsPublic={gameState.teamsPublic}
-            polygonEditActive={polygonEditActive}
-            polygonDeleteVertexMode={polygonDeleteVertexMode}
-            onTogglePolygonEdit={(active) => {
-              setPolygonEditActive(active);
-              if (!active) setPolygonDeleteVertexMode(false);
-            }}
-            onTogglePolygonDeleteMode={setPolygonDeleteVertexMode}
             onNavigateToMap={() => setActiveTab('MAP')}
             onLeaveAndLockConsole={() => {
-              setPolygonEditActive(false);
-              setPolygonDeleteVertexMode(false);
               setActiveTab('MAP');
               void lockAdminConsole();
             }}

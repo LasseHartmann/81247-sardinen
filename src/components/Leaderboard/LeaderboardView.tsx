@@ -20,7 +20,12 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 }) => {
   const activeSet = activeTeamIds ? new Set(activeTeamIds) : null;
   const ranked = sortLeaderboardEntries(
-    Object.values(leaderboard).filter((e) => !activeSet || activeSet.has(e.teamId))
+    Object.values(leaderboard).filter((e) => {
+      if (activeSet && !activeSet.has(e.teamId)) return false;
+      const teamPub = teamsPublic[e.teamId];
+      if (teamPub && teamPub.memberPlayerIds.length === 0) return false;
+      return true;
+    })
   );
   const rankedIds = new Set(ranked.map((r) => r.teamId));
   const stillSearching = Object.values(teamsPublic).filter(
@@ -53,7 +58,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               Noch kein Sucher-Team bei den Sardinen eingetroffen!
             </p>
             <p className="mt-1 text-xs text-slate-400">
-              Sobald ein Team den QR-Code der Verstecker scannt oder den 6-stelligen Ersatzcode eingibt, erscheint hier die offizielle Wertung.
+              Sobald ein Team den QR-Code der Verstecker scannt oder das Verstecker-Passwort eingibt, erscheint hier die offizielle Wertung.
             </p>
           </div>
         ) : (

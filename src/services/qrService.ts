@@ -92,7 +92,7 @@ export function parseSubmittedCatchInput(rawInput: string): {
     }
   }
   return {
-    extractedCodeOrSecret: trimmed.toUpperCase(),
+    extractedCodeOrSecret: trimmed,
   };
 }
 
@@ -133,7 +133,7 @@ export function verifyCatchSubmission(
     candidate.toLowerCase() === expectedQrSecret.trim().toLowerCase();
   const shortMatch =
     expectedShortCode.length > 0 &&
-    candidate.toUpperCase() === expectedShortCode.trim().toUpperCase();
+    candidate.toLowerCase() === expectedShortCode.trim().toLowerCase();
 
   if (secretMatch || shortMatch) {
     return { valid: true };

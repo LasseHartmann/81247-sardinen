@@ -6,10 +6,7 @@ import {
   MAP_DEFAULT_CENTER,
   MAP_DEFAULT_ZOOM,
 } from '../../config/gameConfig';
-import {
-  buildInvertedWorldMask,
-  extractPolygonVertices,
-} from '../../geo/boundary';
+import { buildInvertedWorldMask } from '../../geo/boundary';
 import type {
   AnchorPoint,
   ClueRecord,
@@ -23,8 +20,6 @@ import { syncClueOverlaysToLayerGroup } from './ClueOverlays';
 import {
   createAnchorPointIcon,
   createOwnPositionIcon,
-  createPolygonMidpointIcon,
-  createPolygonVertexIcon,
   createSelectionPinIcon,
   createTeamBeaconIcon,
 } from './CustomMarkers';
@@ -53,10 +48,6 @@ export interface GameMapProps {
   thermoPointB?: LatLng | null;
   clickMode: MapClickInteractionMode;
   onMapCoordinateClick?: (pt: LatLng) => void;
-  // Host-Polygon-Editor-Modus
-  polygonEditActive?: boolean;
-  polygonDeleteVertexMode?: boolean;
-  onPolygonVerticesChange?: (nextVertices: LatLng[]) => void;
   layoutInvalidationKey?: string | number;
 }
 
@@ -79,9 +70,6 @@ export const GameMap: React.FC<GameMapProps> = ({
   thermoPointB,
   clickMode,
   onMapCoordinateClick,
-  polygonEditActive = false,
-  polygonDeleteVertexMode = false,
-  onPolygonVerticesChange,
   layoutInvalidationKey,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -92,7 +80,6 @@ export const GameMap: React.FC<GameMapProps> = ({
   const previewLayerRef = useRef<L.LayerGroup | null>(null);
   const radarLayerRef = useRef<L.LayerGroup | null>(null);
   const actorsLayerRef = useRef<L.LayerGroup | null>(null);
-  const editorLayerRef = useRef<L.LayerGroup | null>(null);
 
   const onClickRef = useRef(onMapCoordinateClick);
   onClickRef.current = onMapCoordinateClick;
@@ -124,7 +111,6 @@ export const GameMap: React.FC<GameMapProps> = ({
     previewLayerRef.current = L.layerGroup().addTo(map);
     radarLayerRef.current = L.layerGroup().addTo(map);
     actorsLayerRef.current = L.layerGroup().addTo(map);
-    editorLayerRef.current = L.layerGroup().addTo(map);
 
     map.on('click', (ev: L.LeafletMouseEvent) => {
       if (clickModeRef.current.kind !== 'NONE' && onClickRef.current) {
@@ -358,68 +344,6 @@ export const GameMap: React.FC<GameMapProps> = ({
     visibleTeamLocations,
     teamsPublic,
     activeTeamIds,
-  ]);
-
-  // 6. Interaktiver Host-Polygon-Editor (Eckpunkte verschieben / löschen, Mittelpunkte einfügen)
-  useEffect(() => {
-    const group = editorLayerRef.current;
-    if (!group) return;
-    group.clearLayers();
-
-    if (!polygonEditActive || !onPolygonVerticesChange) return;
-
-    const vertices = extractPolygonVertices(playArea);
-    if (vertices.length < 3) return;
-
-    vertices.forEach((vertex, idx) => {
-      const marker = L.marker([vertex.lat, vertex.lng], {
-        icon: createPolygonVertexIcon(idx, polygonDeleteVertexMode),
-        draggable: !polygonDeleteVertexMode,
-      });
-
-      if (polygonDeleteVertexMode) {
-        marker.on('click', () => {
-          if (vertices.length <= 3) return;
-          const next = vertices.filter((_, i) => i !== idx);
-          onPolygonVerticesChange(next);
-        });
-      } else {
-        marker.on('dragend', () => {
-          const pos = marker.getLatLng();
-          const next = vertices.map((v, i) =>
-            i === idx ? { lat: pos.lat, lng: pos.lng } : v
-          );
-          onPolygonVerticesChange(next);
-        });
-      }
-
-      marker.addTo(group);
-
-      // Kanten-Mittelpunkt zum Einfügen eines neuen Eckpunkts
-      if (!polygonDeleteVertexMode) {
-        const nextVertex = vertices[(idx + 1) % vertices.length];
-        const midLat = (vertex.lat + nextVertex.lat) / 2;
-        const midLng = (vertex.lng + nextVertex.lng) / 2;
-        const midMarker = L.marker([midLat, midLng], {
-          icon: createPolygonMidpointIcon(),
-        });
-        midMarker.bindTooltip('Tippen, um neuen Eckpunkt einzufügen');
-        midMarker.on('click', () => {
-          const next = [
-            ...vertices.slice(0, idx + 1),
-            { lat: midLat, lng: midLng },
-            ...vertices.slice(idx + 1),
-          ];
-          onPolygonVerticesChange(next);
-        });
-        midMarker.addTo(group);
-      }
-    });
-  }, [
-    playArea,
-    polygonEditActive,
-    polygonDeleteVertexMode,
-    onPolygonVerticesChange,
   ]);
 
   return (

@@ -1,16 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createDefaultPublicState,
   createDefaultTeams,
   TEAM_PALETTE,
 } from '../config/gameConfig';
-import type { DatabaseAdapter, UnsubscribeFn } from '../services/databaseAdapter';
+import {
+  deduplicateEnabledMembers,
+  extractActiveHiderLock,
+  extractEmergencyMessages,
+  extractReadyPlayerIds,
+  extractRoundStartMeta,
+  type DatabaseAdapter,
+  type UnsubscribeFn,
+} from '../services/databaseAdapter';
 import { generateRandomId, generateSessionSecrets } from '../services/qrService';
 import type {
   CatchRequest,
   ClueRecord,
   ClueRequest,
   ControllerLease,
+  EmergencyMessage,
+  HiderLoginLock,
   HiderPrivateState,
   JoinRequest,
   LeaderboardEntry,
@@ -35,6 +45,9 @@ export interface SynchronizedGameState {
   cluesByTeam: Record<string, Record<string, ClueRecord>>;
   catchRequests: Record<string, CatchRequest>;
   leaderboard: Record<string, LeaderboardEntry>;
+  activeHiderLock: HiderLoginLock | null;
+  readyPlayerIds: string[];
+  emergencyMessages: EmergencyMessage[];
 }
 
 /**
@@ -46,7 +59,9 @@ export function useGameState(
   ownMember: MemberRecord | null
 ): SynchronizedGameState {
   const [connected, setConnected] = useState(true);
-  const [publicState, setPublicState] = useState<PublicGameState | null>(null);
+  const [rawPublicState, setRawPublicState] = useState<PublicGameState | null>(
+    null
+  );
   const [controllerLease, setControllerLease] =
     useState<ControllerLease | null>(null);
   const [hiderPrivate, setHiderPrivate] = useState<HiderPrivateState | null>(
@@ -89,7 +104,7 @@ export function useGameState(
 
     const unsubs: UnsubscribeFn[] = [
       adapter.subscribePublicState((st) => {
-        setPublicState(st);
+        setRawPublicState(st);
         if (!st && ownMember.isHost) {
           const sessionId = generateRandomId('session');
           const defaults = createDefaultPublicState(sessionId);
@@ -137,6 +152,39 @@ export function useGameState(
     };
   }, [adapter, ownMember?.enabled, ownMember?.isHost]);
 
+  const publicState = useMemo<PublicGameState | null>(() => {
+    if (!rawPublicState) return null;
+    if (
+      rawPublicState.status !== 'LOBBY' &&
+      rawPublicState.gameStartTimestamp === null
+    ) {
+      const fallbackMeta = extractRoundStartMeta(rawPublicState, presence);
+      if (fallbackMeta) {
+        return {
+          ...rawPublicState,
+          gameStartTimestamp: fallbackMeta.gameStartTimestamp,
+          activeTeamIds: fallbackMeta.activeTeamIds,
+        };
+      }
+    }
+    return rawPublicState;
+  }, [rawPublicState, presence]);
+
+  const activeHiderLock = useMemo(
+    () => extractActiveHiderLock(publicState, presence, members),
+    [publicState, presence, members]
+  );
+
+  const readyPlayerIds = useMemo(
+    () => extractReadyPlayerIds(publicState, activeHiderLock, presence),
+    [publicState, activeHiderLock, presence]
+  );
+
+  const emergencyMessages = useMemo(
+    () => extractEmergencyMessages(presence),
+    [presence]
+  );
+
   const ownTeamStatus = ownMember?.teamId
     ? teamsPublic[ownMember.teamId]?.status
     : undefined;
@@ -156,6 +204,69 @@ export function useGameState(
     }
     return adapter.subscribeHiderPrivate(setHiderPrivate);
   }, [adapter, canReadHiderSecrets]);
+
+  // Automatischer Rundenstart, sobald Verstecker-Passwort gesetzt ist und ALLE Spieler auf „Bereit" gedrückt haben!
+  const autoStartedTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ownMember?.enabled || !publicState) return;
+    if (publicState.status !== 'LOBBY') return;
+    if (!activeHiderLock?.passwordHash) return;
+    if (!ownMember.isHost && ownMember.side !== 'HIDER') return;
+
+    const enabledList = deduplicateEnabledMembers(members, presence);
+    if (enabledList.length < 2) return;
+
+    const hiders = enabledList
+      .filter((m) => m.side === 'HIDER')
+      .sort((a, b) => a.playerId.localeCompare(b.playerId));
+    const seekers = enabledList.filter(
+      (m) => m.side === 'SEEKER' && Boolean(m.teamId)
+    );
+
+    if (hiders.length === 0 || seekers.length === 0) return;
+
+    const allAssigned = enabledList.every(
+      (m) => m.side === 'HIDER' || (m.side === 'SEEKER' && Boolean(m.teamId))
+    );
+    if (!allAssigned) return;
+
+    const readySet = new Set(readyPlayerIds);
+    const everyoneReady = enabledList.every((m) => readySet.has(m.playerId));
+    if (!everyoneReady) return;
+
+    const roundReadyToken = `${publicState.sessionId}:${activeHiderLock.logoutGen}`;
+    if (autoStartedTokenRef.current === roundReadyToken) return;
+
+    const isPrimaryStarter = hiders[0]?.playerId === ownMember.playerId;
+    const delayMs = isPrimaryStarter ? 150 : 1400;
+
+    const timerId = setTimeout(() => {
+      if (autoStartedTokenRef.current === roundReadyToken) return;
+      autoStartedTokenRef.current = roundReadyToken;
+      void adapter
+        .startRoundWhenAllReady({
+          starterUid: ownMember.uid,
+          publicState,
+          enabledMembers: enabledList,
+          currentHiderPrivate: hiderPrivate,
+          nowMs: adapter.getServerNow(),
+        })
+        .catch(() => {
+          autoStartedTokenRef.current = null;
+        });
+    }, delayMs);
+
+    return () => clearTimeout(timerId);
+  }, [
+    adapter,
+    activeHiderLock,
+    hiderPrivate,
+    members,
+    ownMember,
+    presence,
+    publicState,
+    readyPlayerIds,
+  ]);
 
   // Isolierte Team-Locations, Clues, Requests & CatchRequests rollenbasiert abonnieren
   useEffect(() => {
@@ -220,5 +331,8 @@ export function useGameState(
     cluesByTeam,
     catchRequests,
     leaderboard,
+    activeHiderLock,
+    readyPlayerIds,
+    emergencyMessages,
   };
 }

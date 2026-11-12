@@ -66,14 +66,14 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
           />
         </div>
 
-        {/* Groß gedruckter 6-stelliger Ersatzcode ohne 0/O/1/I */}
+        {/* Groß gedrucktes Verstecker-Passwort / Fang-Code */}
         <div className="w-full rounded-2xl border border-slate-800 bg-slate-900 p-4">
           <span className="block text-[11px] font-bold tracking-wider text-slate-400 uppercase">
-            6-stelliger Ersatzcode (falls Kamera blendet)
+            Euer Verstecker-Passwort / Fang-Code (falls Kamera blendet)
           </span>
           <div
             data-testid="hider-short-code"
-            className="mt-1.5 font-mono text-3xl font-black tracking-[0.28em] text-cyan-300"
+            className="mt-1.5 break-all font-mono text-2xl font-black tracking-wider text-cyan-300"
           >
             {hiderPrivate.shortCode}
           </div>

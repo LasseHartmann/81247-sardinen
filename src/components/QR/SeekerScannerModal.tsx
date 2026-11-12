@@ -60,7 +60,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
         if (!cancelled) {
           setCameraActive(false);
           setCameraError(
-            'Kamera konnte nicht geöffnet werden. Bitte nutze unten die manuelle Eingabe des 6-stelligen Ersatzcodes.'
+            'Kamera konnte nicht geöffnet werden. Bitte nutze unten die manuelle Eingabe des Verstecker-Passworts / Fang-Codes.'
           );
         }
       });
@@ -118,7 +118,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
             Sardinen gefunden?
           </span>
           <h2 className="text-xl font-black text-white">
-            QR-Code scannen oder 6-stelligen Code eingeben
+            QR-Code scannen oder Verstecker-Passwort eingeben
           </h2>
           <p className="mt-1 text-xs text-slate-400">
             Sobald der Code bestätigt ist, stoppt eure Suchzeit sofort und ihr wechselt gemeinsam in das Sardinen-Versteck!
@@ -173,7 +173,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
           )}
         </div>
 
-        {/* Manuelle 6-stellige Code-Eingabe */}
+        {/* Manuelle Passwort- / Fang-Code-Eingabe */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -186,23 +186,23 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
             className="flex items-center gap-2 text-sm font-bold text-white"
           >
             <KeyRound className="h-4 w-4 text-amber-400" />
-            2. 6-stelligen Ersatzcode eingeben
+            2. Verstecker-Passwort / Fang-Code eingeben
           </label>
           <div className="flex gap-2">
             <input
               id="manual-short-code"
               data-testid="manual-catch-code-input"
               type="text"
-              maxLength={12}
+              maxLength={32}
               value={manualCode}
-              onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-              placeholder="z. B. A7K9M2"
-              className="min-h-[48px] flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3.5 font-mono text-lg font-black tracking-widest text-white uppercase placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none"
+              onChange={(e) => setManualCode(e.target.value)}
+              placeholder="Passwort / Fang-Code ..."
+              className="min-h-[48px] flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3.5 font-mono text-lg font-black tracking-wider text-white placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none"
             />
             <button
               type="submit"
               data-testid="submit-catch-code-btn"
-              disabled={!gameRunning || manualCode.trim().length < 4}
+              disabled={!gameRunning || manualCode.trim().length < 3}
               className="min-h-[48px] rounded-xl bg-emerald-500 px-5 text-sm font-black text-slate-950 hover:bg-emerald-400 disabled:opacity-40"
             >
               Prüfen

@@ -16,6 +16,7 @@ import {
 } from 'firebase/database';
 import { getFirebaseClients, isFirebaseConfigured } from '../config/firebase';
 import {
+  createDefaultTeams,
   DEFAULT_PLAY_AREA_FEATURE,
   GAME_ID,
   isLegacyPlaceholderPlayArea,
@@ -26,6 +27,7 @@ import {
 } from '../config/gameConfig';
 import { getBrowserDemoStore } from '../demo/demoStore';
 import { roundCoord5 } from '../geo/distance';
+import { generateRandomId, generateSessionSecrets } from './qrService';
 import type {
   AuthUserSummary,
   CatchRequest,
@@ -34,7 +36,9 @@ import type {
   ClueRequest,
   ClueRequestStatus,
   ControllerLease,
+  EmergencyMessage,
   GeoFix,
+  HiderLoginLock,
   HiderPrivateState,
   JoinRequest,
   LeaderboardEntry,
@@ -186,12 +190,219 @@ export interface DatabaseAdapter {
     resetTeams: Record<string, TeamPublic>,
     newHiderPrivate: HiderPrivateState
   ): Promise<void>;
+
+  setHiderPasswordAndTriggerLogout(params: {
+    uid: string;
+    sessionId: string;
+    cleanPassword: string;
+    passwordHash: string;
+    hiderPlayerIds: string[];
+    nowMs: number;
+  }): Promise<HiderLoginLock>;
+
+  setPlayerReadyState(
+    uid: string,
+    playerId: string,
+    readyToken: string | null,
+    nowMs: number
+  ): Promise<void>;
+
+  sendEmergencyMessage(msg: EmergencyMessage): Promise<void>;
+  clearOwnEmergencyMessage(uid: string): Promise<void>;
+
+  fetchLoginSecurityContext(): Promise<{
+    publicState: PublicGameState | null;
+    members: Record<string, MemberRecord>;
+    activeHiderLock: HiderLoginLock | null;
+  }>;
+
+  startRoundWhenAllReady(params: {
+    starterUid: string;
+    publicState: PublicGameState;
+    enabledMembers: MemberRecord[];
+    currentHiderPrivate: HiderPrivateState | null;
+    nowMs: number;
+  }): Promise<void>;
 }
 
 const ROOT_PATH = `games/${GAME_ID}`;
 
 function stripUndefinedDeep<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj)) as T;
+}
+
+export function buildReadyToken(
+  sessionId: string,
+  logoutGen: string
+): string {
+  return `${sessionId}:${logoutGen}`;
+}
+
+export function isMemberTabOnline(
+  sessions: Record<string, PresenceSession> | undefined
+): boolean {
+  if (!sessions) return false;
+  return Object.entries(sessions).some(
+    ([key, s]) =>
+      Boolean(s?.online) &&
+      key !== 'emergency_alert' &&
+      key !== 'ready_state' &&
+      key !== 'hider_pw_lock' &&
+      key !== 'round_start_meta'
+  );
+}
+
+export function deduplicateEnabledMembers(
+  members: Record<string, MemberRecord>,
+  presence: Record<string, Record<string, PresenceSession>>
+): MemberRecord[] {
+  const deduped = new Map<string, MemberRecord>();
+  for (const m of Object.values(members)) {
+    if (!m.enabled) continue;
+    const prev = deduped.get(m.playerId);
+    if (!prev) {
+      deduped.set(m.playerId, m);
+      continue;
+    }
+    const mAssigned = m.side !== 'UNASSIGNED';
+    const prevAssigned = prev.side !== 'UNASSIGNED';
+    if (mAssigned && !prevAssigned) {
+      deduped.set(m.playerId, m);
+      continue;
+    }
+    if (mAssigned === prevAssigned) {
+      const mOnline = isMemberTabOnline(presence[m.uid]);
+      const prevOnline = isMemberTabOnline(presence[prev.uid]);
+      if (mOnline && !prevOnline) {
+        deduped.set(m.playerId, m);
+      }
+    }
+  }
+  return Array.from(deduped.values());
+}
+
+export function extractActiveHiderLock(
+  publicState: PublicGameState | null,
+  presence: Record<string, Record<string, PresenceSession>>,
+  members: Record<string, MemberRecord>
+): HiderLoginLock | null {
+  const sessionId = publicState?.sessionId;
+  if (!sessionId) return null;
+
+  let latest: HiderLoginLock | null = null;
+  if (publicState?.hiderLock && publicState.hiderLock.sessionId === sessionId) {
+    latest = { ...publicState.hiderLock };
+  }
+
+  for (const userSessions of Object.values(presence)) {
+    const lockEntry = userSessions?.hider_pw_lock;
+    if (
+      lockEntry &&
+      lockEntry.sessionId === sessionId &&
+      lockEntry.passwordHash &&
+      lockEntry.logoutGen
+    ) {
+      const candidateSetAt = lockEntry.lastSeen || 0;
+      if (!latest || candidateSetAt >= latest.setAt) {
+        latest = {
+          sessionId,
+          passwordHash: lockEntry.passwordHash,
+          hiderPlayerIds: Array.isArray(lockEntry.hiderPlayerIds)
+            ? [...lockEntry.hiderPlayerIds]
+            : [],
+          logoutGen: lockEntry.logoutGen,
+          setAt: candidateSetAt,
+        };
+      }
+    }
+  }
+
+  if (!latest) return null;
+
+  const combinedHiderIds = new Set<string>(latest.hiderPlayerIds);
+  for (const m of deduplicateEnabledMembers(members, presence)) {
+    if (m.side === 'HIDER') {
+      combinedHiderIds.add(m.playerId);
+    }
+  }
+
+  return {
+    ...latest,
+    hiderPlayerIds: Array.from(combinedHiderIds),
+  };
+}
+
+export function extractReadyPlayerIds(
+  publicState: PublicGameState | null,
+  activeHiderLock: HiderLoginLock | null,
+  presence: Record<string, Record<string, PresenceSession>>
+): string[] {
+  if (!publicState || !activeHiderLock) return [];
+  const expectedToken = buildReadyToken(
+    publicState.sessionId,
+    activeHiderLock.logoutGen
+  );
+  const readySet = new Set<string>();
+  for (const userSessions of Object.values(presence)) {
+    const readyEntry = userSessions?.ready_state;
+    if (
+      readyEntry &&
+      readyEntry.readyToken === expectedToken &&
+      readyEntry.playerId
+    ) {
+      readySet.add(readyEntry.playerId);
+    }
+  }
+  return Array.from(readySet);
+}
+
+export function extractEmergencyMessages(
+  presence: Record<string, Record<string, PresenceSession>>
+): EmergencyMessage[] {
+  const list: EmergencyMessage[] = [];
+  for (const [uid, userSessions] of Object.entries(presence)) {
+    const alert = userSessions?.emergency_alert;
+    if (alert && typeof alert.emergencyText === 'string' && alert.emergencyText.trim()) {
+      list.push({
+        uid,
+        playerId: alert.playerId ?? uid,
+        senderName: alert.senderName ?? 'Spieler',
+        text: alert.emergencyText.trim(),
+        createdAt: alert.lastSeen || 0,
+      });
+    }
+  }
+  return list.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export function extractRoundStartMeta(
+  publicState: PublicGameState | null,
+  presence: Record<string, Record<string, PresenceSession>>
+): { gameStartTimestamp: number; activeTeamIds: string[] } | null {
+  const sessionId = publicState?.sessionId;
+  if (!sessionId) return null;
+  let bestAt = -1;
+  let result: { gameStartTimestamp: number; activeTeamIds: string[] } | null = null;
+  for (const userSessions of Object.values(presence)) {
+    const meta = userSessions?.round_start_meta;
+    if (
+      meta &&
+      meta.sessionId === sessionId &&
+      typeof meta.gameStartTimestamp === 'number'
+    ) {
+      const ts = meta.lastSeen || meta.gameStartTimestamp;
+      if (ts > bestAt) {
+        bestAt = ts;
+        result = {
+          gameStartTimestamp: meta.gameStartTimestamp,
+          activeTeamIds: Array.isArray(meta.activeTeamIds)
+            ? meta.activeTeamIds
+            : TEAM_PALETTE.map((t) => t.id),
+        };
+      }
+    }
+  }
+  return result;
 }
 
 export function computeAveragedTeamLocationFromMemberFixes(
@@ -330,7 +541,20 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       for (const targetUid of memberUids) {
         await remove(ref(db, `${ROOT_PATH}/members/${targetUid}`)).catch(() => {});
         await remove(ref(db, `${ROOT_PATH}/joinRequests/${targetUid}`)).catch(() => {});
-        await remove(ref(db, `${ROOT_PATH}/presence/${targetUid}`)).catch(() => {});
+        // Entferne Sitzungen & Ready-Status, aber lasse eine etwaige Notfallnachricht des Spielers bestehen!
+        const presSnap = await get(ref(db, `${ROOT_PATH}/presence/${targetUid}`)).catch(
+          () => null
+        );
+        if (presSnap && presSnap.exists()) {
+          const sessions = presSnap.val() as Record<string, PresenceSession>;
+          for (const key of Object.keys(sessions)) {
+            if (key !== 'emergency_alert') {
+              await remove(
+                ref(db, `${ROOT_PATH}/presence/${targetUid}/${key}`)
+              ).catch(() => {});
+            }
+          }
+        }
       }
       await remove(ref(db, `${ROOT_PATH}/playerClaims/${playerId}`)).catch(() => {});
 
@@ -564,10 +788,31 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async cleanupOrphanedPresence(targetUid): Promise<void> {
+      const presSnap = await get(
+        ref(db, targetUid ? `${ROOT_PATH}/presence/${targetUid}` : `${ROOT_PATH}/presence`)
+      ).catch(() => null);
+      if (!presSnap || !presSnap.exists()) return;
+
       if (targetUid) {
-        await remove(ref(db, `${ROOT_PATH}/presence/${targetUid}`));
+        const sessions = presSnap.val() as Record<string, PresenceSession>;
+        for (const key of Object.keys(sessions)) {
+          if (key.startsWith('tab_')) {
+            await remove(ref(db, `${ROOT_PATH}/presence/${targetUid}/${key}`)).catch(
+              () => {}
+            );
+          }
+        }
       } else {
-        await remove(ref(db, `${ROOT_PATH}/presence`));
+        const all = presSnap.val() as Record<string, Record<string, PresenceSession>>;
+        for (const [uid, sessions] of Object.entries(all)) {
+          for (const key of Object.keys(sessions ?? {})) {
+            if (key.startsWith('tab_')) {
+              await remove(ref(db, `${ROOT_PATH}/presence/${uid}/${key}`)).catch(
+                () => {}
+              );
+            }
+          }
+        }
       }
     },
 
@@ -961,7 +1206,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     ): Promise<void> {
       await set(
         ref(db, `${ROOT_PATH}/state/public`),
-        stripUndefinedDeep(newPublicState)
+        stripUndefinedDeep({ ...newPublicState, hiderLock: null })
       );
       await remove(ref(db, `${ROOT_PATH}/state/controller`));
       await set(
@@ -978,6 +1223,247 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           stripUndefinedDeep(team)
         );
         await remove(ref(db, `${ROOT_PATH}/teams/${teamId}/location`));
+      }
+    },
+
+    async setHiderPasswordAndTriggerLogout({
+      uid,
+      sessionId,
+      cleanPassword,
+      passwordHash,
+      hiderPlayerIds,
+      nowMs,
+    }): Promise<HiderLoginLock> {
+      const logoutGen = generateRandomId('pwlogout');
+      const lock: HiderLoginLock = {
+        sessionId,
+        passwordHash,
+        hiderPlayerIds,
+        logoutGen,
+        setAt: nowMs,
+      };
+
+      // 1. Speichere das Verstecker-Passwort als QR-Secret & Fang-Code in hiderPrivate
+      await set(
+        ref(db, `${ROOT_PATH}/state/hiderPrivate`),
+        stripUndefinedDeep({
+          anchorPoint: null,
+          radarStages: [],
+          qrSecret: cleanPassword,
+          shortCode: cleanPassword,
+        })
+      );
+
+      // 2. Schreibe Lock-Metadaten in presence (funktioniert sofort für jeden Hider) + optional in state/public/hiderLock
+      await set(
+        ref(db, `${ROOT_PATH}/presence/${uid}/hider_pw_lock`),
+        stripUndefinedDeep({
+          online: false,
+          lastSeen: nowMs,
+          kind: 'HIDER_PW_LOCK',
+          sessionId,
+          passwordHash,
+          hiderPlayerIds,
+          logoutGen,
+        })
+      );
+
+      await set(
+        ref(db, `${ROOT_PATH}/state/public/hiderLock`),
+        stripUndefinedDeep(lock)
+      ).catch(() => {});
+
+      await remove(ref(db, `${ROOT_PATH}/presence/${uid}/ready_state`)).catch(
+        () => {}
+      );
+
+      return lock;
+    },
+
+    async setPlayerReadyState(uid, playerId, readyToken, nowMs): Promise<void> {
+      const readyRef = ref(db, `${ROOT_PATH}/presence/${uid}/ready_state`);
+      if (!readyToken) {
+        await remove(readyRef).catch(() => {});
+        return;
+      }
+      await set(
+        readyRef,
+        stripUndefinedDeep({
+          online: false,
+          lastSeen: nowMs,
+          kind: 'READY_STATE',
+          playerId,
+          readyToken,
+        })
+      );
+    },
+
+    async sendEmergencyMessage(msg): Promise<void> {
+      const alertRef = ref(db, `${ROOT_PATH}/presence/${msg.uid}/emergency_alert`);
+      await set(
+        alertRef,
+        stripUndefinedDeep({
+          online: false,
+          lastSeen: msg.createdAt,
+          kind: 'EMERGENCY_ALERT',
+          playerId: msg.playerId,
+          senderName: msg.senderName,
+          emergencyText: msg.text.trim(),
+        })
+      );
+    },
+
+    async clearOwnEmergencyMessage(uid): Promise<void> {
+      await remove(ref(db, `${ROOT_PATH}/presence/${uid}/emergency_alert`));
+    },
+
+    async fetchLoginSecurityContext() {
+      let pub: PublicGameState | null = null;
+      let members: Record<string, MemberRecord> = {};
+      let presence: Record<string, Record<string, PresenceSession>> = {};
+
+      try {
+        const pubSnap = await get(ref(db, `${ROOT_PATH}/state/public`));
+        if (pubSnap.exists()) {
+          pub = pubSnap.val() as PublicGameState;
+        }
+      } catch {
+        // Falls vollständiger state/public noch nicht lesbar ist, versuche hiderLock direkt zu lesen
+        try {
+          const lockSnap = await get(ref(db, `${ROOT_PATH}/state/public/hiderLock`));
+          if (lockSnap.exists()) {
+            const hl = lockSnap.val() as HiderLoginLock;
+            return {
+              publicState: null,
+              members: {},
+              activeHiderLock: hl,
+            };
+          }
+        } catch {
+          // Ignorieren
+        }
+      }
+
+      try {
+        const memSnap = await get(ref(db, `${ROOT_PATH}/members`));
+        if (memSnap.exists()) {
+          const raw = memSnap.val() as Record<string, MemberRecord>;
+          for (const [u, rec] of Object.entries(raw)) {
+            members[u] = { ...rec, uid: u };
+          }
+        }
+      } catch {
+        // Ignorieren
+      }
+
+      try {
+        const presSnap = await get(ref(db, `${ROOT_PATH}/presence`));
+        if (presSnap.exists()) {
+          presence = presSnap.val() as Record<string, Record<string, PresenceSession>>;
+        }
+      } catch {
+        // Ignorieren
+      }
+
+      const activeHiderLock = extractActiveHiderLock(pub, presence, members);
+      return {
+        publicState: pub,
+        members,
+        activeHiderLock,
+      };
+    },
+
+    async startRoundWhenAllReady({
+      starterUid,
+      publicState,
+      enabledMembers,
+      currentHiderPrivate,
+      nowMs,
+    }): Promise<void> {
+      const nextTeams = createDefaultTeams();
+      for (const m of enabledMembers) {
+        if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
+          if (!nextTeams[m.teamId].memberPlayerIds.includes(m.playerId)) {
+            nextTeams[m.teamId].memberPlayerIds.push(m.playerId);
+          }
+          nextTeams[m.teamId].beaconPlayerId =
+            nextTeams[m.teamId].memberPlayerIds[0] ?? null;
+        }
+      }
+
+      const occupiedTeamIds = Object.values(nextTeams)
+        .filter((t) => t.memberPlayerIds.length > 0)
+        .map((t) => t.id);
+
+      const fallbackSecrets = generateSessionSecrets();
+      const preservedSecret =
+        currentHiderPrivate?.qrSecret?.trim() || fallbackSecrets.qrSecret;
+      const preservedShortCode =
+        currentHiderPrivate?.shortCode?.trim() || fallbackSecrets.shortCode;
+
+      await set(
+        ref(db, `${ROOT_PATH}/state/hiderPrivate`),
+        stripUndefinedDeep({
+          anchorPoint: null,
+          radarStages: [],
+          qrSecret: preservedSecret,
+          shortCode: preservedShortCode,
+        })
+      );
+
+      for (const [teamId, team] of Object.entries(nextTeams)) {
+        await set(
+          ref(db, `${ROOT_PATH}/teams/${teamId}/public`),
+          stripUndefinedDeep(team)
+        );
+        await remove(ref(db, `${ROOT_PATH}/teams/${teamId}/location`)).catch(
+          () => {}
+        );
+      }
+
+      await remove(ref(db, `${ROOT_PATH}/leaderboard`)).catch(() => {});
+      await remove(ref(db, `${ROOT_PATH}/clues`)).catch(() => {});
+      await remove(ref(db, `${ROOT_PATH}/requests`)).catch(() => {});
+      await remove(ref(db, `${ROOT_PATH}/catchRequests`)).catch(() => {});
+
+      // Speichere Rundenstart-Metadaten parallel in presence (Fallback, falls ältere DB-Rules aktiv sind)
+      await set(
+        ref(db, `${ROOT_PATH}/presence/${starterUid}/round_start_meta`),
+        stripUndefinedDeep({
+          online: false,
+          lastSeen: nowMs,
+          kind: 'ROUND_START_META',
+          sessionId: publicState.sessionId,
+          gameStartTimestamp: nowMs,
+          activeTeamIds: occupiedTeamIds,
+        })
+      );
+
+      try {
+        await update(ref(db, `${ROOT_PATH}/state/public`), {
+          status: 'RUNNING',
+          currentPhase: 'HIDING',
+          gameStartTimestamp: nowMs,
+          searchStartTimestamp: null,
+          pausedAt: null,
+          totalPausedMs: 0,
+          pausedBeforeSearchMs: 0,
+          anchorLocked: false,
+          radarCircle: null,
+          leashAlertActive: false,
+          activeTeamIds: occupiedTeamIds,
+        });
+      } catch {
+        // Fallback auf die strikt erlaubten Controller-Felder
+        await update(ref(db, `${ROOT_PATH}/state/public`), {
+          status: 'RUNNING',
+          currentPhase: 'HIDING',
+          searchStartTimestamp: null,
+          pausedBeforeSearchMs: 0,
+          anchorLocked: false,
+          radarCircle: null,
+          leashAlertActive: false,
+        });
       }
     },
   };

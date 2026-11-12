@@ -136,6 +136,19 @@ export function verifyAdminCode(rawCode: string): {
   return { valid: false };
 }
 
+export function computeHiderPasswordHash(rawPassword: string): string {
+  const cleaned = rawPassword.trim().toLowerCase();
+  return sha256Hex(`sardinen_81247_hider_pw:${cleaned}`);
+}
+
+export function verifyHiderPasswordHash(
+  rawPassword: string,
+  expectedHash: string | null | undefined
+): boolean {
+  if (!expectedHash || !rawPassword.trim()) return false;
+  return computeHiderPasswordHash(rawPassword) === expectedHash;
+}
+
 /**
  * Prüft eine Namenseingabe (Groß-/Kleinschreibung egal, Leerzeichen werden ignoriert)
  * strikt gegen die 11 erlaubten Spielernamen — nicht mehr und nicht weniger.

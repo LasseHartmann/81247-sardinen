@@ -7,10 +7,19 @@ import {
   Wifi,
   WifiOff,
   AlertTriangle,
+  AlertOctagon,
+  Send,
+  Trash2,
 } from 'lucide-react';
 import type { GameTimerSnapshot } from '../../hooks/useGameTimer';
 import type { GpsPermissionState } from '../../hooks/useGeolocation';
-import type { GeoFix, MemberRecord, PublicGameState, TeamPublic } from '../../types/game';
+import type {
+  EmergencyMessage,
+  GeoFix,
+  MemberRecord,
+  PublicGameState,
+  TeamPublic,
+} from '../../types/game';
 import {
   formatDurationClock,
   formatPenaltyMinutes,
@@ -25,6 +34,9 @@ export interface TopHudProps {
   connected: boolean;
   ownFix: GeoFix | null;
   gpsStatus: GpsPermissionState;
+  ownEmergencyMessage: EmergencyMessage | null;
+  onSendEmergencyMessage: (text: string) => Promise<void>;
+  onClearOwnEmergencyMessage: () => Promise<void>;
   onUnlockAdmin?: (code: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -36,6 +48,9 @@ export const TopHud: React.FC<TopHudProps> = ({
   connected,
   ownFix,
   gpsStatus,
+  ownEmergencyMessage,
+  onSendEmergencyMessage,
+  onClearOwnEmergencyMessage,
   onUnlockAdmin,
 }) => {
   const activePhase =
@@ -46,10 +61,28 @@ export const TopHud: React.FC<TopHudProps> = ({
   const [adminCode, setAdminCode] = useState('');
   const [adminErr, setAdminErr] = useState<string | null>(null);
 
+  const [emergencyDrawerOpen, setEmergencyDrawerOpen] = useState(false);
+  const [emergencyDraft, setEmergencyDraft] = useState('');
+  const [sendingEmergency, setSendingEmergency] = useState(false);
+
   const canUnlockAdmin =
     !ownMember.isHost &&
     Boolean(onUnlockAdmin) &&
     (ownMember.playerId === 'lasse' || ownMember.playerId === 'linus');
+
+  const handleEmergencySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned = emergencyDraft.trim();
+    if (!cleaned) return;
+    setSendingEmergency(true);
+    try {
+      await onSendEmergencyMessage(cleaned);
+      setEmergencyDraft('');
+      setEmergencyDrawerOpen(false);
+    } finally {
+      setSendingEmergency(false);
+    }
+  };
 
   return (
     <header className="pointer-events-auto z-20 border-b border-slate-800/90 bg-slate-950/92 px-3 py-2 backdrop-blur-md">
@@ -88,7 +121,7 @@ export const TopHud: React.FC<TopHudProps> = ({
           </div>
         </div>
 
-        {/* Rechte Status-Leiste: Strafzeit, GPS, Netz & Sammelpunkt */}
+        {/* Rechte Status-Leiste: Strafzeit, GPS, Netz, Notfall & Admin */}
         <div className="flex items-center gap-1.5">
           {ownTeam && (
             <div
@@ -137,15 +170,34 @@ export const TopHud: React.FC<TopHudProps> = ({
             )}
           </div>
 
+          <button
+            type="button"
+            data-testid="open-emergency-drawer-btn"
+            onClick={() => {
+              setAdminModalOpen(false);
+              setEmergencyDrawerOpen((v) => !v);
+            }}
+            title="Notfallnachricht an alle senden oder eigene löschen"
+            className={`inline-flex min-h-[38px] items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-extrabold transition ${
+              ownEmergencyMessage
+                ? 'border-rose-400 bg-rose-600 text-white'
+                : 'border-rose-500/50 bg-rose-950/50 text-rose-300 hover:bg-rose-900/60'
+            }`}
+          >
+            <AlertOctagon className="h-4 w-4" />
+            <span>Notfall</span>
+          </button>
+
           {canUnlockAdmin && (
             <button
               type="button"
               onClick={() => {
+                setEmergencyDrawerOpen(false);
                 setAdminErr(null);
                 setAdminModalOpen((v) => !v);
               }}
               title="Admin-Code eingeben"
-              className="inline-flex min-h-[40px] items-center gap-1 rounded-xl border border-amber-500/40 bg-amber-950/50 px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-900/60"
+              className="inline-flex min-h-[38px] items-center gap-1 rounded-xl border border-amber-500/40 bg-amber-950/50 px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-900/60"
             >
               <KeyRound className="h-4 w-4" />
               <span className="hidden xs:inline">Admin</span>
@@ -153,6 +205,71 @@ export const TopHud: React.FC<TopHudProps> = ({
           )}
         </div>
       </div>
+
+      {emergencyDrawerOpen && (
+        <div className="mx-auto mt-2 max-w-xl rounded-xl border border-rose-500/60 bg-slate-900 p-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-extrabold text-rose-300">
+              Notfallnachricht (dauerhaft für alle sichtbar)
+            </span>
+            <button
+              type="button"
+              onClick={() => setEmergencyDrawerOpen(false)}
+              className="text-[11px] font-semibold text-slate-400 hover:text-slate-200"
+            >
+              Schließen
+            </button>
+          </div>
+
+          {ownEmergencyMessage && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-500/40 bg-rose-950/50 px-3 py-2 text-xs">
+              <span className="text-rose-100">
+                Aktiv gesendet: <strong>{ownEmergencyMessage.text}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={async () => {
+                  await onClearOwnEmergencyMessage();
+                  setEmergencyDrawerOpen(false);
+                }}
+                className="inline-flex min-h-[34px] items-center gap-1 rounded-lg bg-rose-600 px-2.5 py-1 text-xs font-black text-white hover:bg-rose-500"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Eigene Nachricht löschen
+              </button>
+            </div>
+          )}
+
+          <form
+            onSubmit={(e) => void handleEmergencySubmit(e)}
+            className="flex flex-wrap gap-2"
+          >
+            <input
+              type="text"
+              data-testid="emergency-message-input"
+              maxLength={180}
+              autoFocus
+              value={emergencyDraft}
+              onChange={(e) => setEmergencyDraft(e.target.value)}
+              placeholder={
+                ownEmergencyMessage
+                  ? 'Nachricht aktualisieren ...'
+                  : 'Was ist passiert? (z. B. Verletzung, Hilfe benötigt, Standort ...)'
+              }
+              className="min-h-[40px] flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white placeholder:text-slate-500 focus:border-rose-400 focus:outline-none"
+            />
+            <button
+              type="submit"
+              data-testid="send-emergency-message-btn"
+              disabled={sendingEmergency || !emergencyDraft.trim()}
+              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-black text-white hover:bg-rose-500 disabled:opacity-40"
+            >
+              <Send className="h-3.5 w-3.5" />
+              {sendingEmergency ? 'Sende ...' : 'An alle senden'}
+            </button>
+          </form>
+        </div>
+      )}
 
       {adminModalOpen && canUnlockAdmin && onUnlockAdmin && (
         <form

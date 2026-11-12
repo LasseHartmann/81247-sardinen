@@ -6,14 +6,23 @@ import {
   TEAM_PALETTE,
 } from '../src/config/gameConfig';
 import {
+  computeHiderPasswordHash,
   EXPECTED_ADMIN_AUTH_HASH,
   PRESET_PLAYERS,
   resolveAllowedPlayerByNameInput,
   verifyAdminCode,
+  verifyHiderPasswordHash,
 } from '../src/config/players';
 import { createDemoStore } from '../src/demo/demoStore';
 import { destinationPoint } from '../src/geo/distance';
-import { computeAveragedTeamLocationFromMemberFixes } from '../src/services/databaseAdapter';
+import {
+  buildReadyToken,
+  computeAveragedTeamLocationFromMemberFixes,
+  deduplicateEnabledMembers,
+  extractActiveHiderLock,
+  extractEmergencyMessages,
+  extractReadyPlayerIds,
+} from '../src/services/databaseAdapter';
 import { evaluateLocationThrottle } from '../src/services/locationService';
 import { createSyntheticDemoAudio } from '../src/services/mediaService';
 import {
@@ -266,5 +275,131 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
         name: LEGACY_PLACEHOLDER_AREA_NAME,
       })
     ).toBe(true);
+  });
+
+  it('setzt das Verstecker-Passwort als QR-/Fang-Code + Account-Schutz, startet bei Alle-Bereit automatisch nur mit belegten Teams und erlaubt Notfallnachrichten-Löschung nur dem Absender', async () => {
+    const t0 = 1_700_050_000_000;
+    const store = createDemoStore({ inMemoryOnly: true, initialNowMs: t0 });
+
+    const snap0 = store.getSnapshot();
+    const sessionId = snap0.state.public.sessionId;
+
+    // 1. Verstecker (Lasse) legt Passwort fest -> wird QR-Geheimnis, Fang-Code & gehashter Login-Schutz
+    const chosenPw = 'BlutenburgFuchs';
+    const pwHash = computeHiderPasswordHash(chosenPw);
+    expect(verifyHiderPasswordHash(chosenPw, pwHash)).toBe(true);
+    expect(verifyHiderPasswordHash('Falsch123', pwHash)).toBe(false);
+
+    const lock = await store.adapter.setHiderPasswordAndTriggerLogout({
+      uid: 'demo_uid_lasse',
+      sessionId,
+      cleanPassword: chosenPw,
+      passwordHash: pwHash,
+      hiderPlayerIds: ['lasse'],
+      nowMs: t0 + 1_000,
+    });
+
+    const snapAfterPw = store.getSnapshot();
+    expect(snapAfterPw.state.hiderPrivate.qrSecret).toBe(chosenPw);
+    expect(snapAfterPw.state.hiderPrivate.shortCode).toBe(chosenPw);
+
+    const extractedLock = extractActiveHiderLock(
+      snapAfterPw.state.public,
+      snapAfterPw.presence,
+      snapAfterPw.members
+    );
+    expect(extractedLock?.logoutGen).toBe(lock.logoutGen);
+    expect(extractedLock?.hiderPlayerIds).toContain('lasse');
+
+    // Sowohl QR-Scan als auch manuelle Passwort-Eingabe verifizieren das Verstecker-Passwort
+    const qrJson = serializeQrPayload(sessionId, chosenPw, chosenPw);
+    expect(
+      verifyCatchSubmission(qrJson, sessionId, sessionId, chosenPw, chosenPw).valid
+    ).toBe(true);
+    expect(
+      verifyCatchSubmission(chosenPw, sessionId, sessionId, chosenPw, chosenPw).valid
+    ).toBe(true);
+    expect(
+      verifyCatchSubmission(
+        chosenPw.toLowerCase(),
+        sessionId,
+        sessionId,
+        chosenPw,
+        chosenPw
+      ).valid
+    ).toBe(true);
+    expect(
+      verifyCatchSubmission('FalscherCode', sessionId, sessionId, chosenPw, chosenPw)
+        .valid
+    ).toBe(false);
+
+    // 2. Alle Spieler drücken „Bereit" -> Runde startet automatisch und führt nur belegte Teams
+    const enabledMembers = deduplicateEnabledMembers(
+      snapAfterPw.members,
+      snapAfterPw.presence
+    );
+    const readyToken = buildReadyToken(sessionId, lock.logoutGen);
+
+    for (const m of enabledMembers) {
+      await store.adapter.setPlayerReadyState(
+        m.uid,
+        m.playerId,
+        readyToken,
+        t0 + 2_000
+      );
+    }
+
+    const snapReady = store.getSnapshot();
+    const readyIds = extractReadyPlayerIds(
+      snapReady.state.public,
+      extractedLock,
+      snapReady.presence
+    );
+    expect(readyIds.sort()).toEqual(enabledMembers.map((m) => m.playerId).sort());
+
+    await store.adapter.startRoundWhenAllReady({
+      starterUid: 'demo_uid_lasse',
+      publicState: snapReady.state.public,
+      enabledMembers,
+      currentHiderPrivate: snapReady.state.hiderPrivate,
+      nowMs: t0 + 3_000,
+    });
+
+    const snapStarted = store.getSnapshot();
+    expect(snapStarted.state.public.status).toBe('RUNNING');
+    expect(snapStarted.state.public.currentPhase).toBe('HIDING');
+    // Im Demo-Default sind nur Team 1 bis Team 4 belegt (Team 5 & Team 6 leer -> nicht in activeTeamIds!)
+    expect(snapStarted.state.public.activeTeamIds).toEqual([
+      'team-1',
+      'team-2',
+      'team-3',
+      'team-4',
+    ]);
+    // Verstecker-Passwort bleibt nach Rundenstart unverändert erhalten!
+    expect(snapStarted.state.hiderPrivate.shortCode).toBe(chosenPw);
+    expect(snapStarted.state.hiderPrivate.qrSecret).toBe(chosenPw);
+
+    // 3. Notfallnachricht senden, für alle sichtbar extrahieren & Löschschutz bei Orphan-Cleanup prüfen
+    await store.adapter.sendEmergencyMessage({
+      uid: 'demo_uid_thomas',
+      playerId: 'thomas',
+      senderName: 'Thomas',
+      text: 'Umgeknickt an der Würmbrücke, bitte kurz warten!',
+      createdAt: t0 + 4_000,
+    });
+
+    const msgs1 = extractEmergencyMessages(store.getSnapshot().presence);
+    expect(msgs1).toHaveLength(1);
+    expect(msgs1[0].senderName).toBe('Thomas');
+    expect(msgs1[0].text).toContain('Würmbrücke');
+
+    // Weder Orphan-Cleanup noch ein fremder Löschversuch löschen Thomas' Notfallnachricht
+    await store.adapter.cleanupOrphanedPresence('demo_uid_thomas');
+    await store.adapter.clearOwnEmergencyMessage('demo_uid_robert');
+    expect(extractEmergencyMessages(store.getSnapshot().presence)).toHaveLength(1);
+
+    // Erst wenn der Absender selbst (demo_uid_thomas) löscht, verschwindet die Nachricht
+    await store.adapter.clearOwnEmergencyMessage('demo_uid_thomas');
+    expect(extractEmergencyMessages(store.getSnapshot().presence)).toHaveLength(0);
   });
 });

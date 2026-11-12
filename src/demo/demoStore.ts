@@ -8,6 +8,7 @@ import { snapPointIntoPlayArea } from '../geo/boundary';
 import { destinationPoint, roundLatLng5 } from '../geo/distance';
 import {
   computeAveragedTeamLocationFromMemberFixes,
+  extractActiveHiderLock,
   type ControllerPublicPatch,
   type DatabaseAdapter,
   type UnsubscribeFn,
@@ -21,6 +22,7 @@ import type {
   ClueRequest,
   ControllerLease,
   DemoRoleId,
+  HiderLoginLock,
   HiderPrivateState,
   JoinRequest,
   LeaderboardEntry,
@@ -448,7 +450,13 @@ export function createDemoStore(options?: {
         for (const targetUid of memberUids) {
           delete t.members[targetUid];
           delete t.joinRequests?.[targetUid];
-          delete t.presence?.[targetUid];
+          if (t.presence?.[targetUid]) {
+            for (const key of Object.keys(t.presence[targetUid])) {
+              if (key !== 'emergency_alert') {
+                delete t.presence[targetUid][key];
+              }
+            }
+          }
         }
         for (const [uid, rec] of Object.entries(t.members)) {
           if (rec.playerId === playerId) {
@@ -621,9 +629,21 @@ export function createDemoStore(options?: {
     async cleanupOrphanedPresence(targetUid): Promise<void> {
       writeTree((t) => {
         if (targetUid) {
-          delete t.presence[targetUid];
+          if (t.presence[targetUid]) {
+            for (const key of Object.keys(t.presence[targetUid])) {
+              if (key.startsWith('tab_')) {
+                delete t.presence[targetUid][key];
+              }
+            }
+          }
         } else {
-          t.presence = {};
+          for (const sessions of Object.values(t.presence)) {
+            for (const key of Object.keys(sessions)) {
+              if (key.startsWith('tab_')) {
+                delete sessions[key];
+              }
+            }
+          }
         }
       });
     },
@@ -907,7 +927,7 @@ export function createDemoStore(options?: {
 
     async resetRoundByHost(newPublicState, resetTeams, newHiderPrivate): Promise<void> {
       writeTree((t) => {
-        t.state.public = structuredClone(newPublicState);
+        t.state.public = structuredClone({ ...newPublicState, hiderLock: null });
         t.state.controller = null;
         t.state.hiderPrivate = structuredClone(newHiderPrivate);
         t.clues = {};
@@ -920,6 +940,166 @@ export function createDemoStore(options?: {
             location: null,
           };
         }
+      });
+    },
+
+    async setHiderPasswordAndTriggerLogout({
+      uid,
+      sessionId,
+      cleanPassword,
+      passwordHash,
+      hiderPlayerIds,
+      nowMs,
+    }): Promise<HiderLoginLock> {
+      const logoutGen = generateRandomId('pwlogout');
+      const lock: HiderLoginLock = {
+        sessionId,
+        passwordHash,
+        hiderPlayerIds: [...hiderPlayerIds],
+        logoutGen,
+        setAt: nowMs,
+      };
+      writeTree((t) => {
+        t.state.hiderPrivate = {
+          anchorPoint: null,
+          radarStages: [],
+          qrSecret: cleanPassword,
+          shortCode: cleanPassword,
+        };
+        t.state.public.hiderLock = structuredClone(lock);
+        if (!t.presence[uid]) t.presence[uid] = {};
+        t.presence[uid].hider_pw_lock = {
+          online: false,
+          lastSeen: nowMs,
+          kind: 'HIDER_PW_LOCK',
+          sessionId,
+          passwordHash,
+          hiderPlayerIds: [...hiderPlayerIds],
+          logoutGen,
+        };
+        delete t.presence[uid].ready_state;
+      });
+      return lock;
+    },
+
+    async setPlayerReadyState(uid, playerId, readyToken, nowMs): Promise<void> {
+      writeTree((t) => {
+        if (!t.presence[uid]) t.presence[uid] = {};
+        if (!readyToken) {
+          delete t.presence[uid].ready_state;
+          return;
+        }
+        t.presence[uid].ready_state = {
+          online: false,
+          lastSeen: nowMs,
+          kind: 'READY_STATE',
+          playerId,
+          readyToken,
+        };
+      });
+    },
+
+    async sendEmergencyMessage(msg): Promise<void> {
+      writeTree((t) => {
+        if (!t.presence[msg.uid]) t.presence[msg.uid] = {};
+        t.presence[msg.uid].emergency_alert = {
+          online: false,
+          lastSeen: msg.createdAt,
+          kind: 'EMERGENCY_ALERT',
+          playerId: msg.playerId,
+          senderName: msg.senderName,
+          emergencyText: msg.text.trim(),
+        };
+      });
+    },
+
+    async clearOwnEmergencyMessage(uid): Promise<void> {
+      writeTree((t) => {
+        if (t.presence[uid]) {
+          delete t.presence[uid].emergency_alert;
+        }
+      });
+    },
+
+    async fetchLoginSecurityContext() {
+      const t = readTree();
+      const pub = structuredClone(t.state.public);
+      const members = structuredClone(t.members);
+      const presence = structuredClone(t.presence);
+      const activeHiderLock = extractActiveHiderLock(pub, presence, members);
+      return {
+        publicState: pub,
+        members,
+        activeHiderLock,
+      };
+    },
+
+    async startRoundWhenAllReady({
+      starterUid,
+      publicState,
+      enabledMembers,
+      currentHiderPrivate,
+      nowMs,
+    }): Promise<void> {
+      writeTree((t) => {
+        const nextTeams = createDefaultTeams();
+        for (const m of enabledMembers) {
+          if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
+            if (!nextTeams[m.teamId].memberPlayerIds.includes(m.playerId)) {
+              nextTeams[m.teamId].memberPlayerIds.push(m.playerId);
+            }
+            nextTeams[m.teamId].beaconPlayerId =
+              nextTeams[m.teamId].memberPlayerIds[0] ?? null;
+          }
+        }
+        const occupiedTeamIds = Object.values(nextTeams)
+          .filter((tm) => tm.memberPlayerIds.length > 0)
+          .map((tm) => tm.id);
+
+        const fallback = generateSessionSecrets();
+        t.state.hiderPrivate = {
+          anchorPoint: null,
+          radarStages: [],
+          qrSecret: currentHiderPrivate?.qrSecret?.trim() || fallback.qrSecret,
+          shortCode: currentHiderPrivate?.shortCode?.trim() || fallback.shortCode,
+        };
+
+        for (const [id, pub] of Object.entries(nextTeams)) {
+          t.teams[id] = {
+            public: pub,
+            location: null,
+          };
+        }
+
+        t.clues = {};
+        t.requests = {};
+        t.catchRequests = {};
+        t.leaderboard = {};
+
+        if (!t.presence[starterUid]) t.presence[starterUid] = {};
+        t.presence[starterUid].round_start_meta = {
+          online: false,
+          lastSeen: nowMs,
+          kind: 'ROUND_START_META',
+          sessionId: publicState.sessionId,
+          gameStartTimestamp: nowMs,
+          activeTeamIds: occupiedTeamIds,
+        };
+
+        t.state.public = {
+          ...t.state.public,
+          status: 'RUNNING',
+          currentPhase: 'HIDING',
+          gameStartTimestamp: nowMs,
+          searchStartTimestamp: null,
+          pausedAt: null,
+          totalPausedMs: 0,
+          pausedBeforeSearchMs: 0,
+          anchorLocked: false,
+          radarCircle: null,
+          leashAlertActive: false,
+          activeTeamIds: occupiedTeamIds,
+        };
       });
     },
   };

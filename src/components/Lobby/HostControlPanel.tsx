@@ -10,16 +10,22 @@ import {
   Trash2,
   FastForward,
   Lock,
+  CheckCircle2,
 } from 'lucide-react';
-import type { Feature, Polygon } from 'geojson';
 import {
   createDefaultPublicState,
   createDefaultTeams,
   TEAM_PALETTE,
 } from '../../config/gameConfig';
-import type { DatabaseAdapter } from '../../services/databaseAdapter';
+import {
+  deduplicateEnabledMembers,
+  isMemberTabOnline,
+  type DatabaseAdapter,
+} from '../../services/databaseAdapter';
 import { generateRandomId, generateSessionSecrets } from '../../services/qrService';
 import type {
+  HiderLoginLock,
+  HiderPrivateState,
   JoinRequest,
   MemberRecord,
   PlayerSide,
@@ -27,20 +33,18 @@ import type {
   PublicGameState,
   TeamPublic,
 } from '../../types/game';
-import { PlayAreaEditor } from './PlayAreaEditor';
 
 export interface HostControlPanelProps {
   adapter: DatabaseAdapter;
   ownMember: MemberRecord;
   publicState: PublicGameState;
+  hiderPrivate: HiderPrivateState | null;
+  activeHiderLock: HiderLoginLock | null;
+  readyPlayerIds: string[];
   members: Record<string, MemberRecord>;
   joinRequests: Record<string, JoinRequest>;
   presence: Record<string, Record<string, PresenceSession>>;
   teamsPublic: Record<string, TeamPublic>;
-  polygonEditActive: boolean;
-  polygonDeleteVertexMode: boolean;
-  onTogglePolygonEdit: (active: boolean) => void;
-  onTogglePolygonDeleteMode: (del: boolean) => void;
   onNavigateToMap: () => void;
   onLeaveAndLockConsole?: () => void;
 }
@@ -49,14 +53,13 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   adapter,
   ownMember,
   publicState,
+  hiderPrivate,
+  activeHiderLock,
+  readyPlayerIds,
   members,
   joinRequests,
   presence,
   teamsPublic,
-  polygonEditActive,
-  polygonDeleteVertexMode,
-  onTogglePolygonEdit,
-  onTogglePolygonDeleteMode,
   onNavigateToMap,
   onLeaveAndLockConsole,
 }) => {
@@ -67,51 +70,22 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   const openRequests = Object.values(joinRequests).sort(
     (a, b) => a.requestedAt - b.requestedAt
   );
-  // Dedupliziere nach playerId (bevorzuge aktive Sitzung in presence, sonst neuesten Eintrag),
-  // damit jeder Spieler garantiert nur einmal in der Liste steht!
-  const dedupedByPlayerId = new Map<string, MemberRecord>();
-  for (const m of Object.values(members)) {
-    if (!m.enabled) continue;
-    const existing = dedupedByPlayerId.get(m.playerId);
-    if (!existing) {
-      dedupedByPlayerId.set(m.playerId, m);
-    } else {
-      const mOnline = Boolean(presence[m.uid]);
-      const exOnline = Boolean(presence[existing.uid]);
-      if (mOnline && !exOnline) {
-        dedupedByPlayerId.set(m.playerId, m);
-      }
-    }
-  }
-  const enabledMembers = Array.from(dedupedByPlayerId.values());
+
+  const enabledMembers = deduplicateEnabledMembers(members, presence);
+  const readySet = new Set(readyPlayerIds);
+  const readyCount = enabledMembers.filter((m) => readySet.has(m.playerId)).length;
   const hiderCount = enabledMembers.filter(
     (m) => m.enabled && m.side === 'HIDER'
   ).length;
 
-  const handleUpdatePolygon = async (
-    nextPolygon: Feature<Polygon>,
-    confirmed: boolean
-  ) => {
-    const now = adapter.getServerNow();
-    await adapter.savePublicStateByHost({
-      ...publicState,
-      playArea: {
-        ...publicState.playArea,
-        polygon: nextPolygon,
-        confirmed,
-        confirmedAt: confirmed ? now : null,
-        confirmedByUid: confirmed ? ownMember.uid : null,
-      },
-    });
-  };
-
   const handleStartRound = async () => {
-    if (!publicState.playArea.confirmed) return;
     const now = adapter.getServerNow();
-    const sessionId = generateRandomId('session');
-    const secrets = generateSessionSecrets();
+    const fallbackSecrets = generateSessionSecrets();
+    const preservedQrSecret =
+      hiderPrivate?.qrSecret?.trim() || fallbackSecrets.qrSecret;
+    const preservedShortCode =
+      hiderPrivate?.shortCode?.trim() || fallbackSecrets.shortCode;
 
-    // Baue frische Team-Einträge anhand der aktuellen Spielerzuweisungen
     const nextTeams = createDefaultTeams();
     for (const m of enabledMembers) {
       if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
@@ -137,12 +111,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
         pausedAt: null,
         totalPausedMs: 0,
         pausedBeforeSearchMs: 0,
-        sessionId,
         anchorLocked: false,
         radarCircle: null,
         emergencyStopReason: null,
         leashAlertActive: false,
         activeTeamIds: occupiedTeamIds,
+        hiderLock: activeHiderLock,
         radarSchedule: {
           ...publicState.radarSchedule,
           hidingDurationMs: Math.max(1, hidingMinInput) * 60_000,
@@ -152,10 +126,34 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       {
         anchorPoint: null,
         radarStages: [],
-        qrSecret: secrets.qrSecret,
-        shortCode: secrets.shortCode,
+        qrSecret: preservedQrSecret,
+        shortCode: preservedShortCode,
       }
     );
+    if (activeHiderLock) {
+      await adapter
+        .savePublicStateByHost({
+          ...publicState,
+          status: 'RUNNING',
+          currentPhase: 'HIDING',
+          gameStartTimestamp: now,
+          searchStartTimestamp: null,
+          pausedAt: null,
+          totalPausedMs: 0,
+          pausedBeforeSearchMs: 0,
+          anchorLocked: false,
+          radarCircle: null,
+          emergencyStopReason: null,
+          leashAlertActive: false,
+          activeTeamIds: occupiedTeamIds,
+          hiderLock: activeHiderLock,
+          radarSchedule: {
+            ...publicState.radarSchedule,
+            hidingDurationMs: Math.max(1, hidingMinInput) * 60_000,
+          },
+        })
+        .catch(() => {});
+    }
     onNavigateToMap();
   };
 
@@ -192,7 +190,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   const handleResetRound = async () => {
     const sessionId = generateRandomId('session');
     const secrets = generateSessionSecrets();
-    // Bestätigtes 81247-Spielgebiet bleibt beim normalen Runden-Reset erhalten!
     const resetPublic = createDefaultPublicState(
       sessionId,
       publicState.playArea
@@ -229,7 +226,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       teamId = nextSelection;
     }
 
-    // Aktualisiere alle Einträge dieses Spielers (falls verwaiste Alt-UIDs existierten)
     for (const m of Object.values(members)) {
       if (m.playerId === member.playerId) {
         await adapter.updateMember(m.uid, {
@@ -240,7 +236,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       }
     }
 
-    // Synchronisiere Team-Mitgliederlisten in Firebase / Demo
     for (const palette of TEAM_PALETTE) {
       const curTeam = teamsPublic[palette.id];
       if (!curTeam) continue;
@@ -275,6 +270,20 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     await adapter.kickPlayerByHost(member.playerId, matchingUids);
   };
 
+  // NUR besetzte Teams anzeigen (in denen tatsächlich mindestens 1 Person eingeteilt ist!)
+  const occupiedTeams = TEAM_PALETTE.map((palette) => {
+    const team = teamsPublic[palette.id];
+    const assignedMembers = enabledMembers.filter(
+      (m) => m.side === 'SEEKER' && m.teamId === palette.id
+    );
+    return {
+      id: palette.id,
+      name: team?.name ?? palette.name,
+      color: team?.color ?? palette.color,
+      memberNames: assignedMembers.map((m) => m.name),
+    };
+  }).filter((t) => t.memberNames.length > 0);
+
   return (
     <div className="h-full overflow-y-auto bg-slate-950/95 p-4 text-slate-100">
       <div className="mx-auto max-w-3xl space-y-5 pb-10">
@@ -284,7 +293,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               Spielleiter-Zentrale (Host)
             </span>
             <h2 className="text-xl font-black text-white">
-              Rundensteuerung, Teams & 81247-Polygon
+              Rundensteuerung & Teams
             </h2>
           </div>
           {onLeaveAndLockConsole && (
@@ -300,7 +309,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           )}
         </div>
 
-        {/* 1. Offene Beitrittswünsche (1-Klick-Freischaltung) */}
+        {/* 1. Offene Beitrittswünsche */}
         {openRequests.length > 0 && (
           <section className="rounded-2xl border border-amber-400/50 bg-amber-950/30 p-4">
             <h3 className="flex items-center gap-2 text-sm font-extrabold text-amber-300">
@@ -333,7 +342,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </section>
         )}
 
-        {/* 2. Rundenstart, Pause, Phasensteuerung & Reset */}
+        {/* 2. Rundenstart, Bereitschafts-Status, Pause & Reset */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-extrabold text-white">
@@ -346,17 +355,35 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 min={1}
                 max={30}
                 value={hidingMinInput}
-                onChange={(e) =>
-                  setHidingMinInput(Math.max(1, Number(e.target.value) || 10))
-                }
+                onChange={(e) => {
+                  const nextMin = Math.max(1, Number(e.target.value) || 10);
+                  setHidingMinInput(nextMin);
+                  void adapter
+                    .savePublicStateByHost({
+                      ...publicState,
+                      radarSchedule: {
+                        ...publicState.radarSchedule,
+                        hidingDurationMs: nextMin * 60_000,
+                      },
+                    })
+                    .catch(() => {});
+                }}
                 className="w-16 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-center font-bold text-white"
               />
             </label>
           </div>
 
-          {!publicState.playArea.confirmed && (
-            <div className="rounded-xl border border-amber-500/50 bg-amber-950/50 p-3 text-xs font-semibold text-amber-200">
-              Rundenstart gesperrt: Bitte prüfe und bestätige zuerst unten das 81247-Spielgebiet!
+          {publicState.status === 'LOBBY' && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/40 bg-emerald-950/25 px-3 py-2.5 text-xs">
+              <span className="flex items-center gap-1.5 font-semibold text-emerald-200">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                {activeHiderLock?.passwordHash
+                  ? 'Runde startet automatisch, sobald alle Spieler in der Lobby auf „Bereit“ gedrückt haben!'
+                  : 'Wartet darauf, dass die Verstecker in der Lobby ihr Passwort festlegen.'}
+              </span>
+              <span className="font-mono font-black text-emerald-300">
+                Bereit: {readyCount} / {enabledMembers.length}
+              </span>
             </div>
           )}
 
@@ -372,12 +399,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               <button
                 type="button"
                 data-testid="host-start-round-btn"
-                disabled={!publicState.playArea.confirmed || hiderCount === 0}
+                disabled={hiderCount === 0 || occupiedTeams.length === 0}
                 onClick={() => void handleStartRound()}
-                className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-black text-slate-950 shadow-lg hover:bg-emerald-400 disabled:opacity-40"
+                className="inline-flex min-h-[46px] items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-black text-slate-950 shadow-lg hover:bg-emerald-400 disabled:opacity-40"
               >
                 <Play className="h-4 w-4" />
-                Runde jetzt in 81247 starten
+                Runde manuell sofort starten
               </button>
             ) : (
               <>
@@ -416,7 +443,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               className="inline-flex min-h-[46px] items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
             >
               <RotateCcw className="h-4 w-4" />
-              Runde zurücksetzen (Polygon behalten)
+              Runde zurücksetzen
             </button>
           </div>
         </section>
@@ -456,28 +483,15 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </div>
         </section>
 
-        {/* 4. Spielgebiet-Polygon-Editor */}
-        <PlayAreaEditor
-          playArea={publicState.playArea}
-          editActive={polygonEditActive}
-          deleteVertexMode={polygonDeleteVertexMode}
-          onToggleEdit={(active) => {
-            onTogglePolygonEdit(active);
-            if (active) onNavigateToMap();
-          }}
-          onToggleDeleteVertexMode={onTogglePolygonDeleteMode}
-          onUpdatePolygon={handleUpdatePolygon}
-        />
-
-        {/* 5. Team-Zuweisung (Durchschnittsposition pro Team) + Präsenz-Bereinigung */}
+        {/* 4. Spieler- & Team-Zuweisung + Nur besetzte Teams anzeigen */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-extrabold text-white">
-                Spieler- & Team-Zuweisung (Team 1–6)
+                Spieler- & Team-Zuweisung
               </h3>
               <p className="text-xs text-slate-400">
-                Nicht alle Teams müssen belegt sein — unbesetzte Teams werden in der Runde automatisch komplett ausgeblendet. Jedes besetzte Team wird über die Durchschnittsposition seiner Mitglieder getrackt.
+                Unten werden automatisch nur die Teams angezeigt, in denen mindestens ein Spieler eingeteilt ist.
               </p>
             </div>
             <button
@@ -486,7 +500,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-[11px] font-semibold text-slate-300 hover:text-white"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Verwaiste Sitzungen bereinigen ({Object.keys(presence).length})
+              Sitzungen bereinigen
             </button>
           </div>
 
@@ -498,6 +512,8 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                   : m.side === 'SEEKER' && m.teamId
                     ? m.teamId
                     : 'UNASSIGNED';
+              const online = isMemberTabOnline(presence[m.uid]);
+              const isReady = readySet.has(m.playerId);
 
               return (
                 <div
@@ -507,13 +523,18 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                   <div className="flex items-center gap-2">
                     <span
                       className={`h-2.5 w-2.5 rounded-full ${
-                        presence[m.uid] ? 'bg-emerald-400' : 'bg-slate-600'
+                        online ? 'bg-emerald-400' : 'bg-slate-600'
                       }`}
                     />
                     <span className="font-bold text-white">{m.name}</span>
                     {m.isHost && (
                       <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
                         Host
+                      </span>
+                    )}
+                    {isReady && (
+                      <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
+                        ✓ Bereit
                       </span>
                     )}
                   </div>
@@ -552,61 +573,48 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             })}
           </div>
 
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            {TEAM_PALETTE.filter((palette) => {
-              const team = teamsPublic[palette.id];
-              if (!team) return false;
-              // Während einer laufenden Runde nur tatsächlich besetzte Teams anzeigen
-              if (publicState.status !== 'LOBBY' && publicState.status !== 'FINISHED') {
-                return (
-                  team.memberPlayerIds.length > 0 &&
-                  publicState.activeTeamIds.includes(team.id)
-                );
-              }
-              return true;
-            }).map((palette) => {
-              const team = teamsPublic[palette.id]!;
-              return (
-                <div
-                  key={team.id}
-                  className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-2 font-bold text-white">
-                      <span
-                        className="h-3 w-3 rounded-full"
-                        style={{ backgroundColor: team.color }}
-                      />
-                      {team.name}
-                    </span>
-                    <span
-                      className={`text-[11px] font-semibold ${
-                        team.memberPlayerIds.length > 0
-                          ? 'text-emerald-300'
-                          : 'text-slate-500'
-                      }`}
-                    >
-                      {team.memberPlayerIds.length > 0
-                        ? `${team.memberPlayerIds.length} Spieler aktiv`
-                        : 'Unbesetzt (wird ausgeblendet)'}
-                    </span>
-                  </div>
-                  {team.memberPlayerIds.length > 0 && (
+          {/* Teams-Anzeige: zeigt ausschließlich Teams an, in denen jemand drinnen ist! */}
+          <div className="space-y-2 pt-1">
+            <h4 className="text-xs font-extrabold tracking-wider text-slate-400 uppercase">
+              Besetzte Sucher-Teams ({occupiedTeams.length})
+            </h4>
+            {occupiedTeams.length === 0 ? (
+              <p className="rounded-xl border border-slate-800/80 bg-slate-950/50 p-3 text-xs text-slate-400">
+                Aktuell ist noch kein Sucher-Team besetzt.
+              </p>
+            ) : (
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {occupiedTeams.map((team) => (
+                  <div
+                    key={team.id}
+                    className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 font-bold text-white">
+                        <span
+                          className="h-3 w-3 rounded-full"
+                          style={{ backgroundColor: team.color }}
+                        />
+                        {team.name}
+                      </span>
+                      <span className="text-[11px] font-semibold text-emerald-300">
+                        {team.memberNames.length}{' '}
+                        {team.memberNames.length === 1 ? 'Spieler' : 'Spieler'}
+                      </span>
+                    </div>
                     <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
                       <Radio className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
                       <span>
                         GPS-Durchschnitt aus:{' '}
                         <strong className="text-slate-200">
-                          {team.memberPlayerIds
-                            .map((pid) => pid.charAt(0).toUpperCase() + pid.slice(1))
-                            .join(', ')}
+                          {team.memberNames.join(', ')}
                         </strong>
                       </span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
       </div>

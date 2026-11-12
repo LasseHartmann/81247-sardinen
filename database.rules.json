@@ -30,11 +30,9 @@
         },
         "presence": {
           ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true",
-          ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()",
           "$uid": {
-            ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()",
             "$browserSessionId": {
-              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (auth.uid === $uid || (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()))",
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (auth.uid === $uid || ($browserSessionId !== 'emergency_alert' && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()))",
               ".validate": "!newData.exists() || (newData.hasChildren(['online', 'lastSeen']) && newData.child('online').isBoolean() && newData.child('lastSeen').isNumber())"
             }
           }
@@ -81,6 +79,25 @@
             "anchorLocked": {
               ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
               ".validate": "newData.isBoolean()"
+            },
+            "gameStartTimestamp": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+              ".validate": "!newData.exists() || newData.isNumber()"
+            },
+            "pausedAt": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+              ".validate": "!newData.exists() || newData.isNumber()"
+            },
+            "totalPausedMs": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "activeTeamIds": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')"
+            },
+            "hiderLock": {
+              ".read": "auth != null",
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')"
             }
           },
           "controller": {

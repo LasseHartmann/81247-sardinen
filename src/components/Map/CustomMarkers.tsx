@@ -63,22 +63,6 @@ export function createTeamBeaconIcon(teamName: string, color: string): L.DivIcon
 }
 
 /**
- * Sammelpunkt-Marker (Outdoor-Sicherheit).
- */
-export function createSafetyPointIcon(): L.DivIcon {
-  return L.divIcon({
-    className: 'sardinen-div-icon',
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    html: `
-      <div style="width:32px;height:32px;border-radius:8px;background:#064e3b;border:2px solid #10b981;color:#ecfdf5;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.6);">
-        ✚
-      </div>
-    `,
-  });
-}
-
-/**
  * Verschiebbarer Eckpunkt-Marker für den Host-Polygon-Editor.
  */
 export function createPolygonVertexIcon(index: number, deleteMode: boolean): L.DivIcon {

@@ -13,7 +13,6 @@ import type { AuthUserSummary, JoinRequest, MemberRecord } from '../types/game';
 
 const BROWSER_TAB_SESSION_KEY = 'sardinen_81247_tab_session_id';
 const CHOSEN_PLAYER_STORAGE_KEY = 'sardinen_81247_chosen_player_v4';
-const ACTIVE_TAB_CHANNEL_NAME = 'sardinen_81247_single_tab_guard';
 
 function saveChosenPlayer(preset: PresetPlayer): void {
   try {
@@ -58,7 +57,7 @@ function getOrCreateBrowserTabSessionId(): string {
 
 /**
  * Verwaltet den direkten Login per Namenseingabe (strikte Whitelist der 11 Freunde),
- * verhindert Doppelbelegung desselben Spielers (nur 1 Person + nur 1 aktiver Browser-Tab pro Name)
+ * verhindert Doppelbelegung durch fremde Geräte (ohne mehrere Tabs desselben Nutzers zu sperren)
  * und schaltet Admin-Rechte für Lasse & Linus per 4-stelligem Code frei.
  */
 export function useAuth(): {
@@ -69,7 +68,6 @@ export function useAuth(): {
   ownMember: MemberRecord | null;
   memberLoading: boolean;
   ownJoinRequest: JoinRequest | null;
-  duplicateTabBlocked: boolean;
   seatConflictError: string | null;
   loginError: string | null;
   loginByTypedName: (typedName: string) => Promise<void>;
@@ -85,7 +83,6 @@ export function useAuth(): {
   const [ownMember, setOwnMember] = useState<MemberRecord | null>(null);
   const [memberLoading, setMemberLoading] = useState<boolean>(false);
   const [ownJoinRequest, setOwnJoinRequest] = useState<JoinRequest | null>(null);
-  const [duplicateTabBlocked, setDuplicateTabBlocked] = useState<boolean>(false);
   const [seatConflictError, setSeatConflictError] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -99,55 +96,6 @@ export function useAuth(): {
     });
     return unsub;
   }, [adapter]);
-
-  // Lokaler Multi-Tab-Schutz (BroadcastChannel): verhindert versehentlich zwei offene Tabs auf demselben Handy/Browser
-  useEffect(() => {
-    if (!authUser || !ownMember?.enabled) {
-      setDuplicateTabBlocked(false);
-      return;
-    }
-    if (typeof BroadcastChannel === 'undefined') return;
-
-    const channel = new BroadcastChannel(ACTIVE_TAB_CHANNEL_NAME);
-    let iAmOlderActiveTab = false;
-
-    channel.onmessage = (ev: MessageEvent) => {
-      const msg = ev.data as {
-        type?: string;
-        tabId?: string;
-        playerId?: string;
-      } | null;
-      if (!msg || msg.tabId === tabId || msg.playerId !== ownMember.playerId) {
-        return;
-      }
-      if (msg.type === 'TAB_HELLO') {
-        if (iAmOlderActiveTab) {
-          channel.postMessage({
-            type: 'TAB_ALREADY_OPEN',
-            tabId,
-            playerId: ownMember.playerId,
-          });
-        }
-      } else if (msg.type === 'TAB_ALREADY_OPEN') {
-        setDuplicateTabBlocked(true);
-      }
-    };
-
-    channel.postMessage({
-      type: 'TAB_HELLO',
-      tabId,
-      playerId: ownMember.playerId,
-    });
-
-    const markEstablishedTimer = setTimeout(() => {
-      iAmOlderActiveTab = true;
-    }, 250);
-
-    return () => {
-      clearTimeout(markEstablishedTimer);
-      channel.close();
-    };
-  }, [authUser, ownMember?.enabled, ownMember?.playerId, tabId]);
 
   useEffect(() => {
     if (!authUser) {
@@ -185,22 +133,26 @@ export function useAuth(): {
         attemptedAutoRegister = true;
         const chosen = loadChosenPlayer();
         if (chosen) {
-          void adapter
-            .tryAcquireOrRenewPlayerSeat(
-              chosen.id,
-              authUser.uid,
-              tabId,
-              adapter.getServerNow()
-            )
-            .then(({ acquired }) => {
-              if (!acquired) {
+          void (async () => {
+            try {
+              const seat = await adapter.tryAcquireOrRenewPlayerSeat(
+                chosen.id,
+                authUser.uid,
+                tabId,
+                adapter.getServerNow()
+              );
+              if (!seat.acquired) {
                 setSeatConflictError(
-                  `${chosen.name} ist bereits in einem anderen Tab oder auf einem anderen Gerät aktiv eingeloggt.`
+                  `${chosen.name} ist bereits auf einem anderen Gerät aktiv eingeloggt.`
                 );
                 void adapter.signOut();
                 return;
               }
-              return adapter.registerSelfMemberIfMissing({
+            } catch {
+              // Falls Firebase-Regeln für playerClaims noch nicht veröffentlicht sind, Login nicht blockieren
+            }
+            try {
+              await adapter.registerSelfMemberIfMissing({
                 uid: authUser.uid,
                 playerId: chosen.id,
                 name: chosen.name,
@@ -209,8 +161,10 @@ export function useAuth(): {
                 side: 'UNASSIGNED',
                 teamId: null,
               });
-            })
-            .catch(() => {});
+            } catch {
+              // Ignorieren
+            }
+          })();
         }
       }
     });
@@ -225,9 +179,9 @@ export function useAuth(): {
     };
   }, [adapter, authUser, tabId]);
 
-  // Globale 1-Person-pro-Name-Sitzsperre + Heartbeat + Freigabe beim Schließen
+  // Globale 1-Person-pro-Name-Sitzsperre (pro UID/Gerät, niemals Tab-Sperre im selben Browser!)
   useEffect(() => {
-    if (!authUser || !ownMember?.enabled || duplicateTabBlocked) return;
+    if (!authUser || !ownMember?.enabled) return;
 
     let cancelled = false;
     const playerId = ownMember.playerId;
@@ -245,13 +199,13 @@ export function useAuth(): {
         );
         if (!cancelled && !res.acquired) {
           setSeatConflictError(
-            `${playerName} ist bereits auf einem anderen Gerät oder in einem anderen Tab aktiv.`
+            `${playerName} ist bereits auf einem anderen Gerät aktiv.`
           );
         } else if (!cancelled) {
           setSeatConflictError(null);
         }
       } catch {
-        // Bei kurzzeitigem Offline-Zustand nicht sofort sperren
+        // Bei kurzzeitigem Offline-Zustand oder fehlenden Rules nicht sperren
       }
     };
 
@@ -260,28 +214,21 @@ export function useAuth(): {
       void beat();
     }, PLAYER_SEAT_HEARTBEAT_MS);
 
-    const onUnload = () => {
-      void adapter.releasePlayerSeat(playerId, uid, tabId);
-    };
-    window.addEventListener('beforeunload', onUnload);
-
     return () => {
       cancelled = true;
       clearInterval(interval);
-      window.removeEventListener('beforeunload', onUnload);
-      void adapter.releasePlayerSeat(playerId, uid, tabId);
     };
-  }, [adapter, authUser, duplicateTabBlocked, ownMember?.enabled, ownMember?.name, ownMember?.playerId, tabId]);
+  }, [adapter, authUser, ownMember?.enabled, ownMember?.name, ownMember?.playerId, tabId]);
 
-  // Multi-Tab-Präsenz registrieren
+  // Präsenz registrieren
   useEffect(() => {
-    if (!authUser || !ownMember?.enabled || duplicateTabBlocked) return;
+    if (!authUser || !ownMember?.enabled) return;
     const ua =
       typeof navigator !== 'undefined'
         ? navigator.userAgent.slice(0, 64)
         : 'Browser';
     return adapter.registerTabPresence(authUser.uid, tabId, ua);
-  }, [adapter, authUser, duplicateTabBlocked, ownMember?.enabled, tabId]);
+  }, [adapter, authUser, ownMember?.enabled, tabId]);
 
   const loginByTypedName = useCallback(
     async (typedName: string) => {
@@ -296,27 +243,32 @@ export function useAuth(): {
       }
 
       try {
-        if (authUser) {
-          if (ownMember) {
-            await adapter.releasePlayerSeat(ownMember.playerId, authUser.uid, tabId);
-          }
+        // Nur ausloggen, falls auf einen anderen Spielernamen gewechselt wird
+        if (authUser && ownMember && ownMember.playerId !== matched.id) {
+          await adapter
+            .releasePlayerSeat(ownMember.playerId, authUser.uid, tabId)
+            .catch(() => {});
           await adapter.signOut();
         }
         const signedIn = await adapter.signInWithPresetPlayer(matched.loginEmail);
 
-        // Prüfe atomar, ob dieser Spielername bereits aktiv belegt ist!
-        const seat = await adapter.tryAcquireOrRenewPlayerSeat(
-          matched.id,
-          signedIn.uid,
-          tabId,
-          adapter.getServerNow()
-        );
-        if (!seat.acquired) {
-          await adapter.signOut();
-          setLoginError(
-            `${matched.name} ist bereits eingeloggt! Jeder Name kann nur einmal gleichzeitig aktiv sein.`
+        // Prüfe, ob bereits ein anderes Gerät (andere UID) diesen Spielernamen nutzt
+        try {
+          const seat = await adapter.tryAcquireOrRenewPlayerSeat(
+            matched.id,
+            signedIn.uid,
+            tabId,
+            adapter.getServerNow()
           );
-          return;
+          if (!seat.acquired) {
+            await adapter.signOut();
+            setLoginError(
+              `${matched.name} ist bereits auf einem anderen Gerät eingeloggt!`
+            );
+            return;
+          }
+        } catch {
+          // Falls playerClaims-Rules in Firebase noch nicht aktualisiert sind, Login trotzdem erlauben
         }
 
         saveChosenPlayer(matched);
@@ -331,7 +283,7 @@ export function useAuth(): {
         });
       } catch {
         setLoginError(
-          'Anmeldung fehlgeschlagen. Bitte prüfe deine Verbindung und stelle sicher, dass die aktuellen database.rules.json in Firebase veröffentlicht sind.'
+          'Anmeldung fehlgeschlagen. Bitte prüfe deine Internetverbindung.'
         );
       }
     },
@@ -401,12 +353,13 @@ export function useAuth(): {
   const exitOrLogout = useCallback(async () => {
     setLoginError(null);
     setSeatConflictError(null);
-    setDuplicateTabBlocked(false);
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(CHOSEN_PLAYER_STORAGE_KEY);
     }
     if (authUser && ownMember) {
-      await adapter.releasePlayerSeat(ownMember.playerId, authUser.uid, tabId);
+      await adapter
+        .releasePlayerSeat(ownMember.playerId, authUser.uid, tabId)
+        .catch(() => {});
     }
     await adapter.signOut();
   }, [adapter, authUser, ownMember, tabId]);
@@ -419,7 +372,6 @@ export function useAuth(): {
     ownMember,
     memberLoading,
     ownJoinRequest,
-    duplicateTabBlocked,
     seatConflictError,
     loginError,
     loginByTypedName,

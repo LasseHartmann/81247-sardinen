@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { TEAM_PALETTE } from '../src/config/gameConfig';
+import {
+  DEFAULT_PLAY_AREA_FEATURE,
+  isLegacyPlaceholderPlayArea,
+  LEGACY_PLACEHOLDER_AREA_NAME,
+  TEAM_PALETTE,
+} from '../src/config/gameConfig';
 import {
   EXPECTED_ADMIN_AUTH_HASH,
   PRESET_PLAYERS,
@@ -194,7 +199,7 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(loc3.lat).toBe(48.172);
     expect(loc3.lng).toBe(11.482);
 
-    // 1-Person- & 1-Tab-pro-Spieler-Sperre
+    // Mehrere Tabs desselben Spielers (gleiche UID) sind erlaubt, fremdes Gerät (andere UID) wird blockiert!
     const store = createDemoStore({ inMemoryOnly: true, initialNowMs: t0 });
     const firstTab = await store.adapter.tryAcquireOrRenewPlayerSeat(
       'thomas',
@@ -204,15 +209,16 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     );
     expect(firstTab.acquired).toBe(true);
 
-    // Zweiter Tab derselben UID oder zweites Gerät mit anderer UID wird blockiert!
+    // Zweiter Tab derselben UID ist erlaubt (keine Tab-Sperre!)
     const secondTabSameUser = await store.adapter.tryAcquireOrRenewPlayerSeat(
       'thomas',
       'uid_1',
       'tab_b',
       t0 + 5_000
     );
-    expect(secondTabSameUser.acquired).toBe(false);
+    expect(secondTabSameUser.acquired).toBe(true);
 
+    // Eine zweite Person auf einem anderen Gerät (andere UID) wird blockiert
     const secondPerson = await store.adapter.tryAcquireOrRenewPlayerSeat(
       'thomas',
       'uid_2',
@@ -221,8 +227,8 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     );
     expect(secondPerson.acquired).toBe(false);
 
-    // Nach Abmelden / Schließen des Tabs ist der Name sofort wieder frei
-    await store.adapter.releasePlayerSeat('thomas', 'uid_1', 'tab_a');
+    // Nach Abmelden ist der Name sofort wieder frei
+    await store.adapter.releasePlayerSeat('thomas', 'uid_1', 'tab_b');
     const afterRelease = await store.adapter.tryAcquireOrRenewPlayerSeat(
       'thomas',
       'uid_2',
@@ -230,5 +236,26 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
       t0 + 6_000
     );
     expect(afterRelease.acquired).toBe(true);
+
+    // Offizielle 81247-PLZ-Grenze aus export.geojson (146 Eckpunkte = 147 Ring-Koordinaten)
+    expect(DEFAULT_PLAY_AREA_FEATURE.geometry.coordinates[0].length).toBe(147);
+    expect(
+      isLegacyPlaceholderPlayArea({
+        polygon: DEFAULT_PLAY_AREA_FEATURE,
+        confirmed: true,
+        confirmedAt: t0,
+        confirmedByUid: 'osm_official_81247',
+        name: '81247 M-Obermenzing (Offizielle PLZ-Grenze)',
+      })
+    ).toBe(false);
+    expect(
+      isLegacyPlaceholderPlayArea({
+        polygon: DEFAULT_PLAY_AREA_FEATURE,
+        confirmed: true,
+        confirmedAt: t0,
+        confirmedByUid: 'old_uid',
+        name: LEGACY_PLACEHOLDER_AREA_NAME,
+      })
+    ).toBe(true);
   });
 });

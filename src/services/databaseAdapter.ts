@@ -16,7 +16,10 @@ import {
 } from 'firebase/database';
 import { getFirebaseClients, isFirebaseConfigured } from '../config/firebase';
 import {
+  DEFAULT_PLAY_AREA_FEATURE,
   GAME_ID,
+  isLegacyPlaceholderPlayArea,
+  OFFICIAL_81247_AREA_NAME,
   PLAYER_SEAT_TTL_MS,
   TEAM_MEMBER_FIX_MAX_AGE_MS,
   TEAM_PALETTE,
@@ -279,6 +282,12 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           email: cred.user.email ?? loginEmail,
         };
       }
+      if (auth.currentUser) {
+        return {
+          uid: auth.currentUser.uid,
+          email: loginEmail,
+        };
+      }
       // Passwortloser Freundeskreis-Modus via Firebase Anonymous Auth
       const anonCred = await signInAnonymously(auth);
       return {
@@ -328,7 +337,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         if (
           !cur ||
           cur.heartbeatAt < nowMs - PLAYER_SEAT_TTL_MS ||
-          (cur.uid === uid && cur.tabId === tabId)
+          cur.uid === uid
         ) {
           won = true;
           return {
@@ -338,13 +347,13 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           };
         }
         won = false;
-        return; // Abbruch: anderer Tab / anderes Gerät hält aktiven Sitz
+        return; // Abbruch: anderes Gerät (andere UID) hält aktiven Sitz
       });
 
       const currentVal = (tx.snapshot.val() as PlayerSeatClaim | null) ?? null;
       const acquired =
         Boolean(tx.committed && won) ||
-        Boolean(currentVal && currentVal.uid === uid && currentVal.tabId === tabId);
+        Boolean(currentVal && currentVal.uid === uid);
 
       if (acquired) {
         onDisconnect(claimRef)
@@ -358,12 +367,12 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       };
     },
 
-    async releasePlayerSeat(playerId, uid, tabId): Promise<void> {
+    async releasePlayerSeat(playerId, uid): Promise<void> {
       const claimRef = ref(db, `${ROOT_PATH}/playerClaims/${playerId}`);
       try {
         const snap = await get(claimRef);
         const val = snap.val() as PlayerSeatClaim | null;
-        if (val && val.uid === uid && val.tabId === tabId) {
+        if (val && val.uid === uid) {
           await remove(claimRef);
         }
       } catch {
@@ -538,13 +547,25 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
             cb(null);
             return;
           }
+          const upgradedPlayArea = isLegacyPlaceholderPlayArea(val.playArea)
+            ? {
+                polygon: structuredClone(DEFAULT_PLAY_AREA_FEATURE),
+                confirmed: true,
+                confirmedAt: val.playArea?.confirmedAt ?? Date.now(),
+                confirmedByUid: 'osm_official_81247',
+                name: OFFICIAL_81247_AREA_NAME,
+              }
+            : val.playArea;
+
           cb({
             ...val,
+            status: val.status === 'EMERGENCY_STOP' ? 'LOBBY' : val.status,
+            playArea: upgradedPlayArea,
             pausedAt: val.pausedAt ?? null,
             gameStartTimestamp: val.gameStartTimestamp ?? null,
             searchStartTimestamp: val.searchStartTimestamp ?? null,
             radarCircle: val.radarCircle ?? null,
-            emergencyStopReason: val.emergencyStopReason ?? null,
+            emergencyStopReason: null,
             totalPausedMs: val.totalPausedMs ?? 0,
             pausedBeforeSearchMs: val.pausedBeforeSearchMs ?? 0,
             activeTeamIds:

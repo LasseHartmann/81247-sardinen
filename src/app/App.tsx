@@ -13,7 +13,6 @@ import {
 import {
   ANCHOR_ACCURACY_WARNING_METERS,
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
-  DEFAULT_SAFETY_POINT,
 } from '../config/gameConfig';
 import { isPointInPlayArea } from '../geo/boundary';
 import { buildCone45Polygon } from '../geo/clueGeometry';
@@ -29,7 +28,6 @@ import { useGeolocation } from '../hooks/useGeolocation';
 import { useWakeLock } from '../hooks/useWakeLock';
 import type { BottomNavTab, ClueRecord, ClueRequest, LatLng } from '../types/game';
 import { formatDurationClock } from '../utils/formatting';
-import { EmergencyOverlay } from '../components/Common/EmergencyOverlay';
 import { StatusBanners } from '../components/Common/StatusBanners';
 import { LeashWarningBanner } from '../components/HUD/LeashWarningBanner';
 import { TopHud } from '../components/HUD/TopHud';
@@ -56,7 +54,6 @@ export const App: React.FC = () => {
     authLoading,
     ownMember,
     memberLoading,
-    duplicateTabBlocked,
     seatConflictError,
     loginError,
     loginByTypedName,
@@ -104,7 +101,7 @@ export const App: React.FC = () => {
   });
 
   // Hält das Display während Lobby & laufendem Spiel zuverlässig an!
-  const shouldKeepScreenAwake = Boolean(authUser && ownMember?.enabled && !duplicateTabBlocked);
+  const shouldKeepScreenAwake = Boolean(authUser && ownMember?.enabled);
   useWakeLock(shouldKeepScreenAwake);
 
   // UI-Navigation & lokale Karten-Interaktionszustände
@@ -198,8 +195,8 @@ export const App: React.FC = () => {
     );
   }
 
-  // Schutz gegen versehentlich doppelt geöffnete Tabs oder doppelte Nutzung desselben Namens
-  if (duplicateTabBlocked || seatConflictError) {
+  // Schutz gegen doppelte Nutzung desselben Namens auf einem anderen Gerät
+  if (seatConflictError) {
     return (
       <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#020617] p-6 text-center text-slate-100">
         <div className="w-full max-w-md space-y-4 rounded-3xl border border-amber-500/50 bg-slate-900 p-6 shadow-2xl">
@@ -207,14 +204,10 @@ export const App: React.FC = () => {
             <Layers className="h-6 w-6" />
           </div>
           <h1 className="text-lg font-black text-white">
-            {duplicateTabBlocked
-              ? 'Runde ist bereits in einem anderen Tab offen!'
-              : 'Spielername bereits aktiv'}
+            Spielername bereits aktiv
           </h1>
           <p className="text-xs leading-relaxed text-slate-300">
-            {duplicateTabBlocked
-              ? `Du hast 81247 Sardinen als ${ownMember?.name ?? 'Spieler'} bereits in einem anderen Browser-Tab geöffnet. Bitte schließe diesen doppelten Tab und spiele im ersten Tab weiter.`
-              : seatConflictError}
+            {seatConflictError}
           </p>
           <button
             type="button"
@@ -426,21 +419,6 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[#020617] text-slate-100">
-      {/* Vollbild-Notfall-Stopp */}
-      <EmergencyOverlay
-        reason={publicState.emergencyStopReason}
-        safetyPoint={publicState.safetyPoint ?? DEFAULT_SAFETY_POINT}
-        isHost={ownMember.isHost}
-        onClearEmergencyByHost={async () => {
-          await adapter.savePublicStateByHost({
-            ...publicState,
-            status: 'LOBBY',
-            currentPhase: 'LOBBY',
-            emergencyStopReason: null,
-          });
-        }}
-      />
-
       {/* Offline-Banner, Pausen-Banner & Controller-Warteschlangen-Banner */}
       <StatusBanners
         connected={gameState.connected}
@@ -477,7 +455,6 @@ export const App: React.FC = () => {
           <GameMap
             playArea={publicState.playArea.polygon}
             playAreaConfirmed={publicState.playArea.confirmed}
-            safetyPoint={publicState.safetyPoint}
             ownFix={
               fineAdjustAnchorPt
                 ? {

@@ -3,7 +3,6 @@ import {
   Play,
   Pause,
   RotateCcw,
-  OctagonAlert,
   UserPlus,
   Radio,
   MousePointerClick,
@@ -60,9 +59,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   onNavigateToMap,
   onLeaveAndLockConsole,
 }) => {
-  const [emergencyReasonInput, setEmergencyReasonInput] = useState(
-    'Wetterwarnung / Spielleiter-Rückruf zum Sammelpunkt Schloss Blutenburg'
-  );
   const [hidingMinInput, setHidingMinInput] = useState(
     Math.round(publicState.radarSchedule.hidingDurationMs / 60_000)
   );
@@ -216,16 +212,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       radarStages: [],
       qrSecret: secrets.qrSecret,
       shortCode: secrets.shortCode,
-    });
-  };
-
-  const handleTriggerEmergencyStop = async () => {
-    await adapter.savePublicStateByHost({
-      ...publicState,
-      status: 'EMERGENCY_STOP',
-      emergencyStopReason:
-        emergencyReasonInput.trim() ||
-        'Sofortiger Rückruf zum Sammelpunkt durch den Spielleiter',
     });
   };
 
@@ -596,29 +582,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               );
             })}
           </div>
-        </section>
-
-        {/* 6. Prominenter Notfall-Abbruch / Sammelpunkt-Ruf */}
-        <section className="rounded-2xl border border-rose-500/50 bg-rose-950/25 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-extrabold text-rose-300">
-            <OctagonAlert className="h-5 w-5" />
-            Notfall-Stopp / Alle zum Sammelpunkt rufen
-          </div>
-          <input
-            type="text"
-            value={emergencyReasonInput}
-            onChange={(e) => setEmergencyReasonInput(e.target.value)}
-            className="min-h-[44px] w-full rounded-xl border border-rose-500/40 bg-slate-950 px-3 py-2 text-xs text-white"
-            placeholder="Grund für den Abbruch eingeben ..."
-          />
-          <button
-            type="button"
-            onClick={() => void handleTriggerEmergencyStop()}
-            className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-black text-white shadow-lg hover:bg-rose-500"
-          >
-            <OctagonAlert className="h-5 w-5" />
-            Runde sofort abbrechen / Alle zum Sammelpunkt rufen
-          </button>
         </section>
       </div>
     </div>

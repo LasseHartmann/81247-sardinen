@@ -10,11 +10,33 @@ import type {
 
 export const GAME_ID = '81247' as const;
 
-export const MAP_DEFAULT_CENTER: [number, number] = [48.1662, 11.4673];
+export const MAP_DEFAULT_CENTER: [number, number] = [48.1682, 11.465];
 export const MAP_DEFAULT_ZOOM = 14;
+
+export const OFFICIAL_81247_AREA_NAME =
+  '81247 M-Obermenzing (Offizielle PLZ-Grenze)';
+export const LEGACY_PLACEHOLDER_AREA_NAME =
+  '81247 München (Obermenzing / Blutenburg / Pipping)';
 
 export const DEFAULT_PLAY_AREA_FEATURE =
   defaultPlayAreaJson as unknown as Feature<Polygon>;
+
+export function isLegacyPlaceholderPlayArea(
+  playArea: PublicGameState['playArea'] | null | undefined
+): boolean {
+  if (!playArea || !playArea.polygon) return true;
+  if (playArea.name === LEGACY_PLACEHOLDER_AREA_NAME) return true;
+  const ringLen = playArea.polygon.geometry?.coordinates?.[0]?.length ?? 0;
+  // Altes Platzhalter-Polygon aus der Erstinitialisierung hatte nur 9 Eckpunkte (10 Ring-Koordinaten)
+  if (
+    ringLen <= 12 &&
+    playArea.confirmedByUid !== 'osm_official_81247' &&
+    playArea.name !== OFFICIAL_81247_AREA_NAME
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export const DEFAULT_SAFETY_POINT: SafetyPoint = {
   name: 'Schloss Blutenburg — Vorplatz (Seldweg)',
@@ -118,13 +140,16 @@ export function createDefaultPublicState(
     anchorLocked: false,
     radarCircle: null,
     radarSchedule: { ...DEFAULT_RADAR_SCHEDULE },
-    playArea: existingConfirmedPlayArea ?? {
-      polygon: structuredClone(DEFAULT_PLAY_AREA_FEATURE),
-      confirmed: true,
-      confirmedAt: Date.now(),
-      confirmedByUid: 'osm_official_81247',
-      name: '81247 M-Obermenzing (Offizielle PLZ-Grenze)',
-    },
+    playArea:
+      existingConfirmedPlayArea && !isLegacyPlaceholderPlayArea(existingConfirmedPlayArea)
+        ? existingConfirmedPlayArea
+        : {
+            polygon: structuredClone(DEFAULT_PLAY_AREA_FEATURE),
+            confirmed: true,
+            confirmedAt: Date.now(),
+            confirmedByUid: 'osm_official_81247',
+            name: OFFICIAL_81247_AREA_NAME,
+          },
     safetyPoint: { ...DEFAULT_SAFETY_POINT },
     emergencyStopReason: null,
     allowTestClicks: false,

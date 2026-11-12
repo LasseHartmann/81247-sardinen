@@ -457,7 +457,7 @@ export function createDemoStore(options?: {
         if (
           !cur ||
           cur.heartbeatAt < nowMs - PLAYER_SEAT_TTL_MS ||
-          (cur.uid === uid && cur.tabId === tabId)
+          cur.uid === uid
         ) {
           const next: PlayerSeatClaim = { uid, tabId, heartbeatAt: nowMs };
           t.playerClaims[playerId] = next;
@@ -471,10 +471,10 @@ export function createDemoStore(options?: {
       return { acquired, holder };
     },
 
-    async releasePlayerSeat(playerId, uid, tabId): Promise<void> {
+    async releasePlayerSeat(playerId, uid): Promise<void> {
       writeTree((t) => {
         const cur = t.playerClaims?.[playerId];
-        if (cur && cur.uid === uid && cur.tabId === tabId) {
+        if (cur && cur.uid === uid) {
           delete t.playerClaims[playerId];
         }
       });

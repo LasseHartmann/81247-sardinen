@@ -16,7 +16,6 @@ import type {
   GeoFix,
   LatLng,
   PublishedRadarCircle,
-  SafetyPoint,
   TeamLocation,
   TeamPublic,
 } from '../../types/game';
@@ -26,7 +25,6 @@ import {
   createOwnPositionIcon,
   createPolygonMidpointIcon,
   createPolygonVertexIcon,
-  createSafetyPointIcon,
   createSelectionPinIcon,
   createTeamBeaconIcon,
 } from './CustomMarkers';
@@ -39,7 +37,6 @@ export interface MapClickInteractionMode {
 export interface GameMapProps {
   playArea: Feature<Polygon>;
   playAreaConfirmed: boolean;
-  safetyPoint: SafetyPoint;
   ownFix: GeoFix | null;
   isOwnSideHider: boolean;
   anchorPoint: AnchorPoint | null;
@@ -66,7 +63,6 @@ export interface GameMapProps {
 export const GameMap: React.FC<GameMapProps> = ({
   playArea,
   playAreaConfirmed,
-  safetyPoint,
   ownFix,
   isOwnSideHider,
   anchorPoint,
@@ -167,9 +163,12 @@ export const GameMap: React.FC<GameMapProps> = ({
     return () => clearTimeout(t);
   }, [layoutInvalidationKey]);
 
-  // 1. Spielfeld-Polygon + invertierte dunkle Weltmaske + Sammelpunkt
+  const hasFittedInitialBoundsRef = useRef(false);
+
+  // 1. Spielfeld-Polygon + invertierte dunkle Weltmaske
   useEffect(() => {
     const group = boundaryLayerRef.current;
+    const map = mapRef.current;
     if (!group) return;
     group.clearLayers();
 
@@ -183,7 +182,7 @@ export const GameMap: React.FC<GameMapProps> = ({
       interactive: false,
     }).addTo(group);
 
-    L.geoJSON(playArea, {
+    const polyLayer = L.geoJSON(playArea, {
       style: {
         color: playAreaConfirmed ? '#10b981' : '#f59e0b',
         weight: 3,
@@ -193,14 +192,14 @@ export const GameMap: React.FC<GameMapProps> = ({
       interactive: false,
     }).addTo(group);
 
-    const safetyMarker = L.marker([safetyPoint.lat, safetyPoint.lng], {
-      icon: createSafetyPointIcon(),
-    });
-    safetyMarker.bindPopup(
-      `<strong>Sammelpunkt:</strong><br/>${safetyPoint.name}<br/><small>${safetyPoint.description}</small>`
-    );
-    safetyMarker.addTo(group);
-  }, [playArea, playAreaConfirmed, safetyPoint]);
+    if (map && !hasFittedInitialBoundsRef.current) {
+      const bounds = polyLayer.getBounds();
+      if (bounds.isValid()) {
+        hasFittedInitialBoundsRef.current = true;
+        map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
+      }
+    }
+  }, [playArea, playAreaConfirmed]);
 
   // 2. Hinweis-Overlays
   useEffect(() => {

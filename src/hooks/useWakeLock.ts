@@ -3,13 +3,19 @@ import { useEffect, useState } from 'react';
 interface WakeLockSentinelLike {
   released?: boolean;
   release: () => Promise<void>;
+  addEventListener?: (type: 'release', listener: () => void) => void;
+  removeEventListener?: (type: 'release', listener: () => void) => void;
 }
 
 /**
- * Hält das Smartphone-Display während laufender Spielrunden wach (`navigator.wakeLock`)
- * und fordert den Wake-Lock beim Zurückkehren in den Tab automatisch neu an.
+ * Hält das Smartphone-Display während des Spielens zuverlässig wach (`navigator.wakeLock`),
+ * fordert den Lock automatisch bei jeder Rückkehr in den Tab oder bei der nächsten Touch-Geste
+ * neu an, falls der Browser ihn zwischendurch freigegeben hat.
  */
-export function useWakeLock(active: boolean): { wakeLockSupported: boolean; wakeLockHeld: boolean } {
+export function useWakeLock(active: boolean): {
+  wakeLockSupported: boolean;
+  wakeLockHeld: boolean;
+} {
   const supported =
     typeof navigator !== 'undefined' && 'wakeLock' in navigator;
   const [held, setHeld] = useState(false);
@@ -24,6 +30,14 @@ export function useWakeLock(active: boolean): { wakeLockSupported: boolean; wake
     let sentinel: WakeLockSentinelLike | null = null;
 
     const acquire = async () => {
+      if (cancelled) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
+      if (sentinel && !sentinel.released) {
+        setHeld(true);
+        return;
+      }
       try {
         const navWithWake = navigator as Navigator & {
           wakeLock?: {
@@ -31,10 +45,18 @@ export function useWakeLock(active: boolean): { wakeLockSupported: boolean; wake
           };
         };
         if (!navWithWake.wakeLock) return;
-        sentinel = await navWithWake.wakeLock.request('screen');
-        if (!cancelled) {
-          setHeld(true);
+        const nextSentinel = await navWithWake.wakeLock.request('screen');
+        if (cancelled) {
+          nextSentinel.release().catch(() => {});
+          return;
         }
+        sentinel = nextSentinel;
+        setHeld(true);
+        nextSentinel.addEventListener?.('release', () => {
+          if (!cancelled) {
+            setHeld(false);
+          }
+        });
       } catch {
         if (!cancelled) {
           setHeld(false);
@@ -44,16 +66,30 @@ export function useWakeLock(active: boolean): { wakeLockSupported: boolean; wake
 
     void acquire();
 
-    const onVisibilityChange = () => {
+    const onVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible' && !cancelled) {
         void acquire();
       }
     };
-    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    // Manche mobilen Browser (insb. iOS Safari / PWAs) erlauben wakeLock.request erst nach einer Nutzerinteraktion
+    const onUserInteraction = () => {
+      if (!cancelled && (!sentinel || sentinel.released)) {
+        void acquire();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+    window.addEventListener('focus', onVisibilityOrFocus);
+    window.addEventListener('pointerdown', onUserInteraction, { passive: true });
+    window.addEventListener('touchstart', onUserInteraction, { passive: true });
 
     return () => {
       cancelled = true;
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+      window.removeEventListener('focus', onVisibilityOrFocus);
+      window.removeEventListener('pointerdown', onUserInteraction);
+      window.removeEventListener('touchstart', onUserInteraction);
       if (sentinel) {
         sentinel.release().catch(() => {});
       }

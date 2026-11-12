@@ -33,6 +33,14 @@ export interface GeoFix extends LatLng {
 
 export interface TeamLocation extends GeoFix {
   updatedByUid: string;
+  activeContributorCount?: number;
+  memberFixes?: Record<string, GeoFix>;
+}
+
+export interface PlayerSeatClaim {
+  uid: string;
+  tabId: string;
+  heartbeatAt: number;
 }
 
 export interface AnchorPoint extends LatLng {

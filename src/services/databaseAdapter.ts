@@ -15,8 +15,14 @@ import {
   update,
 } from 'firebase/database';
 import { getFirebaseClients, isFirebaseConfigured } from '../config/firebase';
-import { GAME_ID } from '../config/gameConfig';
+import {
+  GAME_ID,
+  PLAYER_SEAT_TTL_MS,
+  TEAM_MEMBER_FIX_MAX_AGE_MS,
+  TEAM_PALETTE,
+} from '../config/gameConfig';
 import { getBrowserDemoStore } from '../demo/demoStore';
+import { roundCoord5 } from '../geo/distance';
 import type {
   AuthUserSummary,
   CatchRequest,
@@ -25,10 +31,12 @@ import type {
   ClueRequest,
   ClueRequestStatus,
   ControllerLease,
+  GeoFix,
   HiderPrivateState,
   JoinRequest,
   LeaderboardEntry,
   MemberRecord,
+  PlayerSeatClaim,
   PresenceSession,
   PublicGameState,
   TeamLocation,
@@ -65,6 +73,17 @@ export interface DatabaseAdapter {
   registerSelfMemberIfMissing(member: MemberRecord): Promise<void>;
   claimInitialHostRole(uid: string, playerId: string, name: string): Promise<void>;
   removeMemberByHost(uid: string): Promise<void>;
+  tryAcquireOrRenewPlayerSeat(
+    playerId: string,
+    uid: string,
+    tabId: string,
+    nowMs: number
+  ): Promise<{ acquired: boolean; holder: PlayerSeatClaim | null }>;
+  releasePlayerSeat(playerId: string, uid: string, tabId: string): Promise<void>;
+  subscribePlayerSeat(
+    playerId: string,
+    cb: (claim: PlayerSeatClaim | null) => void
+  ): UnsubscribeFn;
   signOut(): Promise<void>;
   subscribeAuth(cb: (user: AuthUserSummary | null) => void): UnsubscribeFn;
 
@@ -104,6 +123,12 @@ export interface DatabaseAdapter {
   saveTeamPublic(teamId: string, team: TeamPublic): Promise<void>;
   subscribeTeamLocation(teamId: string, cb: (loc: TeamLocation | null) => void): UnsubscribeFn;
   writeTeamLocation(teamId: string, loc: TeamLocation): Promise<void>;
+  writeTeamMemberFixAveraged(
+    teamId: string,
+    playerId: string,
+    uid: string,
+    fix: GeoFix
+  ): Promise<TeamLocation | null>;
   clearTeamLocation(teamId: string): Promise<void>;
 
   subscribeTeamRequests(
@@ -163,6 +188,47 @@ const ROOT_PATH = `games/${GAME_ID}`;
 
 function stripUndefinedDeep<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj)) as T;
+}
+
+export function computeAveragedTeamLocationFromMemberFixes(
+  prevLocation: TeamLocation | null,
+  playerId: string,
+  uid: string,
+  fix: GeoFix,
+  nowMs: number
+): TeamLocation {
+  const prevFixes = prevLocation?.memberFixes ?? {};
+  const nextFixes: Record<string, GeoFix> = {};
+
+  // Behalte nur frische Fixes (max. 5 Minuten alt), damit ein ausgefallenes Handy den Schnitt nicht ewig wegzieht
+  for (const [pid, oldFix] of Object.entries(prevFixes)) {
+    if (oldFix && nowMs - oldFix.timestamp <= TEAM_MEMBER_FIX_MAX_AGE_MS) {
+      nextFixes[pid] = oldFix;
+    }
+  }
+
+  nextFixes[playerId] = {
+    lat: roundCoord5(fix.lat),
+    lng: roundCoord5(fix.lng),
+    accuracy: Math.round(fix.accuracy),
+    timestamp: nowMs,
+  };
+
+  const activeList = Object.values(nextFixes);
+  const count = activeList.length;
+  const sumLat = activeList.reduce((acc, f) => acc + f.lat, 0);
+  const sumLng = activeList.reduce((acc, f) => acc + f.lng, 0);
+  const sumAcc = activeList.reduce((acc, f) => acc + f.accuracy, 0);
+
+  return {
+    lat: roundCoord5(sumLat / count),
+    lng: roundCoord5(sumLng / count),
+    accuracy: Math.max(4, Math.round(sumAcc / count)),
+    timestamp: nowMs,
+    updatedByUid: uid,
+    activeContributorCount: count,
+    memberFixes: nextFixes,
+  };
 }
 
 /**
@@ -248,6 +314,69 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async removeMemberByHost(uid): Promise<void> {
       await remove(ref(db, `${ROOT_PATH}/members/${uid}`));
+    },
+
+    async tryAcquireOrRenewPlayerSeat(
+      playerId,
+      uid,
+      tabId,
+      nowMs
+    ): Promise<{ acquired: boolean; holder: PlayerSeatClaim | null }> {
+      const claimRef = ref(db, `${ROOT_PATH}/playerClaims/${playerId}`);
+      let won = false;
+      const tx = await runTransaction(claimRef, (cur: PlayerSeatClaim | null) => {
+        if (
+          !cur ||
+          cur.heartbeatAt < nowMs - PLAYER_SEAT_TTL_MS ||
+          (cur.uid === uid && cur.tabId === tabId)
+        ) {
+          won = true;
+          return {
+            uid,
+            tabId,
+            heartbeatAt: nowMs,
+          };
+        }
+        won = false;
+        return; // Abbruch: anderer Tab / anderes Gerät hält aktiven Sitz
+      });
+
+      const currentVal = (tx.snapshot.val() as PlayerSeatClaim | null) ?? null;
+      const acquired =
+        Boolean(tx.committed && won) ||
+        Boolean(currentVal && currentVal.uid === uid && currentVal.tabId === tabId);
+
+      if (acquired) {
+        onDisconnect(claimRef)
+          .remove()
+          .catch(() => {});
+      }
+
+      return {
+        acquired,
+        holder: currentVal,
+      };
+    },
+
+    async releasePlayerSeat(playerId, uid, tabId): Promise<void> {
+      const claimRef = ref(db, `${ROOT_PATH}/playerClaims/${playerId}`);
+      try {
+        const snap = await get(claimRef);
+        const val = snap.val() as PlayerSeatClaim | null;
+        if (val && val.uid === uid && val.tabId === tabId) {
+          await remove(claimRef);
+        }
+      } catch {
+        // Ignorieren
+      }
+    },
+
+    subscribePlayerSeat(playerId, cb): UnsubscribeFn {
+      return onValue(
+        ref(db, `${ROOT_PATH}/playerClaims/${playerId}`),
+        (snap) => cb((snap.val() as PlayerSeatClaim | null) ?? null),
+        () => cb(null)
+      );
     },
 
     async signOut(): Promise<void> {
@@ -418,12 +547,8 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
             emergencyStopReason: val.emergencyStopReason ?? null,
             totalPausedMs: val.totalPausedMs ?? 0,
             pausedBeforeSearchMs: val.pausedBeforeSearchMs ?? 0,
-            activeTeamIds: val.activeTeamIds ?? [
-              'team-1',
-              'team-2',
-              'team-3',
-              'team-4',
-            ],
+            activeTeamIds:
+              val.activeTeamIds ?? TEAM_PALETTE.map((t) => t.id),
           });
         },
         () => cb(null)
@@ -562,6 +687,28 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         ref(db, `${ROOT_PATH}/teams/${teamId}/location`),
         stripUndefinedDeep(loc)
       );
+    },
+
+    async writeTeamMemberFixAveraged(
+      teamId,
+      playerId,
+      uid,
+      fix
+    ): Promise<TeamLocation | null> {
+      const locRef = ref(db, `${ROOT_PATH}/teams/${teamId}/location`);
+      const nowMs = adapter.getServerNow();
+      const tx = await runTransaction(locRef, (cur: TeamLocation | null) => {
+        return stripUndefinedDeep(
+          computeAveragedTeamLocationFromMemberFixes(
+            cur,
+            playerId,
+            uid,
+            fix,
+            nowMs
+          )
+        );
+      });
+      return (tx.snapshot.val() as TeamLocation | null) ?? null;
     },
 
     async clearTeamLocation(teamId): Promise<void> {

@@ -76,7 +76,13 @@ export const TEAM_PALETTE = [
   { id: 'team-2', name: 'Team 2 (Violett)', color: '#a855f7' },
   { id: 'team-3', name: 'Team 3 (Kobalt)', color: '#3b82f6' },
   { id: 'team-4', name: 'Team 4 (Magenta)', color: '#ec4899' },
+  { id: 'team-5', name: 'Team 5 (Smaragd)', color: '#10b981' },
+  { id: 'team-6', name: 'Team 6 (Koralle)', color: '#f97316' },
 ] as const;
+
+export const PLAYER_SEAT_HEARTBEAT_MS = 10_000;
+export const PLAYER_SEAT_TTL_MS = 28_000;
+export const TEAM_MEMBER_FIX_MAX_AGE_MS = 5 * 60_000;
 
 export function createDefaultTeams(): Record<string, TeamPublic> {
   const result: Record<string, TeamPublic> = {};
@@ -114,10 +120,10 @@ export function createDefaultPublicState(
     radarSchedule: { ...DEFAULT_RADAR_SCHEDULE },
     playArea: existingConfirmedPlayArea ?? {
       polygon: structuredClone(DEFAULT_PLAY_AREA_FEATURE),
-      confirmed: false,
-      confirmedAt: null,
-      confirmedByUid: null,
-      name: '81247 München (Obermenzing / Blutenburg / Pipping)',
+      confirmed: true,
+      confirmedAt: Date.now(),
+      confirmedByUid: 'osm_official_81247',
+      name: '81247 M-Obermenzing (Offizielle PLZ-Grenze)',
     },
     safetyPoint: { ...DEFAULT_SAFETY_POINT },
     emergencyStopReason: null,

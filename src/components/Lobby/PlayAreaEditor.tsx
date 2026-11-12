@@ -30,7 +30,7 @@ export const PlayAreaEditor: React.FC<PlayAreaEditorProps> = ({
   const validation = isValidPlayAreaPolygon(playArea.polygon);
 
   const handleResetStandard81247 = async () => {
-    await onUpdatePolygon(structuredClone(DEFAULT_PLAY_AREA_FEATURE), false);
+    await onUpdatePolygon(structuredClone(DEFAULT_PLAY_AREA_FEATURE), true);
   };
 
   const handleConfirm = async () => {
@@ -116,7 +116,7 @@ export const PlayAreaEditor: React.FC<PlayAreaEditorProps> = ({
           className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700"
         >
           <RotateCcw className="h-4 w-4" />
-          81247-Standardpolygon laden
+          Offizielle 81247-PLZ-Grenze laden
         </button>
 
         <button

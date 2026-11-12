@@ -4,7 +4,6 @@ import {
   Crosshair,
   KeyRound,
   Radar,
-  ShieldAlert,
   Wifi,
   WifiOff,
   AlertTriangle,
@@ -27,7 +26,6 @@ export interface TopHudProps {
   ownFix: GeoFix | null;
   gpsStatus: GpsPermissionState;
   onUnlockAdmin?: (code: string) => Promise<{ ok: boolean; error?: string }>;
-  onOpenSafetyModal: () => void;
 }
 
 export const TopHud: React.FC<TopHudProps> = ({
@@ -39,7 +37,6 @@ export const TopHud: React.FC<TopHudProps> = ({
   ownFix,
   gpsStatus,
   onUnlockAdmin,
-  onOpenSafetyModal,
 }) => {
   const activePhase =
     publicState.status === 'LOBBY' ? 'LOBBY' : timer.computedPhase;
@@ -154,16 +151,6 @@ export const TopHud: React.FC<TopHudProps> = ({
               <span className="hidden xs:inline">Admin</span>
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={onOpenSafetyModal}
-            title="Sammelpunkt & Sicherheitshinweise öffnen"
-            className="inline-flex min-h-[40px] items-center gap-1 rounded-xl border border-emerald-500/40 bg-emerald-950/50 px-2.5 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-900/60"
-          >
-            <ShieldAlert className="h-4 w-4" />
-            <span className="hidden xs:inline">Sammelpunkt</span>
-          </button>
         </div>
       </div>
 

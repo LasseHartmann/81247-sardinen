@@ -10,16 +10,24 @@ import {
 export interface LeaderboardViewProps {
   leaderboard: Record<string, LeaderboardEntry>;
   teamsPublic: Record<string, TeamPublic>;
+  activeTeamIds?: string[];
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   leaderboard,
   teamsPublic,
+  activeTeamIds,
 }) => {
-  const ranked = sortLeaderboardEntries(Object.values(leaderboard));
+  const activeSet = activeTeamIds ? new Set(activeTeamIds) : null;
+  const ranked = sortLeaderboardEntries(
+    Object.values(leaderboard).filter((e) => !activeSet || activeSet.has(e.teamId))
+  );
   const rankedIds = new Set(ranked.map((r) => r.teamId));
   const stillSearching = Object.values(teamsPublic).filter(
-    (t) => !rankedIds.has(t.id) && t.memberPlayerIds.length > 0
+    (t) =>
+      !rankedIds.has(t.id) &&
+      t.memberPlayerIds.length > 0 &&
+      (!activeSet || activeSet.has(t.id))
   );
 
   return (

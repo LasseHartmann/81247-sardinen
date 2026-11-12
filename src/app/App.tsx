@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Anchor,
   CheckCircle2,
@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   Sparkles,
   QrCode,
+  Layers,
+  LogOut,
 } from 'lucide-react';
 import {
   ANCHOR_ACCURACY_WARNING_METERS,
@@ -27,9 +29,7 @@ import { useGeolocation } from '../hooks/useGeolocation';
 import { useWakeLock } from '../hooks/useWakeLock';
 import type { BottomNavTab, ClueRecord, ClueRequest, LatLng } from '../types/game';
 import { formatDurationClock } from '../utils/formatting';
-import { DemoToolbar } from '../components/Common/DemoToolbar';
 import { EmergencyOverlay } from '../components/Common/EmergencyOverlay';
-import { SafetyModal } from '../components/Common/SafetyModal';
 import { StatusBanners } from '../components/Common/StatusBanners';
 import { LeashWarningBanner } from '../components/HUD/LeashWarningBanner';
 import { TopHud } from '../components/HUD/TopHud';
@@ -48,23 +48,22 @@ import { SeekerScannerView } from '../components/QR/SeekerScannerModal';
 import { HiderMediaResponseModal } from '../components/Questions/HiderMediaResponseModal';
 import { QuestionMenu } from '../components/Questions/QuestionMenu';
 
-const SAFETY_ACK_STORAGE_PREFIX = 'sardinen_81247_safety_ack_';
-
 export const App: React.FC = () => {
   const {
     adapter,
-    isDemoMode,
     firebaseAvailable,
     authUser,
     authLoading,
     ownMember,
     memberLoading,
+    duplicateTabBlocked,
+    seatConflictError,
     loginError,
     loginByTypedName,
     unlockAdminWithCode,
+    lockAdminConsole,
     claimInitialHost,
-    enterDemoMode,
-    exitDemoOrLogout,
+    exitOrLogout,
   } = useAuth();
 
   const gameState = useGameState(adapter, ownMember);
@@ -104,27 +103,12 @@ export const App: React.FC = () => {
     ownGeoFix: geo.currentFix,
   });
 
-  const isRoundActive = Boolean(
-    publicState &&
-      (publicState.status === 'RUNNING' || publicState.status === 'PAUSED')
-  );
-  useWakeLock(isRoundActive);
+  // Hält das Display während Lobby & laufendem Spiel zuverlässig an!
+  const shouldKeepScreenAwake = Boolean(authUser && ownMember?.enabled && !duplicateTabBlocked);
+  useWakeLock(shouldKeepScreenAwake);
 
   // UI-Navigation & lokale Karten-Interaktionszustände
   const [activeTab, setActiveTab] = useState<BottomNavTab>('MAP');
-  const [safetyModalManualOpen, setSafetyModalManualOpen] = useState(false);
-  const [ackedSessionIds, setAckedSessionIds] = useState<Record<string, boolean>>(
-    () => {
-      if (typeof sessionStorage === 'undefined') return {};
-      try {
-        const raw = sessionStorage.getItem(SAFETY_ACK_STORAGE_PREFIX + 'map');
-        return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
-      } catch {
-        return {};
-      }
-    }
-  );
-
   const [hiddenClueIds, setHiddenClueIds] = useState<Set<string>>(new Set());
   const [selectedSplitPoint, setSelectedSplitPoint] = useState<LatLng | null>(
     null
@@ -149,6 +133,52 @@ export const App: React.FC = () => {
   const [bootAdminCode, setBootAdminCode] = useState('');
   const [bootAdminErr, setBootAdminErr] = useState<string | null>(null);
 
+  const handleUnlockAndEnterConsole = useCallback(
+    async (code: string) => {
+      const res = await unlockAdminWithCode(code);
+      if (res.ok) {
+        setActiveTab('HOST');
+      }
+      return res;
+    },
+    [unlockAdminWithCode]
+  );
+
+  // Sobald der Admin die Spielleiter-Konsole verlässt (Tabwechsel oder App in Hintergrund,
+  // außer er bearbeitet gerade aktiv das Polygon auf der Karte), werden die Admin-Rechte
+  // automatisch wieder gesperrt -> beim nächsten Öffnen muss der Code erneut eingegeben werden.
+  const prevTabRef = useRef<BottomNavTab>(activeTab);
+  useEffect(() => {
+    const prevTab = prevTabRef.current;
+    prevTabRef.current = activeTab;
+    if (
+      ownMember?.isHost &&
+      prevTab === 'HOST' &&
+      activeTab !== 'HOST' &&
+      !polygonEditActive
+    ) {
+      void lockAdminConsole();
+    }
+  }, [activeTab, lockAdminConsole, ownMember?.isHost, polygonEditActive]);
+
+  useEffect(() => {
+    if (!ownMember?.isHost) return;
+    const handleVisibilityOrHide = () => {
+      if (document.visibilityState === 'hidden') {
+        setPolygonEditActive(false);
+        setPolygonDeleteVertexMode(false);
+        setActiveTab('MAP');
+        void lockAdminConsole();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityOrHide);
+    window.addEventListener('pagehide', handleVisibilityOrHide);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrHide);
+      window.removeEventListener('pagehide', handleVisibilityOrHide);
+    };
+  }, [lockAdminConsole, ownMember?.isHost]);
+
   // 1. Lade- & Authentifizierungs-Weichen
   if (authLoading || memberLoading) {
     return (
@@ -164,8 +194,38 @@ export const App: React.FC = () => {
         firebaseAvailable={firebaseAvailable}
         loginError={loginError}
         onLoginByName={loginByTypedName}
-        onEnterDemoMode={enterDemoMode}
       />
+    );
+  }
+
+  // Schutz gegen versehentlich doppelt geöffnete Tabs oder doppelte Nutzung desselben Namens
+  if (duplicateTabBlocked || seatConflictError) {
+    return (
+      <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#020617] p-6 text-center text-slate-100">
+        <div className="w-full max-w-md space-y-4 rounded-3xl border border-amber-500/50 bg-slate-900 p-6 shadow-2xl">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-300">
+            <Layers className="h-6 w-6" />
+          </div>
+          <h1 className="text-lg font-black text-white">
+            {duplicateTabBlocked
+              ? 'Runde ist bereits in einem anderen Tab offen!'
+              : 'Spielername bereits aktiv'}
+          </h1>
+          <p className="text-xs leading-relaxed text-slate-300">
+            {duplicateTabBlocked
+              ? `Du hast 81247 Sardinen als ${ownMember?.name ?? 'Spieler'} bereits in einem anderen Browser-Tab geöffnet. Bitte schließe diesen doppelten Tab und spiele im ersten Tab weiter.`
+              : seatConflictError}
+          </p>
+          <button
+            type="button"
+            onClick={() => void exitOrLogout()}
+            className="inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
+          >
+            <LogOut className="h-4 w-4" />
+            Abmelden / Anderen Namen wählen
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -175,7 +235,7 @@ export const App: React.FC = () => {
         authUser={authUser}
         loginError={loginError}
         onClaimInitialHost={claimInitialHost}
-        onLogout={exitDemoOrLogout}
+        onLogout={exitOrLogout}
       />
     );
   }
@@ -195,7 +255,7 @@ export const App: React.FC = () => {
               onSubmit={async (e) => {
                 e.preventDefault();
                 setBootAdminErr(null);
-                const res = await unlockAdminWithCode(bootAdminCode);
+                const res = await handleUnlockAndEnterConsole(bootAdminCode);
                 if (!res.ok) {
                   setBootAdminErr(res.error ?? 'Falscher Admin-Code.');
                 }
@@ -240,7 +300,7 @@ export const App: React.FC = () => {
           )}
           <button
             type="button"
-            onClick={() => void exitDemoOrLogout()}
+            onClick={() => void exitOrLogout()}
             className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-800 py-2.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
           >
             Namen wechseln
@@ -250,31 +310,14 @@ export const App: React.FC = () => {
     );
   }
 
-  // Verbindliche Sicherheitsbestätigung einmal pro Spielrunde (`sessionId`)
-  const hasConfirmedSafetyForSession = Boolean(
-    ackedSessionIds[publicState.sessionId]
-  );
-  const handleConfirmSafety = () => {
-    const next = { ...ackedSessionIds, [publicState.sessionId]: true };
-    setAckedSessionIds(next);
-    setSafetyModalManualOpen(false);
-    if (typeof sessionStorage !== 'undefined') {
-      try {
-        sessionStorage.setItem(
-          SAFETY_ACK_STORAGE_PREFIX + 'map',
-          JSON.stringify(next)
-        );
-      } catch {
-        // Ignorieren
-      }
-    }
-  };
-
   const isJoinedSardines = ownTeam?.status === 'JOINED_SARDINES';
   const isSardineDashboardView =
     ownMember.side === 'HIDER' || isJoinedSardines;
-  const canUseMapClicks = Boolean(isDemoMode || publicState.allowTestClicks);
-  const showHostTab = Boolean(ownMember.isHost || isDemoMode);
+  const canUseMapClicks = Boolean(publicState.allowTestClicks);
+  const showHostTab = Boolean(ownMember.isHost);
+
+  const activeRoundTeamIds =
+    publicState.status === 'LOBBY' ? undefined : publicState.activeTeamIds;
 
   // Aggregiere sichtbare Hinweise & Requests für den aktuellen Spieler
   const visibleClues: ClueRecord[] =
@@ -310,7 +353,6 @@ export const App: React.FC = () => {
   const handleMapCoordinateClick = (pt: LatLng) => {
     if (mapClickMode.kind === 'TEST_LOCATION') {
       if (fineAdjustAnchorPt !== null && geo.currentFix) {
-        // Feinjustierung innerhalb des Korrekturradius im Polygon
         if (distanceMeters(geo.currentFix, pt) <= ANCHOR_MANUAL_ADJUST_MAX_METERS) {
           setFineAdjustAnchorPt(pt);
           setMapClickMode({ kind: 'NONE' });
@@ -345,13 +387,13 @@ export const App: React.FC = () => {
     const target = fineAdjustAnchorPt ?? geo.currentFix;
     if (!target) {
       setAnchorFeedbackError(
-        'Noch kein GPS-Standort verfügbar. Bitte warte kurz oder setze im Testmodus einen Punkt.'
+        'Noch kein GPS-Standort verfügbar. Bitte warte kurz im Freien auf ein GPS-Signal.'
       );
       return;
     }
     if (!isPointInPlayArea(target, publicState.playArea.polygon)) {
       setAnchorFeedbackError(
-        'Ungültige Position: Das Versteck muss vollständig innerhalb des bestätigten 81247-Spielgebiets liegen!'
+        'Ungültige Position: Das Versteck muss vollständig innerhalb des 81247-Spielgebiets liegen!'
       );
       return;
     }
@@ -399,29 +441,11 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* Verbindliches Outdoor-Sicherheits-Modal */}
-      <SafetyModal
-        open={!hasConfirmedSafetyForSession || safetyModalManualOpen}
-        mustConfirmToProceed={!hasConfirmedSafetyForSession}
-        safetyPoint={publicState.safetyPoint ?? DEFAULT_SAFETY_POINT}
-        onConfirm={handleConfirmSafety}
-        onClose={() => setSafetyModalManualOpen(false)}
-      />
-
-      {/* Demo-Badge, Offline-Banner & Controller-Warteschlangen-Banner */}
+      {/* Offline-Banner, Pausen-Banner & Controller-Warteschlangen-Banner */}
       <StatusBanners
-        isDemoMode={isDemoMode}
         connected={gameState.connected}
         isControllerDisconnected={controllerStatus.isControllerDisconnected}
         gameStatus={publicState.status}
-      />
-
-      {/* Aufklappbare Demo-Steuerleiste */}
-      <DemoToolbar
-        visible={isDemoMode}
-        onAfterAction={() => {
-          setMapClickMode({ kind: 'NONE' });
-        }}
       />
 
       {/* Kompaktes schwebendes Top-HUD */}
@@ -433,8 +457,7 @@ export const App: React.FC = () => {
         connected={gameState.connected}
         ownFix={geo.currentFix}
         gpsStatus={geo.gpsStatus}
-        onUnlockAdmin={unlockAdminWithCode}
-        onOpenSafetyModal={() => setSafetyModalManualOpen(true)}
+        onUnlockAdmin={handleUnlockAndEnterConsole}
       />
 
       {/* 20-Meter-Versteck-Leash Warnbanner */}
@@ -444,9 +467,8 @@ export const App: React.FC = () => {
         publicLeashAlertActive={publicState.leashAlertActive}
       />
 
-      {/* Hauptbereich (h-full flex-1 relativ, Leaflet-Karte im Hintergrund auf MAP-Tab) */}
+      {/* Hauptbereich */}
       <main className="relative flex-1 min-h-0 w-full overflow-hidden">
-        {/* Persistente vollflächige Leaflet-Karte */}
         <div
           className={`h-full w-full ${
             activeTab === 'MAP' ? 'block' : 'hidden'
@@ -474,6 +496,7 @@ export const App: React.FC = () => {
             publishedRadar={publicState.radarCircle}
             visibleTeamLocations={gameState.teamLocations}
             teamsPublic={gameState.teamsPublic}
+            activeTeamIds={activeRoundTeamIds}
             clues={visibleClues}
             hiddenClueIds={hiddenClueIds}
             liveConePreview={liveConeGeo}
@@ -495,10 +518,10 @@ export const App: React.FC = () => {
                 },
               });
             }}
-            layoutInvalidationKey={`${activeTab}_${isDemoMode}_${publicState.status}`}
+            layoutInvalidationKey={`${activeTab}_${publicState.status}`}
           />
 
-          {/* Schwebende Aktions-Buttons auf der Karte (Testklick & Polygon-Editor-Hinweis) */}
+          {/* Schwebende Aktions-Buttons auf der Karte */}
           <div className="pointer-events-none absolute top-3 right-3 left-3 z-[400] flex flex-col gap-2">
             <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center justify-between gap-2">
               {canUseMapClicks && (
@@ -529,6 +552,20 @@ export const App: React.FC = () => {
                 </button>
               )}
 
+              {polygonEditActive && ownMember.isHost && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPolygonEditActive(false);
+                    setPolygonDeleteVertexMode(false);
+                    setActiveTab('HOST');
+                  }}
+                  className="pointer-events-auto inline-flex min-h-[40px] items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-1.5 text-xs font-black text-slate-950 shadow-lg hover:bg-emerald-400"
+                >
+                  Polygon-Bearbeitung fertig (zurück zur Konsole)
+                </button>
+              )}
+
               {isJoinedSardines && (
                 <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/60 bg-cyan-950/90 px-3 py-1.5 text-xs font-extrabold text-cyan-200 shadow-lg">
                   <Sparkles className="h-4 w-4 text-cyan-400" />
@@ -549,8 +586,8 @@ export const App: React.FC = () => {
                   onOpenHostTab={
                     showHostTab ? () => setActiveTab('HOST') : undefined
                   }
-                  onUnlockAdmin={unlockAdminWithCode}
-                  onLogout={exitDemoOrLogout}
+                  onUnlockAdmin={handleUnlockAndEnterConsole}
+                  onLogout={exitOrLogout}
                 />
               </div>
             )}
@@ -721,6 +758,7 @@ export const App: React.FC = () => {
               sessionId={publicState.sessionId}
               hiderPrivate={hiderPrivate}
               teamsPublic={gameState.teamsPublic}
+              activeTeamIds={activeRoundTeamIds}
             />
           ) : (
             <SeekerScannerView
@@ -740,10 +778,11 @@ export const App: React.FC = () => {
           <LeaderboardView
             leaderboard={gameState.leaderboard}
             teamsPublic={gameState.teamsPublic}
+            activeTeamIds={activeRoundTeamIds}
           />
         )}
 
-        {/* TAB 5: SPIELLEITER (HOST / DEMO) */}
+        {/* TAB 5: SPIELLEITER (HOST) */}
         {activeTab === 'HOST' && showHostTab && (
           <HostControlPanel
             adapter={adapter}
@@ -755,9 +794,18 @@ export const App: React.FC = () => {
             teamsPublic={gameState.teamsPublic}
             polygonEditActive={polygonEditActive}
             polygonDeleteVertexMode={polygonDeleteVertexMode}
-            onTogglePolygonEdit={setPolygonEditActive}
+            onTogglePolygonEdit={(active) => {
+              setPolygonEditActive(active);
+              if (!active) setPolygonDeleteVertexMode(false);
+            }}
             onTogglePolygonDeleteMode={setPolygonDeleteVertexMode}
             onNavigateToMap={() => setActiveTab('MAP')}
+            onLeaveAndLockConsole={() => {
+              setPolygonEditActive(false);
+              setPolygonDeleteVertexMode(false);
+              setActiveTab('MAP');
+              void lockAdminConsole();
+            }}
           />
         )}
       </main>

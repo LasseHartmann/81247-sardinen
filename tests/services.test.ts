@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { TEAM_PALETTE } from '../src/config/gameConfig';
 import {
   EXPECTED_ADMIN_AUTH_HASH,
   PRESET_PLAYERS,
   resolveAllowedPlayerByNameInput,
   verifyAdminCode,
 } from '../src/config/players';
+import { createDemoStore } from '../src/demo/demoStore';
 import { destinationPoint } from '../src/geo/distance';
+import { computeAveragedTeamLocationFromMemberFixes } from '../src/services/databaseAdapter';
 import { evaluateLocationThrottle } from '../src/services/locationService';
 import { createSyntheticDemoAudio } from '../src/services/mediaService';
 import {
@@ -142,5 +145,90 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     ]) {
       expect(resolveAllowedPlayerByNameInput(invalid)).toBeUndefined();
     }
+  });
+
+  it('unterstützt 6 Teams, berechnet die Durchschnittsposition aller aktiven Teammitglieder und sperrt doppelte Spieler-Sitzungen', async () => {
+    expect(TEAM_PALETTE.map((t) => t.id)).toEqual([
+      'team-1',
+      'team-2',
+      'team-3',
+      'team-4',
+      'team-5',
+      'team-6',
+    ]);
+
+    // Durchschnitt aus Thomas (48.1600, 11.4600) und Robert (48.1700, 11.4800) -> (48.1650, 11.4700)
+    const t0 = 1_700_000_000_000;
+    const loc1 = computeAveragedTeamLocationFromMemberFixes(
+      null,
+      'thomas',
+      'uid_thomas',
+      { lat: 48.16, lng: 11.46, accuracy: 8, timestamp: t0 },
+      t0
+    );
+    expect(loc1.activeContributorCount).toBe(1);
+    expect(loc1.lat).toBe(48.16);
+    expect(loc1.lng).toBe(11.46);
+
+    const loc2 = computeAveragedTeamLocationFromMemberFixes(
+      loc1,
+      'robert',
+      'uid_robert',
+      { lat: 48.17, lng: 11.48, accuracy: 12, timestamp: t0 + 2_000 },
+      t0 + 2_000
+    );
+    expect(loc2.activeContributorCount).toBe(2);
+    expect(loc2.lat).toBe(48.165);
+    expect(loc2.lng).toBe(11.47);
+    expect(loc2.accuracy).toBe(10);
+
+    // Ein veralteter Standort (> 5 Minuten alt) fällt automatisch aus dem Durchschnitt heraus
+    const loc3 = computeAveragedTeamLocationFromMemberFixes(
+      loc2,
+      'robert',
+      'uid_robert',
+      { lat: 48.172, lng: 11.482, accuracy: 6, timestamp: t0 + 6 * 60_000 },
+      t0 + 6 * 60_000
+    );
+    expect(loc3.activeContributorCount).toBe(1);
+    expect(loc3.lat).toBe(48.172);
+    expect(loc3.lng).toBe(11.482);
+
+    // 1-Person- & 1-Tab-pro-Spieler-Sperre
+    const store = createDemoStore({ inMemoryOnly: true, initialNowMs: t0 });
+    const firstTab = await store.adapter.tryAcquireOrRenewPlayerSeat(
+      'thomas',
+      'uid_1',
+      'tab_a',
+      t0
+    );
+    expect(firstTab.acquired).toBe(true);
+
+    // Zweiter Tab derselben UID oder zweites Gerät mit anderer UID wird blockiert!
+    const secondTabSameUser = await store.adapter.tryAcquireOrRenewPlayerSeat(
+      'thomas',
+      'uid_1',
+      'tab_b',
+      t0 + 5_000
+    );
+    expect(secondTabSameUser.acquired).toBe(false);
+
+    const secondPerson = await store.adapter.tryAcquireOrRenewPlayerSeat(
+      'thomas',
+      'uid_2',
+      'tab_x',
+      t0 + 5_000
+    );
+    expect(secondPerson.acquired).toBe(false);
+
+    // Nach Abmelden / Schließen des Tabs ist der Name sofort wieder frei
+    await store.adapter.releasePlayerSeat('thomas', 'uid_1', 'tab_a');
+    const afterRelease = await store.adapter.tryAcquireOrRenewPlayerSeat(
+      'thomas',
+      'uid_2',
+      'tab_x',
+      t0 + 6_000
+    );
+    expect(afterRelease.acquired).toBe(true);
   });
 });

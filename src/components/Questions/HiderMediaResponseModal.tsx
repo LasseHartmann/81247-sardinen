@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Camera, Mic, Square, FlaskConical, XCircle, Clock } from 'lucide-react';
+import { Camera, Mic, Square, XCircle, Clock } from 'lucide-react';
 import { MEDIA_RESPONSE_TIMEOUT_NET_MS } from '../../config/gameConfig';
 import {
   refundAndCompensateMediaRequest,
@@ -8,8 +8,6 @@ import {
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
 import {
   compressImageFileForClue,
-  createSyntheticDemoAudio,
-  createSyntheticDemoPhoto,
   startTenSecondAudioCapture,
   type ActiveAudioRecordingHandle,
 } from '../../services/mediaService';
@@ -119,32 +117,6 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
     audioHandleRef.current?.stopEarly();
   };
 
-  const handleSendSyntheticFallback = async () => {
-    setBusy(true);
-    setErrorMsg(null);
-    try {
-      const media = isAudio
-        ? createSyntheticDemoAudio()
-        : createSyntheticDemoPhoto(
-            req.questionType === 'MEDIA_SKY' ? 'SKY' : 'GROUND'
-          );
-      await submitHiderMediaResponse({
-        adapter,
-        req,
-        mediaBase64: media.dataUrl,
-        mediaMimeType: media.mimeType,
-        mediaSynthetic: true,
-        serverNowMs: adapter.getServerNow(),
-      });
-    } catch (err) {
-      setErrorMsg(
-        err instanceof Error ? err.message : 'Demo-Medium fehlgeschlagen.'
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleReject = async () => {
     setBusy(true);
     setErrorMsg(null);
@@ -231,27 +203,15 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
             </button>
           )}
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={busy || recordingSeconds !== null}
-              onClick={() => void handleSendSyntheticFallback()}
-              className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-[11px] font-bold text-cyan-200 hover:bg-slate-800 disabled:opacity-40"
-            >
-              <FlaskConical className="h-3.5 w-3.5" />
-              Synthetisches {isAudio ? 'Demo-Audio' : 'Demo-Foto'} senden
-            </button>
-
-            <button
-              type="button"
-              disabled={busy || recordingSeconds !== null}
-              onClick={() => void handleReject()}
-              className="inline-flex min-h-[42px] items-center justify-center gap-1 rounded-xl border border-rose-500/40 bg-rose-950/40 px-3 py-2 text-[11px] font-bold text-rose-200 hover:bg-rose-900/50 disabled:opacity-40"
-            >
-              <XCircle className="h-3.5 w-3.5" />
-              Ablehnen (-5 Min.)
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={busy || recordingSeconds !== null}
+            onClick={() => void handleReject()}
+            className="inline-flex min-h-[42px] w-full items-center justify-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-950/40 px-3 py-2 text-[11px] font-bold text-rose-200 hover:bg-rose-900/50 disabled:opacity-40"
+          >
+            <XCircle className="h-3.5 w-3.5" />
+            Anfrage ablehnen (-5 Min. Erstattung + Gratis-Donut-Ring)
+          </button>
         </div>
       </div>
     </div>

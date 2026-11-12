@@ -47,6 +47,7 @@ export interface GameMapProps {
   publishedRadar: PublishedRadarCircle | null;
   visibleTeamLocations: Record<string, TeamLocation | null>;
   teamsPublic: Record<string, TeamPublic>;
+  activeTeamIds?: string[];
   clues: ClueRecord[];
   hiddenClueIds: Set<string>;
   liveConePreview: Feature<Polygon | MultiPolygon> | null;
@@ -73,6 +74,7 @@ export const GameMap: React.FC<GameMapProps> = ({
   publishedRadar,
   visibleTeamLocations,
   teamsPublic,
+  activeTeamIds,
   clues,
   hiddenClueIds,
   liveConePreview,
@@ -309,16 +311,24 @@ export const GameMap: React.FC<GameMapProps> = ({
         .addTo(group);
     }
 
+    const activeSet = activeTeamIds ? new Set(activeTeamIds) : null;
+
     for (const [teamId, loc] of Object.entries(visibleTeamLocations)) {
       if (!loc) continue;
+      if (activeSet && !activeSet.has(teamId)) continue;
       const pub = teamsPublic[teamId];
-      if (!pub || pub.status === 'JOINED_SARDINES') continue;
+      if (!pub || pub.status === 'JOINED_SARDINES' || pub.memberPlayerIds.length === 0) continue;
+
+      const contributorInfo =
+        loc.activeContributorCount && loc.activeContributorCount > 1
+          ? ` (Ø aus ${loc.activeContributorCount} Spielern)`
+          : '';
 
       L.marker([loc.lat, loc.lng], {
         icon: createTeamBeaconIcon(pub.name, pub.color),
       })
         .bindPopup(
-          `<strong>${pub.name}</strong><br/>Genauigkeit: ±${Math.round(loc.accuracy)} m`
+          `<strong>${pub.name}</strong>${contributorInfo}<br/>Genauigkeit: ±${Math.round(loc.accuracy)} m`
         )
         .addTo(group);
     }
@@ -348,6 +358,7 @@ export const GameMap: React.FC<GameMapProps> = ({
     showAnchorAndLeash,
     visibleTeamLocations,
     teamsPublic,
+    activeTeamIds,
   ]);
 
   // 6. Interaktiver Host-Polygon-Editor (Eckpunkte verschieben / löschen, Mittelpunkte einfügen)

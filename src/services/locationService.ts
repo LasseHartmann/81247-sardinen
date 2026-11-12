@@ -46,7 +46,8 @@ export function evaluateLocationThrottle(params: {
 }
 
 /**
- * Verwaltet die gedrosselte Synchronisation des Sucher-Beacons nach `/teams/{teamId}/location`.
+ * Verwaltet die gedrosselte Synchronisation eines aktiven Sucher-Spielers
+ * nach `/teams/{teamId}/location` (Durchschnittsposition aller aktiven Teammitglieder).
  */
 export class SeekerBeaconBroadcaster {
   private lastSentPoint: LatLng | null = null;
@@ -76,8 +77,8 @@ export class SeekerBeaconBroadcaster {
       return false;
     }
 
-    // Nur das zugewiesene Beacon-Gerät sendet Koordinaten
-    if (!gameActive || team.beaconPlayerId !== member.playerId || !fix) {
+    // Jedes aktive Mitglied des Sucher-Teams trägt zur Durchschnittsposition des Teams bei
+    if (!gameActive || !fix) {
       return false;
     }
 
@@ -99,12 +100,11 @@ export class SeekerBeaconBroadcaster {
     };
     this.lastSentAtMs = nowMs;
 
-    await adapter.writeTeamLocation(team.id, {
+    await adapter.writeTeamMemberFixAveraged(team.id, member.playerId, member.uid, {
       lat: decision.roundedLat,
       lng: decision.roundedLng,
       accuracy: Math.round(fix.accuracy),
       timestamp: nowMs,
-      updatedByUid: member.uid,
     });
     return true;
   }

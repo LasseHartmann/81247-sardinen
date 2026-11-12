@@ -1,14 +1,16 @@
 import {
   createDefaultPublicState,
   createDefaultTeams,
+  PLAYER_SEAT_TTL_MS,
 } from '../config/gameConfig';
 import { PRESET_PLAYERS } from '../config/players';
 import { snapPointIntoPlayArea } from '../geo/boundary';
 import { destinationPoint, roundLatLng5 } from '../geo/distance';
-import type {
-  ControllerPublicPatch,
-  DatabaseAdapter,
-  UnsubscribeFn,
+import {
+  computeAveragedTeamLocationFromMemberFixes,
+  type ControllerPublicPatch,
+  type DatabaseAdapter,
+  type UnsubscribeFn,
 } from '../services/databaseAdapter';
 import { generateRandomId, generateSessionSecrets } from '../services/qrService';
 import type {
@@ -23,20 +25,22 @@ import type {
   JoinRequest,
   LeaderboardEntry,
   MemberRecord,
+  PlayerSeatClaim,
   PresenceSession,
   PublicGameState,
   TeamLocation,
   TeamPublic,
 } from '../types/game';
 
-const DEMO_STORAGE_KEY = 'sardinen_81247_demo_tree_v2';
-const DEMO_ROLE_SESSION_KEY = 'sardinen_81247_demo_role_v2';
+const DEMO_STORAGE_KEY = 'sardinen_81247_demo_tree_v3';
+const DEMO_ROLE_SESSION_KEY = 'sardinen_81247_demo_role_v3';
 const DEMO_BROADCAST_CHANNEL = 'sardinen_81247_demo';
 
 export interface DemoDatabaseTree {
   clockOffsetMs: number;
   gpsSimActive: boolean;
   members: Record<string, MemberRecord>;
+  playerClaims: Record<string, PlayerSeatClaim>;
   joinRequests: Record<string, JoinRequest>;
   presence: Record<string, Record<string, PresenceSession>>;
   teams: Record<
@@ -230,6 +234,7 @@ export function buildInitialDemoTree(nowMs = Date.now()): DemoDatabaseTree {
     clockOffsetMs: 0,
     gpsSimActive: false,
     members,
+    playerClaims: {},
     joinRequests: {},
     presence: {},
     teams: teamsTree,
@@ -436,6 +441,47 @@ export function createDemoStore(options?: {
       writeTree((t) => {
         delete t.members[uid];
       });
+    },
+
+    async tryAcquireOrRenewPlayerSeat(
+      playerId,
+      uid,
+      tabId,
+      nowMs
+    ): Promise<{ acquired: boolean; holder: PlayerSeatClaim | null }> {
+      let acquired = false;
+      let holder: PlayerSeatClaim | null = null;
+      writeTree((t) => {
+        if (!t.playerClaims) t.playerClaims = {};
+        const cur = t.playerClaims[playerId];
+        if (
+          !cur ||
+          cur.heartbeatAt < nowMs - PLAYER_SEAT_TTL_MS ||
+          (cur.uid === uid && cur.tabId === tabId)
+        ) {
+          const next: PlayerSeatClaim = { uid, tabId, heartbeatAt: nowMs };
+          t.playerClaims[playerId] = next;
+          acquired = true;
+          holder = next;
+        } else {
+          acquired = false;
+          holder = structuredClone(cur);
+        }
+      });
+      return { acquired, holder };
+    },
+
+    async releasePlayerSeat(playerId, uid, tabId): Promise<void> {
+      writeTree((t) => {
+        const cur = t.playerClaims?.[playerId];
+        if (cur && cur.uid === uid && cur.tabId === tabId) {
+          delete t.playerClaims[playerId];
+        }
+      });
+    },
+
+    subscribePlayerSeat(playerId, cb): UnsubscribeFn {
+      return subscribeSlice((t) => t.playerClaims?.[playerId] ?? null, cb);
     },
 
     async signOut(): Promise<void> {
@@ -649,6 +695,29 @@ export function createDemoStore(options?: {
           t.teams[teamId].location = structuredClone(loc);
         }
       });
+    },
+
+    async writeTeamMemberFixAveraged(
+      teamId,
+      playerId,
+      uid,
+      fix
+    ): Promise<TeamLocation | null> {
+      let updated: TeamLocation | null = null;
+      writeTree((t) => {
+        if (!t.teams[teamId]) return;
+        const nowMs = Date.now() + (t.clockOffsetMs || 0);
+        const next = computeAveragedTeamLocationFromMemberFixes(
+          t.teams[teamId].location,
+          playerId,
+          uid,
+          fix,
+          nowMs
+        );
+        t.teams[teamId].location = next;
+        updated = structuredClone(next);
+      });
+      return updated;
     },
 
     async clearTeamLocation(teamId): Promise<void> {

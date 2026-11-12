@@ -9,6 +9,7 @@ import {
   MousePointerClick,
   Trash2,
   FastForward,
+  Lock,
 } from 'lucide-react';
 import type { Feature, Polygon } from 'geojson';
 import {
@@ -41,6 +42,7 @@ export interface HostControlPanelProps {
   onTogglePolygonEdit: (active: boolean) => void;
   onTogglePolygonDeleteMode: (del: boolean) => void;
   onNavigateToMap: () => void;
+  onLeaveAndLockConsole?: () => void;
 }
 
 export const HostControlPanel: React.FC<HostControlPanelProps> = ({
@@ -56,6 +58,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   onTogglePolygonEdit,
   onTogglePolygonDeleteMode,
   onNavigateToMap,
+  onLeaveAndLockConsole,
 }) => {
   const [emergencyReasonInput, setEmergencyReasonInput] = useState(
     'Wetterwarnung / Spielleiter-Rückruf zum Sammelpunkt Schloss Blutenburg'
@@ -67,7 +70,23 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   const openRequests = Object.values(joinRequests).sort(
     (a, b) => a.requestedAt - b.requestedAt
   );
-  const enabledMembers = Object.values(members);
+  // Dedupliziere nach playerId (bevorzuge aktive Sitzung in presence, sonst neuesten Eintrag),
+  // damit jeder Spieler garantiert nur einmal in der Liste steht!
+  const dedupedByPlayerId = new Map<string, MemberRecord>();
+  for (const m of Object.values(members)) {
+    if (!m.enabled) continue;
+    const existing = dedupedByPlayerId.get(m.playerId);
+    if (!existing) {
+      dedupedByPlayerId.set(m.playerId, m);
+    } else {
+      const mOnline = Boolean(presence[m.uid]);
+      const exOnline = Boolean(presence[existing.uid]);
+      if (mOnline && !exOnline) {
+        dedupedByPlayerId.set(m.playerId, m);
+      }
+    }
+  }
+  const enabledMembers = Array.from(dedupedByPlayerId.values());
   const hiderCount = enabledMembers.filter(
     (m) => m.enabled && m.side === 'HIDER'
   ).length;
@@ -99,15 +118,17 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     const nextTeams = createDefaultTeams();
     for (const m of enabledMembers) {
       if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
-        nextTeams[m.teamId].memberPlayerIds.push(m.playerId);
-        const prevBeacon = teamsPublic[m.teamId]?.beaconPlayerId;
-        if (prevBeacon && nextTeams[m.teamId].memberPlayerIds.includes(prevBeacon)) {
-          nextTeams[m.teamId].beaconPlayerId = prevBeacon;
-        } else if (!nextTeams[m.teamId].beaconPlayerId) {
-          nextTeams[m.teamId].beaconPlayerId = m.playerId;
+        if (!nextTeams[m.teamId].memberPlayerIds.includes(m.playerId)) {
+          nextTeams[m.teamId].memberPlayerIds.push(m.playerId);
         }
+        nextTeams[m.teamId].beaconPlayerId =
+          nextTeams[m.teamId].memberPlayerIds[0] ?? null;
       }
     }
+
+    const occupiedTeamIds = Object.values(nextTeams)
+      .filter((t) => t.memberPlayerIds.length > 0)
+      .map((t) => t.id);
 
     await adapter.resetRoundByHost(
       {
@@ -124,6 +145,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
         radarCircle: null,
         emergencyStopReason: null,
         leashAlertActive: false,
+        activeTeamIds: occupiedTeamIds,
         radarSchedule: {
           ...publicState.radarSchedule,
           hidingDurationMs: Math.max(1, hidingMinInput) * 60_000,
@@ -220,12 +242,16 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       teamId = nextSelection;
     }
 
-    const updatedMember: MemberRecord = {
-      ...member,
-      side,
-      teamId,
-    };
-    await adapter.updateMember(member.uid, updatedMember);
+    // Aktualisiere alle Einträge dieses Spielers (falls verwaiste Alt-UIDs existierten)
+    for (const m of Object.values(members)) {
+      if (m.playerId === member.playerId) {
+        await adapter.updateMember(m.uid, {
+          ...m,
+          side,
+          teamId,
+        });
+      }
+    }
 
     // Synchronisiere Team-Mitgliederlisten in Firebase / Demo
     for (const palette of TEAM_PALETTE) {
@@ -252,23 +278,29 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     }
   };
 
-  const handleSetBeacon = async (team: TeamPublic, beaconPlayerId: string) => {
-    await adapter.saveTeamPublic(team.id, {
-      ...team,
-      beaconPlayerId,
-    });
-  };
-
   return (
     <div className="h-full overflow-y-auto bg-slate-950/95 p-4 text-slate-100">
       <div className="mx-auto max-w-3xl space-y-5 pb-10">
-        <div>
-          <span className="text-xs font-black tracking-wider text-emerald-400 uppercase">
-            Spielleiter-Zentrale (Host)
-          </span>
-          <h2 className="text-xl font-black text-white">
-            Rundensteuerung, Teams & 81247-Polygon
-          </h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span className="text-xs font-black tracking-wider text-emerald-400 uppercase">
+              Spielleiter-Zentrale (Host)
+            </span>
+            <h2 className="text-xl font-black text-white">
+              Rundensteuerung, Teams & 81247-Polygon
+            </h2>
+          </div>
+          {onLeaveAndLockConsole && (
+            <button
+              type="button"
+              data-testid="lock-admin-console-btn"
+              onClick={onLeaveAndLockConsole}
+              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-amber-500/50 bg-amber-950/40 px-3 py-2 text-xs font-extrabold text-amber-300 hover:bg-amber-900/50"
+            >
+              <Lock className="h-3.5 w-3.5" />
+              Konsole sperren & verlassen
+            </button>
+          )}
         </div>
 
         {/* 1. Offene Beitrittswünsche (1-Klick-Freischaltung) */}
@@ -440,15 +472,15 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           onUpdatePolygon={handleUpdatePolygon}
         />
 
-        {/* 5. Team- & GPS-Beacon-Zuweisung + Präsenz-Bereinigung */}
+        {/* 5. Team-Zuweisung (Durchschnittsposition pro Team) + Präsenz-Bereinigung */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-extrabold text-white">
-                Spieler-, Team- & GPS-Beacon-Zuweisung
+                Spieler- & Team-Zuweisung (Team 1–6)
               </h3>
               <p className="text-xs text-slate-400">
-                Genau ein Verstecker-Team („Die Sardinen“) und beliebig viele Sucher-Teams mit je einem Beacon-Gerät.
+                Nicht alle Teams müssen belegt sein — unbesetzte Teams werden in der Runde automatisch komplett ausgeblendet. Jedes besetzte Team wird über die Durchschnittsposition seiner Mitglieder getrackt.
               </p>
             </div>
             <button
@@ -509,9 +541,19 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </div>
 
           <div className="grid gap-2.5 sm:grid-cols-2">
-            {TEAM_PALETTE.map((palette) => {
+            {TEAM_PALETTE.filter((palette) => {
               const team = teamsPublic[palette.id];
-              if (!team) return null;
+              if (!team) return false;
+              // Während einer laufenden Runde nur tatsächlich besetzte Teams anzeigen
+              if (publicState.status !== 'LOBBY' && publicState.status !== 'FINISHED') {
+                return (
+                  team.memberPlayerIds.length > 0 &&
+                  publicState.activeTeamIds.includes(team.id)
+                );
+              }
+              return true;
+            }).map((palette) => {
+              const team = teamsPublic[palette.id]!;
               return (
                 <div
                   key={team.id}
@@ -525,33 +567,31 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                       />
                       {team.name}
                     </span>
-                    <span className="text-[11px] text-slate-400">
-                      {team.memberPlayerIds.length} Mitgl.
+                    <span
+                      className={`text-[11px] font-semibold ${
+                        team.memberPlayerIds.length > 0
+                          ? 'text-emerald-300'
+                          : 'text-slate-500'
+                      }`}
+                    >
+                      {team.memberPlayerIds.length > 0
+                        ? `${team.memberPlayerIds.length} Spieler aktiv`
+                        : 'Unbesetzt (wird ausgeblendet)'}
                     </span>
                   </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <Radio className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
-                    <span className="text-slate-400">Beacon:</span>
-                    <select
-                      aria-label={`Beacon für ${team.name}`}
-                      value={team.beaconPlayerId ?? ''}
-                      disabled={team.memberPlayerIds.length === 0}
-                      onChange={(e) =>
-                        void handleSetBeacon(team, e.target.value)
-                      }
-                      className="min-h-[36px] flex-1 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-40"
-                    >
-                      {team.memberPlayerIds.length === 0 ? (
-                        <option value="">Kein Mitglied</option>
-                      ) : (
-                        team.memberPlayerIds.map((pid) => (
-                          <option key={pid} value={pid}>
-                            {pid.toUpperCase()}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
+                  {team.memberPlayerIds.length > 0 && (
+                    <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
+                      <Radio className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+                      <span>
+                        GPS-Durchschnitt aus:{' '}
+                        <strong className="text-slate-200">
+                          {team.memberPlayerIds
+                            .map((pid) => pid.charAt(0).toUpperCase() + pid.slice(1))
+                            .join(', ')}
+                        </strong>
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}

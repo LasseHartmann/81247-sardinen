@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import {
-  FlaskConical,
   KeyRound,
   LogIn,
   LogOut,
   ShieldCheck,
   Users,
-  Info,
   Crown,
 } from 'lucide-react';
 import type {
@@ -21,14 +19,12 @@ export interface LoginScreenProps {
   firebaseAvailable: boolean;
   loginError: string | null;
   onLoginByName: (typedName: string) => Promise<void>;
-  onEnterDemoMode: () => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
   firebaseAvailable,
   loginError,
   onLoginByName,
-  onEnterDemoMode,
 }) => {
   const [typedName, setTypedName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -80,9 +76,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </div>
 
           {!firebaseAvailable && (
-            <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/30 p-3 text-xs text-cyan-200">
-              Noch keine Firebase-Umgebungsvariablen hinterlegt: Du kannst direkt unten den{' '}
-              <strong>Lokalen Demo-Modus</strong> starten.
+            <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-xs text-amber-200">
+              Hinweis: Firebase-Umgebungsvariablen sind noch nicht hinterlegt.
             </div>
           )}
 
@@ -105,22 +100,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             {submitting ? 'Logge ein ...' : 'Einloggen'}
           </button>
         </form>
-
-        <div className="my-4 flex items-center gap-3 text-xs text-slate-500">
-          <div className="h-px flex-1 bg-slate-800" />
-          <span>oder ohne Server testen</span>
-          <div className="h-px flex-1 bg-slate-800" />
-        </div>
-
-        <button
-          type="button"
-          data-testid="start-demo-mode-btn"
-          onClick={onEnterDemoMode}
-          className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/50 bg-emerald-950/40 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-900/50"
-        >
-          <FlaskConical className="h-4 w-4" />
-          Lokalen Demo-Modus starten
-        </button>
       </div>
     </div>
   );
@@ -218,7 +197,16 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   onUnlockAdmin,
   onLogout,
 }) => {
-  const memberList = Object.values(members).filter((m) => m.enabled);
+  // Dedupliziere nach playerId, damit jeder Spieler in der Lobby nur einmal angezeigt wird
+  const dedupedMap = new Map<string, MemberRecord>();
+  for (const m of Object.values(members)) {
+    if (!m.enabled) continue;
+    const prev = dedupedMap.get(m.playerId);
+    if (!prev || (presence[m.uid] && !presence[prev.uid])) {
+      dedupedMap.set(m.playerId, m);
+    }
+  }
+  const memberList = Array.from(dedupedMap.values());
   const [adminPromptOpen, setAdminPromptOpen] = useState(false);
   const [adminCode, setAdminCode] = useState('');
   const [adminError, setAdminError] = useState<string | null>(null);
@@ -344,14 +332,6 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
             );
           })}
         </div>
-      </div>
-
-      <div className="mt-3 flex items-start gap-2 rounded-xl border border-slate-800/80 bg-slate-900/50 p-2.5 text-[11px] text-slate-400">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400" />
-        <span>
-          <strong>Architektur-Transparenz:</strong> Geheime Verstecker-Koordinaten liegen isoliert unter{' '}
-          <code>/state/hiderPrivate</code> und werden direkt durch ein autorisiertes Admin-/Hider-Gerät ausgewertet.
-        </span>
       </div>
 
       {canShowAdminUnlock && (

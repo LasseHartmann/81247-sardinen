@@ -1,8 +1,10 @@
 import * as turf from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_PLAY_AREA_FEATURE } from '../src/config/gameConfig';
 import {
   buildPolygonFromVertices,
+  extractPolygonVertices,
   isPointInPlayArea,
   isValidPlayAreaPolygon,
 } from '../src/geo/boundary';
@@ -225,5 +227,13 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
     ).toBe('NEIN (Außerhalb)');
 
     expect(isValidPlayAreaPolygon(PLAY_AREA_81247).valid).toBe(true);
+
+    // Prüfe auch das offizielle Overpass-81247-PLZ-Polygon (relation/1102638)
+    expect(isValidPlayAreaPolygon(DEFAULT_PLAY_AREA_FEATURE).valid).toBe(true);
+    expect(extractPolygonVertices(DEFAULT_PLAY_AREA_FEATURE).length).toBe(146);
+    // Schloss Blutenburg liegt im offiziellen 81247-Gebiet
+    expect(
+      isPointInPlayArea({ lat: 48.1632, lng: 11.4572 }, DEFAULT_PLAY_AREA_FEATURE)
+    ).toBe(true);
   });
 });

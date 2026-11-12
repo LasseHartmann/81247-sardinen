@@ -1,33 +1,21 @@
 import React from 'react';
-import { WifiOff, PauseCircle, ServerCrash, FlaskConical } from 'lucide-react';
+import { WifiOff, PauseCircle, ServerCrash } from 'lucide-react';
 import type { GameStatus } from '../../types/game';
 
 export interface StatusBannersProps {
-  isDemoMode: boolean;
   connected: boolean;
   isControllerDisconnected: boolean;
   gameStatus: GameStatus | null;
 }
 
 export const StatusBanners: React.FC<StatusBannersProps> = ({
-  isDemoMode,
   connected,
   isControllerDisconnected,
   gameStatus,
 }) => {
   return (
     <div className="flex flex-col">
-      {isDemoMode && (
-        <div
-          data-testid="demo-mode-badge"
-          className="flex items-center justify-center gap-1.5 border-b border-cyan-500/40 bg-cyan-950/90 px-3 py-1 text-[11px] font-extrabold tracking-wide text-cyan-200"
-        >
-          <FlaskConical className="h-3.5 w-3.5 text-cyan-400" />
-          DEMO-MODUS – Lokale Simulation aktiv
-        </div>
-      )}
-
-      {!isDemoMode && !connected && (
+      {!connected && (
         <div
           role="alert"
           className="flex items-center justify-center gap-2 border-b border-amber-500/60 bg-amber-950/95 px-3 py-1.5 text-xs font-bold text-amber-200"

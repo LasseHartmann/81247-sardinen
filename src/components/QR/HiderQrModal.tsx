@@ -8,12 +8,14 @@ export interface HiderQrModalProps {
   sessionId: string;
   hiderPrivate: HiderPrivateState | null;
   teamsPublic: Record<string, TeamPublic>;
+  activeTeamIds?: string[];
 }
 
 export const HiderQrView: React.FC<HiderQrModalProps> = ({
   sessionId,
   hiderPrivate,
   teamsPublic,
+  activeTeamIds,
 }) => {
   if (!hiderPrivate || !hiderPrivate.qrSecret || !hiderPrivate.shortCode) {
     return (
@@ -29,8 +31,12 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
     hiderPrivate.shortCode
   );
 
+  const activeSet = activeTeamIds ? new Set(activeTeamIds) : null;
   const joinedTeams = Object.values(teamsPublic).filter(
-    (t) => t.status === 'JOINED_SARDINES'
+    (t) =>
+      t.status === 'JOINED_SARDINES' &&
+      t.memberPlayerIds.length > 0 &&
+      (!activeSet || activeSet.has(t.id))
   );
 
   return (

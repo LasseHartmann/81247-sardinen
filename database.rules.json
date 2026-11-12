@@ -1,0 +1,129 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "games": {
+      "81247": {
+        "members": {
+          ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true",
+          ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true",
+          "$uid": {
+            ".read": "auth != null && (auth.uid === $uid || root.child('games/81247/members/' + auth.uid + '/enabled').val() === true)",
+            ".write": "auth != null && ((root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true) || (auth.uid === $uid && !data.exists() && newData.exists() && newData.child('enabled').val() === true && newData.child('isHost').val() === false && (newData.child('playerId').val() === 'lasse' || newData.child('playerId').val() === 'linus' || newData.child('playerId').val() === 'thomas' || newData.child('playerId').val() === 'robert' || newData.child('playerId').val() === 'nick' || newData.child('playerId').val() === 'eric' || newData.child('playerId').val() === 'jonah' || newData.child('playerId').val() === 'lorenzo' || newData.child('playerId').val() === 'louis' || newData.child('playerId').val() === 'max' || newData.child('playerId').val() === 'roman')) || (auth.uid === $uid && data.exists() && newData.exists() && (data.child('playerId').val() === 'lasse' || data.child('playerId').val() === 'linus') && newData.child('playerId').val() === data.child('playerId').val() && newData.child('name').val() === data.child('name').val() && newData.child('enabled').val() === true && newData.child('isHost').val() === true && newData.child('adminAuthHash').val() === '72bfd4d0aec4a76c76188c955cdfedfb75abd34584490c5d8ede99e15f71a5ae'))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['playerId', 'name', 'isHost', 'enabled', 'side']) && newData.child('playerId').isString() && newData.child('name').isString() && newData.child('isHost').isBoolean() && newData.child('enabled').isBoolean() && (newData.child('side').val() === 'HIDER' || newData.child('side').val() === 'SEEKER' || newData.child('side').val() === 'UNASSIGNED'))"
+          }
+        },
+        "joinRequests": {
+          ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true",
+          "$uid": {
+            ".read": "auth != null && (auth.uid === $uid || (root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true))",
+            ".write": "auth != null && ((auth.uid === $uid && newData.exists() && root.child('games/81247/members/' + auth.uid + '/enabled').val() !== true) || (root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['uid', 'playerId', 'name', 'requestedAt']) && newData.child('uid').val() === $uid && newData.child('playerId').isString() && newData.child('name').isString() && newData.child('requestedAt').isNumber())"
+          }
+        },
+        "presence": {
+          ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true",
+          ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()",
+          "$uid": {
+            ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()",
+            "$browserSessionId": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (auth.uid === $uid || (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()))",
+              ".validate": "!newData.exists() || (newData.hasChildren(['online', 'lastSeen']) && newData.child('online').isBoolean() && newData.child('lastSeen').isNumber())"
+            }
+          }
+        },
+        "teams": {
+          "$teamId": {
+            "public": {
+              ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true",
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+              ".validate": "!newData.exists() || (newData.hasChildren(['id', 'name', 'color', 'status', 'penaltyMs', 'clueCount']) && newData.child('id').val() === $teamId && newData.child('penaltyMs').isNumber() && newData.child('penaltyMs').val() >= 0 && (newData.child('status').val() === 'ACTIVE' || newData.child('status').val() === 'JOINED_SARDINES'))"
+            },
+            "location": {
+              ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/teamId').val() === $teamId || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER' || root.child('games/81247/members/' + auth.uid + '/isHost').val() === true)",
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && ((root.child('games/81247/members/' + auth.uid + '/teamId').val() === $teamId && root.child('games/81247/teams/' + $teamId + '/public/status').val() === 'ACTIVE') || root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+              ".validate": "!newData.exists() || (newData.hasChildren(['lat', 'lng', 'accuracy', 'timestamp', 'updatedByUid']) && newData.child('lat').isNumber() && newData.child('lat').val() >= -90 && newData.child('lat').val() <= 90 && newData.child('lng').isNumber() && newData.child('lng').val() >= -180 && newData.child('lng').val() <= 180 && newData.child('accuracy').isNumber() && newData.child('timestamp').isNumber() && newData.child('updatedByUid').isString())"
+            }
+          }
+        },
+        "state": {
+          "public": {
+            ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true",
+            ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true",
+            "currentPhase": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')"
+            },
+            "status": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')"
+            },
+            "radarCircle": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')"
+            },
+            "leashAlertActive": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+              ".validate": "newData.isBoolean()"
+            },
+            "searchStartTimestamp": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+              ".validate": "!newData.exists() || newData.isNumber()"
+            },
+            "pausedBeforeSearchMs": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "anchorLocked": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+              ".validate": "newData.isBoolean()"
+            }
+          },
+          "controller": {
+            ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true",
+            ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER') && ((!newData.exists() && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true) || (newData.exists() && newData.child('controllerUid').val() === auth.uid && (!data.exists() || !data.child('controllerUid').exists() || data.child('controllerUid').val() === auth.uid || data.child('leaseExpiresAt').val() < now)))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['controllerUid', 'heartbeatAt', 'leaseExpiresAt', 'sessionId']) && newData.child('controllerUid').isString() && newData.child('heartbeatAt').isNumber() && newData.child('leaseExpiresAt').isNumber() && newData.child('sessionId').isString())"
+          },
+          "hiderPrivate": {
+            ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER' || (root.child('games/81247/members/' + auth.uid + '/teamId').exists() && root.child('games/81247/teams/' + root.child('games/81247/members/' + auth.uid + '/teamId').val() + '/public/status').val() === 'JOINED_SARDINES'))",
+            ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')"
+          }
+        },
+        "clues": {
+          ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()",
+          "$teamId": {
+            ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/teamId').val() === $teamId || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER' || root.child('games/81247/members/' + auth.uid + '/isHost').val() === true)",
+            ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+            "$clueId": {
+              ".validate": "!newData.exists() || (newData.hasChildren(['id', 'requestId', 'teamId', 'sessionId', 'questionType', 'title', 'answerText', 'penaltyMs', 'createdAt']) && newData.child('teamId').val() === $teamId)"
+            }
+          }
+        },
+        "requests": {
+          ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()",
+          "$teamId": {
+            ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/teamId').val() === $teamId || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER' || root.child('games/81247/members/' + auth.uid + '/isHost').val() === true)",
+            ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()",
+            "$requestId": {
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER' || (root.child('games/81247/members/' + auth.uid + '/teamId').val() === $teamId && root.child('games/81247/teams/' + $teamId + '/public/status').val() === 'ACTIVE' && !data.exists() && newData.exists() && newData.child('status').val() === 'PENDING' && newData.child('teamId').val() === $teamId) || (root.child('games/81247/members/' + auth.uid + '/teamId').val() === $teamId && data.exists() && newData.exists() && data.child('status').val() === 'ANSWERED' && newData.child('status').val() === 'ANSWERED' && newData.child('questionType').val() === data.child('questionType').val() && newData.child('penaltyMs').val() === data.child('penaltyMs').val() && !newData.child('mediaBase64').exists()))",
+              ".validate": "!newData.exists() || (newData.hasChildren(['id', 'teamId', 'sessionId', 'questionType', 'category', 'status', 'penaltyMs', 'createdAt', 'requesterSnapshotLocation']) && newData.child('id').val() === $requestId && newData.child('teamId').val() === $teamId && (!newData.child('mediaBase64').exists() || (newData.child('mediaBase64').isString() && newData.child('mediaBase64').val().length <= 95000)) && (!newData.child('mediaMimeType').exists() || (newData.child('mediaMimeType').isString() && newData.child('mediaMimeType').val().length <= 128)))"
+            }
+          }
+        },
+        "catchRequests": {
+          ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+          ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true && !newData.exists()",
+          "$requestId": {
+            ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER' || (data.exists() && data.child('submittedByUid').val() === auth.uid))",
+            ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER' || (!data.exists() && newData.exists() && newData.child('status').val() === 'PENDING' && newData.child('submittedByUid').val() === auth.uid && root.child('games/81247/members/' + auth.uid + '/teamId').val() === newData.child('teamId').val() && root.child('games/81247/teams/' + newData.child('teamId').val() + '/public/status').val() === 'ACTIVE'))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['id', 'teamId', 'submittedByUid', 'sessionId', 'codeOrSecret', 'status', 'createdAt']) && newData.child('codeOrSecret').isString() && newData.child('codeOrSecret').val().length <= 512)"
+          }
+        },
+        "leaderboard": {
+          ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true",
+          ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+          "$teamId": {
+            ".validate": "!newData.exists() || (newData.hasChildren(['teamId', 'teamName', 'color', 'status', 'searchTimeMs', 'penaltyMs', 'totalTimeMs', 'clueCount', 'caughtAt']) && newData.child('teamId').val() === $teamId && newData.child('totalTimeMs').isNumber())"
+          }
+        }
+      }
+    }
+  }
+}

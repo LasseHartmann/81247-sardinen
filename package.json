@@ -1,0 +1,40 @@
+{
+  "name": "81247-sardinen",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Mobile-first Multiplayer-Web-App für das Outdoor-Versteckspiel 81247 Sardinen in München (Obermenzing / Blutenburg / Pipping)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.4",
+    "@turf/turf": "^7.2.0",
+    "firebase": "^11.6.0",
+    "html5-qrcode": "^2.3.8",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.487.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^4.1.4"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/geojson": "^7946.0.16",
+    "@types/leaflet": "^1.9.17",
+    "@types/node": "^22.14.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^25.0.1",
+    "typescript": "~5.7.3",
+    "vite": "^6.2.5",
+    "vitest": "^3.0.8"
+  }
+}

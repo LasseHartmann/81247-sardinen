@@ -1,0 +1,26 @@
+{
+  "type": "Feature",
+  "properties": {
+    "name": "81247 München (Obermenzing / Blutenburg / Pipping)",
+    "postalCode": "81247",
+    "status": "VORSCHLAG_ZUR_BESTAETIGUNG_DURCH_SPIELLEITER",
+    "note": "Realistisches Vorschlagspolygon rund um Schloss Blutenburg, Würm-Grünzug, Durchblickpark, Pipping und Obermenzing. Muss vor Spielstart durch den Spielleiter geprüft und bestätigt werden."
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [11.4515, 48.1762],
+        [11.4665, 48.1782],
+        [11.4848, 48.1756],
+        [11.4948, 48.1672],
+        [11.4936, 48.1612],
+        [11.4812, 48.1562],
+        [11.4654, 48.1544],
+        [11.4532, 48.1568],
+        [11.4488, 48.1642],
+        [11.4515, 48.1762]
+      ]
+    ]
+  }
+}

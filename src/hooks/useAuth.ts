@@ -107,10 +107,23 @@ export function useAuth(): {
 
     setMemberLoading(true);
     let attemptedAutoRegister = false;
+    let hadExistingMember = false;
 
     const unsubMember = adapter.subscribeOwnMember(authUser.uid, (member) => {
       setOwnMember(member);
       setMemberLoading(false);
+
+      if (member) {
+        hadExistingMember = true;
+      } else if (hadExistingMember) {
+        // Spieler wurde vom Admin aus der Runde gekickt!
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem(CHOSEN_PLAYER_STORAGE_KEY);
+        }
+        setLoginError('Du wurdest vom Spielleiter aus der Runde entfernt.');
+        void adapter.signOut();
+        return;
+      }
 
       // Beim frischen Öffnen/Neuladen der App sicherstellen, dass ein offenes Admin-Flag sofort gesperrt startet
       if (member && member.isHost && !attemptedAutoRegister) {

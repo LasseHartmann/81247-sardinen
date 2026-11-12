@@ -237,6 +237,15 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     );
     expect(afterRelease.acquired).toBe(true);
 
+    // Kicken eines Spielers durch den Spielleiter entfernt Member-Eintrag, Sitz-Claim und Team-Zugehörigkeit
+    await store.adapter.kickPlayerByHost('thomas', ['demo_uid_thomas', 'uid_2']);
+    const snapAfterKick = store.getSnapshot();
+    expect(snapAfterKick.members['demo_uid_thomas']).toBeUndefined();
+    expect(snapAfterKick.playerClaims['thomas']).toBeUndefined();
+    expect(snapAfterKick.teams['team-1'].public.memberPlayerIds).not.toContain(
+      'thomas'
+    );
+
     // Offizielle 81247-PLZ-Grenze aus export.geojson (146 Eckpunkte = 147 Ring-Koordinaten)
     expect(DEFAULT_PLAY_AREA_FEATURE.geometry.coordinates[0].length).toBe(147);
     expect(

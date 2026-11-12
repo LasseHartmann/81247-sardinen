@@ -443,6 +443,32 @@ export function createDemoStore(options?: {
       });
     },
 
+    async kickPlayerByHost(playerId, memberUids): Promise<void> {
+      writeTree((t) => {
+        for (const targetUid of memberUids) {
+          delete t.members[targetUid];
+          delete t.joinRequests?.[targetUid];
+          delete t.presence?.[targetUid];
+        }
+        for (const [uid, rec] of Object.entries(t.members)) {
+          if (rec.playerId === playerId) {
+            delete t.members[uid];
+          }
+        }
+        if (t.playerClaims) {
+          delete t.playerClaims[playerId];
+        }
+        for (const team of Object.values(t.teams)) {
+          team.public.memberPlayerIds = team.public.memberPlayerIds.filter(
+            (pid) => pid !== playerId
+          );
+          if (team.public.beaconPlayerId === playerId) {
+            team.public.beaconPlayerId = team.public.memberPlayerIds[0] ?? null;
+          }
+        }
+      });
+    },
+
     async tryAcquireOrRenewPlayerSeat(
       playerId,
       uid,

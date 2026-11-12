@@ -4,6 +4,7 @@ import {
   Pause,
   RotateCcw,
   UserPlus,
+  UserX,
   Radio,
   MousePointerClick,
   Trash2,
@@ -264,6 +265,16 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     }
   };
 
+  const handleKickMember = async (member: MemberRecord) => {
+    const matchingUids = Object.values(members)
+      .filter((m) => m.playerId === member.playerId)
+      .map((m) => m.uid);
+    if (!matchingUids.includes(member.uid)) {
+      matchingUids.push(member.uid);
+    }
+    await adapter.kickPlayerByHost(member.playerId, matchingUids);
+  };
+
   return (
     <div className="h-full overflow-y-auto bg-slate-950/95 p-4 text-slate-100">
       <div className="mx-auto max-w-3xl space-y-5 pb-10">
@@ -507,20 +518,35 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                     )}
                   </div>
 
-                  <select
-                    aria-label={`Rolle für ${m.name}`}
-                    value={currentValue}
-                    onChange={(e) => void handleAssignMember(m, e.target.value)}
-                    className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white"
-                  >
-                    <option value="HIDER">🐟 Verstecker (Die Sardinen)</option>
-                    {TEAM_PALETTE.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        Sucher: {t.name}
-                      </option>
-                    ))}
-                    <option value="UNASSIGNED">Nicht zugewiesen</option>
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <select
+                      aria-label={`Rolle für ${m.name}`}
+                      value={currentValue}
+                      onChange={(e) => void handleAssignMember(m, e.target.value)}
+                      className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white"
+                    >
+                      <option value="HIDER">🐟 Verstecker (Die Sardinen)</option>
+                      {TEAM_PALETTE.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          Sucher: {t.name}
+                        </option>
+                      ))}
+                      <option value="UNASSIGNED">Nicht zugewiesen</option>
+                    </select>
+
+                    {m.uid !== ownMember.uid && (
+                      <button
+                        type="button"
+                        data-testid={`kick-player-${m.playerId}`}
+                        onClick={() => void handleKickMember(m)}
+                        title={`${m.name} aus der Runde kicken`}
+                        className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-950/40 px-2.5 py-1.5 text-xs font-bold text-rose-300 hover:bg-rose-900/60 hover:text-white"
+                      >
+                        <UserX className="h-3.5 w-3.5" />
+                        <span>Kicken</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

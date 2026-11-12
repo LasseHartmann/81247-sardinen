@@ -76,6 +76,7 @@ export interface DatabaseAdapter {
   registerSelfMemberIfMissing(member: MemberRecord): Promise<void>;
   claimInitialHostRole(uid: string, playerId: string, name: string): Promise<void>;
   removeMemberByHost(uid: string): Promise<void>;
+  kickPlayerByHost(playerId: string, memberUids: string[]): Promise<void>;
   tryAcquireOrRenewPlayerSeat(
     playerId: string,
     uid: string,
@@ -323,6 +324,38 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async removeMemberByHost(uid): Promise<void> {
       await remove(ref(db, `${ROOT_PATH}/members/${uid}`));
+    },
+
+    async kickPlayerByHost(playerId, memberUids): Promise<void> {
+      for (const targetUid of memberUids) {
+        await remove(ref(db, `${ROOT_PATH}/members/${targetUid}`)).catch(() => {});
+        await remove(ref(db, `${ROOT_PATH}/joinRequests/${targetUid}`)).catch(() => {});
+        await remove(ref(db, `${ROOT_PATH}/presence/${targetUid}`)).catch(() => {});
+      }
+      await remove(ref(db, `${ROOT_PATH}/playerClaims/${playerId}`)).catch(() => {});
+
+      for (const palette of TEAM_PALETTE) {
+        await runTransaction(
+          ref(db, `${ROOT_PATH}/teams/${palette.id}/public`),
+          (cur: TeamPublic | null) => {
+            if (!cur) return cur;
+            const list = Array.isArray(cur.memberPlayerIds)
+              ? cur.memberPlayerIds.filter((pid) => pid !== playerId)
+              : [];
+            const nextBeacon =
+              list.length === 0
+                ? null
+                : cur.beaconPlayerId && list.includes(cur.beaconPlayerId)
+                  ? cur.beaconPlayerId
+                  : list[0];
+            return {
+              ...cur,
+              memberPlayerIds: list,
+              beaconPlayerId: nextBeacon,
+            };
+          }
+        ).catch(() => {});
+      }
     },
 
     async tryAcquireOrRenewPlayerSeat(

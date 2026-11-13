@@ -4,7 +4,6 @@ import {
   Download,
   Eye,
   EyeOff,
-  Database,
   Image as ImageIcon,
   Users,
 } from 'lucide-react';
@@ -155,15 +154,6 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
                         ? 'Gratis-Ersatz'
                         : formatPenaltyMinutes(clue.penaltyMs)}
                   </span>
-
-                  {clue.usedOfflineOsmFallback && (
-                    <span
-                      title="Aus kuratierten 81247-Ortsdaten ausgewertet"
-                      className="cmf-badge-amber inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
-                    >
-                      <Database className="h-3 w-3" /> 81247-OSM
-                    </span>
-                  )}
                 </div>
 
                 <p className="mt-1.5 text-sm font-bold text-[var(--cmf-teal)]">

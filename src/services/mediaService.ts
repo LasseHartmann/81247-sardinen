@@ -130,10 +130,10 @@ export function createSyntheticDemoPhoto(
   ctx.textAlign = 'center';
   ctx.fillText(
     kind === 'SKY'
-      ? 'DEMO-FOTO: BLÄTTERDACH / HIMMEL'
+      ? 'DEMO-FOTO: NACH OBEN'
       : kind === 'SELFIE'
         ? 'DEMO-FOTO: GRUPPEN-SELFIE'
-        : 'DEMO-FOTO: KIES- & WALDBODEN',
+        : 'DEMO-FOTO: NACH UNTEN',
     160,
     116
   );

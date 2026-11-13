@@ -192,7 +192,6 @@ const GameMapInner: React.FC<GameMapProps> = ({
     });
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      subdomains: ['a', 'b', 'c'],
       maxZoom: 19,
       keepBuffer: 2,
       updateWhenIdle: true,

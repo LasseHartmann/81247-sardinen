@@ -112,7 +112,7 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(audio.approxBytes).toBeLessThanOrEqual(25_000);
   });
 
-  it('erlaubt beim Login exakt die 12 Namen (inkl. Theo) und schaltet Admin-Rechte für Lasse & Linus über den Admin-Code frei', () => {
+  it('erlaubt beim Login exakt die 14 Namen (inkl. Theo, Test 1 & Test 2) und schaltet Admin-Rechte für Lasse, Linus & Test 1 über den Admin-Code frei', () => {
     const expectedNames = [
       'Lasse',
       'Linus',
@@ -126,20 +126,24 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
       'Max',
       'Roman',
       'Theo',
+      'Test 1',
+      'Test 2',
     ];
     expect(PRESET_PLAYERS.map((p) => p.name)).toEqual(expectedNames);
-    expect(PRESET_PLAYERS).toHaveLength(12);
+    expect(PRESET_PLAYERS).toHaveLength(14);
 
-    // Nur Lasse & Linus können Admin-Rechte freischalten
+    // Nur Lasse, Linus & Test 1 können Admin-Rechte freischalten (Test 2 nicht)
     expect(
       PRESET_PLAYERS.filter((p) => p.canUnlockAdmin).map((p) => p.name)
-    ).toEqual(['Lasse', 'Linus']);
+    ).toEqual(['Lasse', 'Linus', 'Test 1']);
 
-    // Alle 12 Namen (auch Lasse, Linus & Theo) loggen sich direkt per Vorname ein
+    // Alle 14 Namen loggen sich direkt per Vorname ein
     expect(resolveAllowedPlayerByNameInput('  lasse ')?.name).toBe('Lasse');
     expect(resolveAllowedPlayerByNameInput('LINUS')?.name).toBe('Linus');
     expect(resolveAllowedPlayerByNameInput('  roman  ')?.name).toBe('Roman');
     expect(resolveAllowedPlayerByNameInput('  theo  ')?.name).toBe('Theo');
+    expect(resolveAllowedPlayerByNameInput('  test 1 ')?.canUnlockAdmin).toBe(true);
+    expect(resolveAllowedPlayerByNameInput('TEST 2')?.canUnlockAdmin).toBe(false);
 
     // Standard-Versteckzeit beträgt 20 Minuten und Radius-Radar kostet 3 Minuten
     expect(DEFAULT_RADAR_SCHEDULE.hidingDurationMs).toBe(20 * 60_000);

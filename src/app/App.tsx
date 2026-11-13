@@ -18,7 +18,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { ANCHOR_ACCURACY_WARNING_METERS } from '../config/gameConfig';
-import { computeHiderPasswordHash } from '../config/players';
+import { computeHiderPasswordHash, findPresetPlayerById } from '../config/players';
 import { isPointInPlayArea } from '../geo/boundary';
 import { buildQuestionPreviewGeoJson } from '../geo/clueGeometry';
 import { computePossibleHidingArea } from '../geo/hidingArea';
@@ -260,8 +260,9 @@ export const App: React.FC = () => {
   }
 
   if (!publicState) {
-    const canInitAsAdmin =
-      ownMember.playerId === 'lasse' || ownMember.playerId === 'linus';
+    const canInitAsAdmin = Boolean(
+      findPresetPlayerById(ownMember.playerId)?.canUnlockAdmin
+    );
 
     return (
       <div className="cmf-drafting-bg flex h-[100dvh] flex-col overflow-hidden text-sm text-[var(--text-main)]">

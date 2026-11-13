@@ -420,13 +420,10 @@ export function useAuth(): {
       if (!authUser || !activeMember) {
         return { ok: false, error: 'Nicht angemeldet.' };
       }
-      if (
-        activeMember.playerId !== 'lasse' &&
-        activeMember.playerId !== 'linus'
-      ) {
+      if (!findPresetPlayerById(activeMember.playerId)?.canUnlockAdmin) {
         return {
           ok: false,
-          error: 'Admin-Zugang ist nur für Lasse und Linus verfügbar.',
+          error: 'Admin-Zugang ist für diesen Spieler nicht freigegeben.',
         };
       }
       const check = verifyAdminCode(code);

@@ -10,6 +10,7 @@ import {
   Send,
   Trash2,
 } from 'lucide-react';
+import { findPresetPlayerById } from '../../config/players';
 import type { GameTimerSnapshot } from '../../hooks/useGameTimer';
 import type { GpsPermissionState } from '../../hooks/useGeolocation';
 import type {
@@ -68,7 +69,7 @@ export const TopHud: React.FC<TopHudProps> = ({
   const canUnlockAdmin =
     !ownMember.isHost &&
     Boolean(onUnlockAdmin) &&
-    (ownMember.playerId === 'lasse' || ownMember.playerId === 'linus');
+    Boolean(findPresetPlayerById(ownMember.playerId)?.canUnlockAdmin);
 
   const handleEmergencySubmit = async (e: React.FormEvent) => {
     e.preventDefault();

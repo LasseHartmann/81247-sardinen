@@ -23,6 +23,8 @@ export const PRESET_PLAYERS: PresetPlayer[] = [
   { id: 'max', name: 'Max', canUnlockAdmin: false, loginEmail: 'max@81247-sardinen.local' },
   { id: 'roman', name: 'Roman', canUnlockAdmin: false, loginEmail: 'roman@81247-sardinen.local' },
   { id: 'theo', name: 'Theo', canUnlockAdmin: false, loginEmail: 'theo@81247-sardinen.local' },
+  { id: 'test-1', name: 'Test 1', canUnlockAdmin: true, loginEmail: 'test1@81247-sardinen.local' },
+  { id: 'test-2', name: 'Test 2', canUnlockAdmin: false, loginEmail: 'test2@81247-sardinen.local' },
 ];
 
 /**

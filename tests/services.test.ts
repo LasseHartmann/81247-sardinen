@@ -25,6 +25,7 @@ import {
   extractActiveHiderLock,
   extractEmergencyMessages,
   extractReadyPlayerIds,
+  filterOnlineEnabledMembers,
 } from '../src/services/databaseAdapter';
 import { evaluateLocationThrottle } from '../src/services/locationService';
 import { createSyntheticDemoAudio } from '../src/services/mediaService';
@@ -395,19 +396,48 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(snapStarted.state.hiderPrivate.shortCode).toBe(chosenPw);
     expect(snapStarted.state.hiderPrivate.qrSecret).toBe(chosenPw);
 
-    // 3. Notfallnachricht senden, für alle sichtbar extrahieren & Löschschutz bei Orphan-Cleanup prüfen
+    // 3. Notfallnachricht inkl. GPS-Standort senden, für alle sichtbar extrahieren & Löschschutz bei Orphan-Cleanup prüfen
     await store.adapter.sendEmergencyMessage({
       uid: 'demo_uid_thomas',
       playerId: 'thomas',
       senderName: 'Thomas',
       text: 'Umgeknickt an der Würmbrücke, bitte kurz warten!',
       createdAt: t0 + 4_000,
+      lat: 48.16542,
+      lng: 11.46821,
+      accuracy: 7,
     });
 
     const msgs1 = extractEmergencyMessages(store.getSnapshot().presence);
     expect(msgs1).toHaveLength(1);
     expect(msgs1[0].senderName).toBe('Thomas');
     expect(msgs1[0].text).toContain('Würmbrücke');
+    expect(msgs1[0].lat).toBeCloseTo(48.16542, 5);
+    expect(msgs1[0].lng).toBeCloseTo(11.46821, 5);
+    expect(msgs1[0].accuracy).toBe(7);
+
+    // 4. Vor dem Rundenstart zählen für Gruppen & Bereit-Check nur Spieler, die aktuell online sind
+    const unsubLasse = store.adapter.registerTabPresence(
+      'demo_uid_lasse',
+      'tab_lasse',
+      'TestUA'
+    );
+    const unsubThomas = store.adapter.registerTabPresence(
+      'demo_uid_thomas',
+      'tab_thomas',
+      'TestUA'
+    );
+    const snapOnline = store.getSnapshot();
+    const onlineOnly = filterOnlineEnabledMembers(
+      snapOnline.members,
+      snapOnline.presence
+    );
+    expect(onlineOnly.map((m) => m.playerId).sort()).toEqual([
+      'lasse',
+      'thomas',
+    ]);
+    unsubLasse();
+    unsubThomas();
 
     // Weder Orphan-Cleanup noch ein fremder Löschversuch löschen Thomas' Notfallnachricht
     await store.adapter.cleanupOrphanedPresence('demo_uid_thomas');

@@ -5,11 +5,11 @@ import {
   TEAM_PALETTE,
 } from '../config/gameConfig';
 import {
-  deduplicateEnabledMembers,
   extractActiveHiderLock,
   extractEmergencyMessages,
   extractReadyPlayerIds,
   extractRoundStartMeta,
+  filterOnlineEnabledMembers,
   type DatabaseAdapter,
   type UnsubscribeFn,
 } from '../services/databaseAdapter';
@@ -237,7 +237,7 @@ export function useGameState(
     return adapter.subscribeHiderPrivate(setHiderPrivate);
   }, [adapter, canReadHiderSecrets]);
 
-  // Automatischer Rundenstart, sobald Verstecker-Passwort gesetzt ist und ALLE Spieler auf „Bereit" gedrückt haben!
+  // Automatischer Rundenstart, sobald Verstecker-Passwort gesetzt ist und ALLE online verbundenen Spieler auf „Bereit" gedrückt haben!
   const autoStartedTokenRef = useRef<string | null>(null);
   useEffect(() => {
     if (!ownMember?.enabled || !publicState) return;
@@ -245,25 +245,29 @@ export function useGameState(
     if (!activeHiderLock?.passwordHash) return;
     if (!ownMember.isHost && ownMember.side !== 'HIDER') return;
 
-    const enabledList = deduplicateEnabledMembers(members, presence);
-    if (enabledList.length < 2) return;
+    const onlineList = filterOnlineEnabledMembers(
+      members,
+      presence,
+      ownMember.uid
+    );
+    if (onlineList.length < 2) return;
 
-    const hiders = enabledList
+    const hiders = onlineList
       .filter((m) => m.side === 'HIDER')
       .sort((a, b) => a.playerId.localeCompare(b.playerId));
-    const seekers = enabledList.filter(
+    const seekers = onlineList.filter(
       (m) => m.side === 'SEEKER' && Boolean(m.teamId)
     );
 
     if (hiders.length === 0 || seekers.length === 0) return;
 
-    const allAssigned = enabledList.every(
+    const allAssigned = onlineList.every(
       (m) => m.side === 'HIDER' || (m.side === 'SEEKER' && Boolean(m.teamId))
     );
     if (!allAssigned) return;
 
     const readySet = new Set(readyPlayerIds);
-    const everyoneReady = enabledList.every((m) => readySet.has(m.playerId));
+    const everyoneReady = onlineList.every((m) => readySet.has(m.playerId));
     if (!everyoneReady) return;
 
     const roundReadyToken = `${publicState.sessionId}:${activeHiderLock.logoutGen}`;
@@ -279,7 +283,7 @@ export function useGameState(
         .startRoundWhenAllReady({
           starterUid: ownMember.uid,
           publicState,
-          enabledMembers: enabledList,
+          enabledMembers: onlineList,
           currentHiderPrivate: hiderPrivate,
           nowMs: adapter.getServerNow(),
         })

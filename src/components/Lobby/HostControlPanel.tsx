@@ -21,7 +21,8 @@ import {
 import { HardwareKnob } from '../Common/HardwareKnob';
 import {
   deduplicateEnabledMembers,
-  isMemberTabOnline,
+  filterOnlineEnabledMembers,
+  isPlayerOnline,
   type DatabaseAdapter,
 } from '../../services/databaseAdapter';
 import { generateRandomId, generateSessionSecrets } from '../../services/qrService';
@@ -74,9 +75,23 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   );
 
   const enabledMembers = deduplicateEnabledMembers(members, presence);
+  const onlineMembers = filterOnlineEnabledMembers(
+    members,
+    presence,
+    ownMember.uid
+  );
+  const activeGroupMembers =
+    publicState.status === 'LOBBY' ? onlineMembers : enabledMembers;
+  const offlineLobbyMembers =
+    publicState.status === 'LOBBY'
+      ? enabledMembers.filter(
+          (m) => !isPlayerOnline(m.playerId, members, presence, ownMember.uid)
+        )
+      : [];
+
   const readySet = new Set(readyPlayerIds);
-  const readyCount = enabledMembers.filter((m) => readySet.has(m.playerId)).length;
-  const hiderCount = enabledMembers.filter(
+  const readyCount = onlineMembers.filter((m) => readySet.has(m.playerId)).length;
+  const hiderCount = activeGroupMembers.filter(
     (m) => m.enabled && m.side === 'HIDER'
   ).length;
 
@@ -89,7 +104,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       hiderPrivate?.shortCode?.trim() || fallbackSecrets.shortCode;
 
     const nextTeams = createDefaultTeams();
-    for (const m of enabledMembers) {
+    for (const m of onlineMembers) {
       if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
         if (!nextTeams[m.teamId].memberPlayerIds.includes(m.playerId)) {
           nextTeams[m.teamId].memberPlayerIds.push(m.playerId);
@@ -267,10 +282,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     await adapter.kickPlayerByHost(member.playerId, matchingUids);
   };
 
-  // NUR besetzte Teams anzeigen (in denen tatsächlich mindestens 1 Person eingeteilt ist!)
+  // NUR besetzte Teams anzeigen (vor Start ausschließlich mit aktuell online verbundenen Spielern!)
   const occupiedTeams = TEAM_PALETTE.map((palette) => {
     const team = teamsPublic[palette.id];
-    const assignedMembers = enabledMembers.filter(
+    const assignedMembers = activeGroupMembers.filter(
       (m) => m.side === 'SEEKER' && m.teamId === palette.id
     );
     return {
@@ -284,7 +299,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   return (
     <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-3xl space-y-4 sm:space-y-5 pb-12">
-        {/* Kopfzeile */}
+        {/* Kopfzeile (Admin-Zugriff bleibt beim Tab-Wechsel & Neuladen erhalten) */}
         <div className="cmf-chassis flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
           <div>
             <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
@@ -294,17 +309,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               Rundensteuerung & Teams
             </h2>
           </div>
-          {onLeaveAndLockConsole && (
-            <button
-              type="button"
-              data-testid="lock-admin-console-btn"
-              onClick={onLeaveAndLockConsole}
-              className="cmf-btn-secondary font-tech inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold uppercase"
-            >
-              <Lock className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
-              Konsole sperren & verlassen
-            </button>
-          )}
+          <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+            ADMIN-MODUS DAUERHAFT AKTIV
+          </span>
         </div>
 
         {/* 1. Offene Beitrittswünsche */}
@@ -383,7 +390,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
 
             {publicState.status === 'LOBBY' && (
               <span className="font-dot text-sm text-[var(--cmf-teal)]">
-                BEREIT: {readyCount} / {enabledMembers.length}
+                BEREIT (ONLINE): {readyCount} / {onlineMembers.length}
               </span>
             )}
           </div>
@@ -517,14 +524,19 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </div>
 
           <div className="space-y-2">
-            {enabledMembers.map((m) => {
+            {activeGroupMembers.map((m) => {
               const currentValue =
                 m.side === 'HIDER'
                   ? 'HIDER'
                   : m.side === 'SEEKER' && m.teamId
                     ? m.teamId
                     : 'UNASSIGNED';
-              const online = isMemberTabOnline(presence[m.uid]);
+              const online = isPlayerOnline(
+                m.playerId,
+                members,
+                presence,
+                ownMember.uid
+              );
               const isReady = readySet.has(m.playerId);
 
               return (
@@ -583,6 +595,34 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 </div>
               );
             })}
+
+            {offlineLobbyMembers.length > 0 && (
+              <div className="cmf-well space-y-1.5 p-2.5 text-xs text-[var(--text-muted)]">
+                <span className="font-tech text-[10px] font-bold tracking-wider uppercase block">
+                  Aktuell offline (vor Start nicht in Gruppen & ohne Bereit-Pflicht):
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {offlineLobbyMembers.map((m) => (
+                    <span
+                      key={m.uid}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-white/60 px-2.5 py-1 text-[11px] text-[var(--text-muted)]"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-[#9AA4AE]" />
+                      <span>{m.name}</span>
+                      <button
+                        type="button"
+                        data-testid={`kick-player-${m.playerId}`}
+                        onClick={() => void handleKickMember(m)}
+                        title={`${m.name} entfernen`}
+                        className="ml-1 font-tech text-[10px] font-bold text-[var(--cmf-orange)] uppercase hover:underline"
+                      >
+                        [X]
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Teams-Anzeige: zeigt ausschließlich Teams an, in denen jemand drinnen ist! */}
@@ -625,6 +665,31 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             )}
           </div>
         </section>
+
+        {/* 5. Admin-Bereich explizit sperren (ganz unten im Admin-Bereich) */}
+        {onLeaveAndLockConsole && (
+          <section className="cmf-module p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h3 className="font-industrial text-sm text-[var(--text-main)]">
+                  Admin-Zugriff beenden
+                </h3>
+                <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                  Dein Admin-Zugriff bleibt auch beim Wechseln des Tabs oder Neuladen aktiv, bis du ihn hier unten ausdrücklich sperrst.
+                </p>
+              </div>
+              <button
+                type="button"
+                data-testid="lock-admin-console-btn"
+                onClick={onLeaveAndLockConsole}
+                className="cmf-btn-secondary font-tech inline-flex min-h-[48px] w-full sm:w-auto shrink-0 items-center justify-center gap-2 border-[var(--cmf-orange)]/40 px-4 py-2.5 text-xs font-bold text-[var(--cmf-orange)] uppercase"
+              >
+                <Lock className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+                Admin-Bereich sperren & verlassen
+              </button>
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

@@ -1021,6 +1021,18 @@ export function createDemoStore(options?: {
           playerId: msg.playerId,
           senderName: msg.senderName,
           emergencyText: msg.text.trim(),
+          emergencyLat:
+            typeof msg.lat === 'number' && Number.isFinite(msg.lat)
+              ? msg.lat
+              : undefined,
+          emergencyLng:
+            typeof msg.lng === 'number' && Number.isFinite(msg.lng)
+              ? msg.lng
+              : undefined,
+          emergencyAccuracy:
+            typeof msg.accuracy === 'number' && Number.isFinite(msg.accuracy)
+              ? Math.round(msg.accuracy)
+              : undefined,
         };
       });
     },

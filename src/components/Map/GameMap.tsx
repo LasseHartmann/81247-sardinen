@@ -10,6 +10,7 @@ import {
 import type {
   AnchorPoint,
   ClueRecord,
+  EmergencyMessage,
   GeoFix,
   LatLng,
   PublishedRadarCircle,
@@ -18,6 +19,7 @@ import type {
 } from '../../types/game';
 import {
   createAnchorPointIcon,
+  createEmergencyBeaconIcon,
   createOwnPositionIcon,
   createSelectionPinIcon,
   createTeamBeaconIcon,
@@ -53,6 +55,8 @@ export interface GameMapProps {
   onMapCoordinateClick?: (pt: LatLng) => void;
   layoutInvalidationKey?: string | number;
   hasBottomDock?: boolean;
+  emergencyMessages?: EmergencyMessage[];
+  emergencyFocusTarget?: { lat: number; lng: number; seq: number } | null;
 }
 
 export const GameMap: React.FC<GameMapProps> = ({
@@ -74,6 +78,8 @@ export const GameMap: React.FC<GameMapProps> = ({
   onMapCoordinateClick,
   layoutInvalidationKey,
   hasBottomDock = false,
+  emergencyMessages = [],
+  emergencyFocusTarget = null,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -285,6 +291,25 @@ export const GameMap: React.FC<GameMapProps> = ({
         .bindTooltip(`POS // ±${Math.round(ownFix.accuracy)}M`)
         .addTo(group);
     }
+
+    // 4. Notfall-Standorte (SOS-Pins) für alle aktiven Notfallnachrichten mit Koordinaten
+    for (const msg of emergencyMessages) {
+      if (
+        typeof msg.lat === 'number' &&
+        Number.isFinite(msg.lat) &&
+        typeof msg.lng === 'number' &&
+        Number.isFinite(msg.lng)
+      ) {
+        L.marker([msg.lat, msg.lng], {
+          icon: createEmergencyBeaconIcon(msg.senderName),
+          zIndexOffset: 1000,
+        })
+          .bindPopup(
+            `<strong>NOTFALL // ${msg.senderName.toUpperCase()}</strong><br/>${msg.text}<br/>POS: ${msg.lat.toFixed(5)}, ${msg.lng.toFixed(5)}${typeof msg.accuracy === 'number' ? ` (±${Math.round(msg.accuracy)}M)` : ''}`
+          )
+          .addTo(group);
+      }
+    }
   }, [
     ownFix,
     isOwnSideHider,
@@ -293,7 +318,16 @@ export const GameMap: React.FC<GameMapProps> = ({
     visibleTeamLocations,
     teamsPublic,
     activeTeamIds,
+    emergencyMessages,
   ]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !emergencyFocusTarget) return;
+    map.flyTo([emergencyFocusTarget.lat, emergencyFocusTarget.lng], Math.max(map.getZoom(), 17), {
+      duration: 0.5,
+    });
+  }, [emergencyFocusTarget]);
 
   const handleCenterOnOwnFix = useCallback(() => {
     const map = mapRef.current;

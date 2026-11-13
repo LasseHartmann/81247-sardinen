@@ -86,3 +86,25 @@ export function createSelectionPinIcon(
     `,
   });
 }
+
+/**
+ * Hochsichtbarer Notfall-SOS-Marker (#DC2626 / #991B1B) für den Standort eines Spielers,
+ * der eine Notfallnachricht ausgelöst hat.
+ */
+export function createEmergencyBeaconIcon(senderName: string): L.DivIcon {
+  const safeName = escapeHtml(senderName.toUpperCase());
+  return L.divIcon({
+    className: 'sardinen-div-icon',
+    iconSize: [128, 44],
+    iconAnchor: [64, 22],
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
+        <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:9999px;background:#991B1B;border:2px solid #FCA5A5;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;letter-spacing:0.06em;white-space:nowrap;box-shadow:0 6px 18px rgba(220,38,38,0.55);">
+          <span style="width:7px;height:7px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
+          <span>SOS // ${safeName}</span>
+        </div>
+        <div style="width:14px;height:14px;border-radius:9999px;background:#DC2626;border:2.5px solid #FFFFFF;margin-top:2px;box-shadow:0 0 14px rgba(220,38,38,0.85);"></div>
+      </div>
+    `,
+  });
+}

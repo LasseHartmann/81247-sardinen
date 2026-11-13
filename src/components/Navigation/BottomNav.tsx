@@ -6,6 +6,7 @@ export interface BottomNavProps {
   activeTab: BottomNavTab;
   onSelectTab: (tab: BottomNavTab) => void;
   showHostTab: boolean;
+  hasActiveEmergency?: boolean;
   pendingQuestionsBadgeCount?: number;
   joinRequestsBadgeCount?: number;
 }
@@ -14,6 +15,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   onSelectTab,
   showHostTab,
+  hasActiveEmergency = false,
   pendingQuestionsBadgeCount = 0,
   joinRequestsBadgeCount = 0,
 }) => {
@@ -58,7 +60,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   return (
     <nav
       aria-label="Hauptnavigation"
-      className="z-30 border-t-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] pt-1.5 pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.45rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] shadow-[0_-12px_32px_rgba(20,25,30,0.08),inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]"
+      data-emergency-active={hasActiveEmergency ? 'true' : 'false'}
+      className={`z-30 border-t-[1.5px] pt-1.5 pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.45rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] backdrop-blur-[18px] transition-colors duration-300 ${
+        hasActiveEmergency
+          ? 'border-[#FCA5A5] bg-[#B91C1C] text-white shadow-[0_-12px_32px_rgba(220,38,38,0.45)]'
+          : 'border-[var(--shell-border)] bg-[var(--shell-bg)] shadow-[0_-12px_32px_rgba(20,25,30,0.08),inset_0_1px_0_rgba(255,255,255,0.75)]'
+      }`}
     >
       <div className="mx-auto flex max-w-xl items-center justify-around gap-1">
         {items.map((item) => {
@@ -71,8 +78,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               onClick={() => onSelectTab(item.id)}
               className={`relative flex min-h-[50px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 font-tech text-[10px] font-bold tracking-wide uppercase transition ${
                 isActive
-                  ? 'bg-[#14171A] text-white shadow-sm'
-                  : 'text-[var(--text-muted)] hover:bg-[var(--module-sub)] hover:text-[var(--text-main)]'
+                  ? hasActiveEmergency
+                    ? 'bg-[#450A0A] text-white shadow-sm ring-1 ring-[#FCA5A5]'
+                    : 'bg-[#14171A] text-white shadow-sm'
+                  : hasActiveEmergency
+                    ? 'text-[#FEE2E2] hover:bg-[#991B1B] hover:text-white'
+                    : 'text-[var(--text-muted)] hover:bg-[var(--module-sub)] hover:text-[var(--text-main)]'
               }`}
             >
               {isActive && (

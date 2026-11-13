@@ -15,8 +15,7 @@ import {
 import { TEAM_PALETTE } from '../../config/gameConfig';
 import { PRESET_PLAYERS } from '../../config/players';
 import {
-  deduplicateEnabledMembers,
-  isMemberTabOnline,
+  filterOnlineEnabledMembers,
 } from '../../services/databaseAdapter';
 import type {
   AuthUserSummary,
@@ -308,7 +307,12 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   onOpenHostTab,
   onLogout,
 }) => {
-  const memberList = deduplicateEnabledMembers(members, presence);
+  // Vor Rundenbeginn zählen für Gruppen & „Bereit"-Check ausschließlich aktuell online verbundene Spieler!
+  const memberList = filterOnlineEnabledMembers(
+    members,
+    presence,
+    ownMember.uid
+  );
   const readySet = new Set(readyPlayerIds);
   const isOwnReady = readySet.has(ownMember.playerId);
 
@@ -670,12 +674,12 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         </div>
       )}
 
-      {/* Spielerliste mit Online- & Bereit-Status */}
+      {/* Spielerliste mit Online- & Bereit-Status (zeigt nur aktuell online verbundene Spieler) */}
       <div className="mt-3.5 border-t cmf-divider pt-3">
         <div className="mb-2 flex items-center justify-between font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
           <span className="flex items-center gap-1.5">
             <Users className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-            Spieler ({memberList.length} / {PRESET_PLAYERS.length})
+            Online ({memberList.length} / {PRESET_PLAYERS.length})
           </span>
           {hasPasswordSet && (
             <span className="text-[var(--cmf-teal)]">
@@ -685,7 +689,6 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         </div>
         <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
           {memberList.map((m) => {
-            const online = isMemberTabOnline(presence[m.uid]);
             const playerReady = readySet.has(m.playerId);
             return (
               <span
@@ -696,11 +699,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                     : 'cmf-well text-[var(--text-main)]'
                 }`}
               >
-                <span
-                  className={`h-2 w-2 rounded-full ${
-                    online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
-                  }`}
-                />
+                <span className="h-2 w-2 rounded-full bg-[var(--cmf-teal)]" />
                 <span className="font-semibold text-[var(--text-main)]">{m.name}</span>
                 <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
                   {m.side === 'HIDER'

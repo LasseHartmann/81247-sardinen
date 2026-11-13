@@ -253,6 +253,20 @@ export function isMemberTabOnline(
   );
 }
 
+export function isPlayerOnline(
+  playerId: string,
+  members: Record<string, MemberRecord>,
+  presence: Record<string, Record<string, PresenceSession>>,
+  ownUid?: string
+): boolean {
+  for (const m of Object.values(members)) {
+    if (!m.enabled || m.playerId !== playerId) continue;
+    if (ownUid && m.uid === ownUid) return true;
+    if (isMemberTabOnline(presence[m.uid])) return true;
+  }
+  return false;
+}
+
 export function deduplicateEnabledMembers(
   members: Record<string, MemberRecord>,
   presence: Record<string, Record<string, PresenceSession>>
@@ -280,6 +294,21 @@ export function deduplicateEnabledMembers(
     }
   }
   return Array.from(deduped.values());
+}
+
+/**
+ * Liefert vor dem Rundenstart ausschließlich die aktiv eingeloggten & online verbundenen Spieler.
+ * Offline-Spieler blockieren dadurch weder die Gruppen noch den „Bereit“-Countdown.
+ */
+export function filterOnlineEnabledMembers(
+  members: Record<string, MemberRecord>,
+  presence: Record<string, Record<string, PresenceSession>>,
+  ownUid?: string
+): MemberRecord[] {
+  const deduped = deduplicateEnabledMembers(members, presence);
+  return deduped.filter((m) =>
+    isPlayerOnline(m.playerId, members, presence, ownUid)
+  );
 }
 
 export function extractActiveHiderLock(
@@ -370,6 +399,19 @@ export function extractEmergencyMessages(
         senderName: alert.senderName ?? 'Spieler',
         text: alert.emergencyText.trim(),
         createdAt: alert.lastSeen || 0,
+        lat:
+          typeof alert.emergencyLat === 'number' && Number.isFinite(alert.emergencyLat)
+            ? alert.emergencyLat
+            : undefined,
+        lng:
+          typeof alert.emergencyLng === 'number' && Number.isFinite(alert.emergencyLng)
+            ? alert.emergencyLng
+            : undefined,
+        accuracy:
+          typeof alert.emergencyAccuracy === 'number' &&
+          Number.isFinite(alert.emergencyAccuracy)
+            ? alert.emergencyAccuracy
+            : undefined,
       });
     }
   }
@@ -1316,6 +1358,18 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           playerId: msg.playerId,
           senderName: msg.senderName,
           emergencyText: msg.text.trim(),
+          emergencyLat:
+            typeof msg.lat === 'number' && Number.isFinite(msg.lat)
+              ? roundCoord5(msg.lat)
+              : undefined,
+          emergencyLng:
+            typeof msg.lng === 'number' && Number.isFinite(msg.lng)
+              ? roundCoord5(msg.lng)
+              : undefined,
+          emergencyAccuracy:
+            typeof msg.accuracy === 'number' && Number.isFinite(msg.accuracy)
+              ? Math.round(msg.accuracy)
+              : undefined,
         })
       );
     },

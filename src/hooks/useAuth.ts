@@ -158,7 +158,6 @@ export function useAuth(): {
     }
 
     setMemberLoading(true);
-    let attemptedHostLockOnBoot = false;
     let hadExistingMember = false;
 
     const unsubMember = adapter.subscribeOwnMember(authUser.uid, (member) => {
@@ -175,27 +174,6 @@ export function useAuth(): {
         setLoginError('Du wurdest vom Spielleiter aus der Runde entfernt.');
         void adapter.signOut();
         return;
-      }
-
-      // Beim frischen Öffnen/Neuladen der App einmalig beim ersten Member-Snapshot prüfen,
-      // ob noch ein altes isHost-Flag offen war (niemals beim späteren ersten Freischalten!)
-      if (member && !attemptedHostLockOnBoot) {
-        attemptedHostLockOnBoot = true;
-        if (member.isHost) {
-          const lockedBootMember: MemberRecord = {
-            uid: member.uid,
-            playerId: member.playerId,
-            name: member.name,
-            isHost: false,
-            enabled: true,
-            side: member.side,
-            teamId: member.teamId,
-          };
-          setFirebaseMember(lockedBootMember);
-          void adapter
-            .updateMember(authUser.uid, lockedBootMember)
-            .catch(() => {});
-        }
       }
     });
 
@@ -252,19 +230,6 @@ export function useAuth(): {
           void adapter
             .releasePlayerSeat(firebaseMember.playerId, authUser.uid, tabId)
             .catch(() => {});
-          if (firebaseMember.isHost) {
-            void adapter
-              .updateMember(authUser.uid, {
-                uid: firebaseMember.uid,
-                playerId: firebaseMember.playerId,
-                name: firebaseMember.name,
-                isHost: false,
-                enabled: true,
-                side: firebaseMember.side,
-                teamId: firebaseMember.teamId,
-              })
-              .catch(() => {});
-          }
         }
         return;
       }
@@ -465,6 +430,7 @@ export function useAuth(): {
       side: firebaseMember.side,
       teamId: firebaseMember.teamId,
     };
+    setFirebaseMember(lockedCopy);
     try {
       await adapter.updateMember(authUser.uid, lockedCopy);
     } catch {

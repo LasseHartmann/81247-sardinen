@@ -80,6 +80,9 @@ export interface PresenceSession {
   playerId?: string;
   senderName?: string;
   emergencyText?: string;
+  emergencyLat?: number;
+  emergencyLng?: number;
+  emergencyAccuracy?: number;
   readyToken?: string;
   sessionId?: string;
   passwordHash?: string;
@@ -95,6 +98,9 @@ export interface EmergencyMessage {
   senderName: string;
   text: string;
   createdAt: number;
+  lat?: number;
+  lng?: number;
+  accuracy?: number;
 }
 
 export interface HiderLoginLock {

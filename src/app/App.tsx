@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Anchor,
   CheckCircle2,
@@ -34,6 +34,7 @@ import { useWakeLock } from '../hooks/useWakeLock';
 import {
   buildReadyToken,
   deduplicateEnabledMembers,
+  filterOnlineEnabledMembers,
 } from '../services/databaseAdapter';
 import type {
   BottomNavTab,
@@ -155,6 +156,11 @@ export const App: React.FC = () => {
   const [bootAdminModalOpen, setBootAdminModalOpen] = useState(false);
   const [bootAdminCode, setBootAdminCode] = useState('');
   const [bootAdminErr, setBootAdminErr] = useState<string | null>(null);
+  const [emergencyFocusTarget, setEmergencyFocusTarget] = useState<{
+    lat: number;
+    lng: number;
+    seq: number;
+  } | null>(null);
 
   const handleUnlockAndEnterConsole = useCallback(
     async (code: string) => {
@@ -167,32 +173,43 @@ export const App: React.FC = () => {
     [unlockAdminWithCode]
   );
 
-  // Sobald der Admin die Spielleiter-Konsole verlässt (Tabwechsel oder App in Hintergrund),
-  // werden die Admin-Rechte automatisch wieder gesperrt -> beim nächsten Öffnen muss der Code erneut eingegeben werden.
-  const prevTabRef = useRef<BottomNavTab>(activeTab);
-  useEffect(() => {
-    const prevTab = prevTabRef.current;
-    prevTabRef.current = activeTab;
-    if (ownMember?.isHost && prevTab === 'HOST' && activeTab !== 'HOST') {
-      void lockAdminConsole();
-    }
-  }, [activeTab, lockAdminConsole, ownMember?.isHost]);
+  const ownEmergencyMessage = useMemo(
+    () =>
+      ownMember
+        ? (gameState.emergencyMessages.find((m) => m.uid === ownMember.uid) ??
+          null)
+        : null,
+    [gameState.emergencyMessages, ownMember]
+  );
 
+  // Aktualisiert automatisch den Standort einer eigenen aktiven Notfallnachricht, sobald ein GPS-Fix vorliegt oder sich bewegt
   useEffect(() => {
-    if (!ownMember?.isHost) return;
-    const handleVisibilityOrHide = () => {
-      if (document.visibilityState === 'hidden') {
-        setActiveTab('MAP');
-        void lockAdminConsole();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityOrHide);
-    window.addEventListener('pagehide', handleVisibilityOrHide);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityOrHide);
-      window.removeEventListener('pagehide', handleVisibilityOrHide);
-    };
-  }, [lockAdminConsole, ownMember?.isHost]);
+    if (!ownMember || !ownEmergencyMessage || !geo.currentFix) return;
+    const prevLat = ownEmergencyMessage.lat;
+    const prevLng = ownEmergencyMessage.lng;
+    const nextLat = geo.currentFix.lat;
+    const nextLng = geo.currentFix.lng;
+    const needsCoordUpdate =
+      typeof prevLat !== 'number' ||
+      typeof prevLng !== 'number' ||
+      Math.abs(prevLat - nextLat) > 0.00008 ||
+      Math.abs(prevLng - nextLng) > 0.00008;
+
+    if (!needsCoordUpdate) return;
+
+    void adapter
+      .sendEmergencyMessage({
+        uid: ownMember.uid,
+        playerId: ownMember.playerId,
+        senderName: ownMember.name,
+        text: ownEmergencyMessage.text,
+        createdAt: ownEmergencyMessage.createdAt || adapter.getServerNow(),
+        lat: nextLat,
+        lng: nextLng,
+        accuracy: geo.currentFix.accuracy,
+      })
+      .catch(() => {});
+  }, [adapter, geo.currentFix, ownEmergencyMessage, ownMember]);
 
   // 1. Lade- & Authentifizierungs-Weichen
   if (authLoading || (isSessionUnlocked && memberLoading)) {
@@ -480,16 +497,17 @@ export const App: React.FC = () => {
     });
   };
 
-  const ownEmergencyMessage =
-    gameState.emergencyMessages.find((m) => m.uid === ownMember.uid) ?? null;
-
   const handleSendEmergencyMessage = async (text: string) => {
+    const currentCoord = fineAdjustAnchorPt ?? geo.currentFix;
     await adapter.sendEmergencyMessage({
       uid: ownMember.uid,
       playerId: ownMember.playerId,
       senderName: ownMember.name,
       text,
       createdAt: adapter.getServerNow(),
+      lat: currentCoord?.lat,
+      lng: currentCoord?.lng,
+      accuracy: geo.currentFix?.accuracy,
     });
   };
 
@@ -500,12 +518,19 @@ export const App: React.FC = () => {
   const handleSetHiderPassword = async (rawPassword: string) => {
     const cleanPassword = rawPassword.trim();
     const passwordHash = computeHiderPasswordHash(cleanPassword);
-    const hiderPlayerIds = deduplicateEnabledMembers(
+    const onlineHiders = filterOnlineEnabledMembers(
       gameState.members,
-      gameState.presence
+      gameState.presence,
+      ownMember.uid
     )
       .filter((m) => m.side === 'HIDER')
       .map((m) => m.playerId);
+    const hiderPlayerIds =
+      onlineHiders.length > 0
+        ? onlineHiders
+        : deduplicateEnabledMembers(gameState.members, gameState.presence)
+            .filter((m) => m.side === 'HIDER')
+            .map((m) => m.playerId);
 
     const newLock = await adapter.setHiderPasswordAndTriggerLogout({
       uid: ownMember.uid,
@@ -574,8 +599,17 @@ export const App: React.FC = () => {
       showQuickSardineFab
   );
 
+  const hasActiveEmergency = gameState.emergencyMessages.length > 0;
+
   return (
-    <div className="cmf-drafting-bg flex h-[100dvh] w-full flex-col overflow-hidden text-[var(--text-main)]">
+    <div
+      data-emergency-hud={hasActiveEmergency ? 'true' : 'false'}
+      className={`cmf-drafting-bg flex h-[100dvh] w-full flex-col overflow-hidden text-[var(--text-main)] transition-shadow duration-300 ${
+        hasActiveEmergency
+          ? 'ring-4 ring-inset ring-[#EF4444] shadow-[inset_0_0_48px_rgba(220,38,38,0.28)]'
+          : ''
+      }`}
+    >
       {/* Offline-Banner, Pausen-Banner & Controller-Warteschlangen-Banner */}
       <StatusBanners
         connected={gameState.connected}
@@ -583,14 +617,18 @@ export const App: React.FC = () => {
         gameStatus={publicState.status}
       />
 
-      {/* Dauerhaft für alle sichtbare Notfallnachrichten */}
+      {/* Dauerhaft für alle sichtbare Notfallnachrichten (inkl. Standort-Anzeige & Sprung auf Karte) */}
       <EmergencyMessageBanner
         messages={gameState.emergencyMessages}
         ownUid={ownMember.uid}
         onClearOwnMessage={handleClearOwnEmergencyMessage}
+        onLocateMessage={(lat, lng) => {
+          setActiveTab('MAP');
+          setEmergencyFocusTarget({ lat, lng, seq: Date.now() });
+        }}
       />
 
-      {/* Kompaktes Top-HUD im Raw-Light-Hardware-Design (einziger Ort für Admin-Code!) */}
+      {/* Kompaktes Top-HUD im Raw-Light-Hardware-Design (färbt sich bei Notfall komplett rot) */}
       <TopHud
         publicState={publicState}
         timer={timer}
@@ -599,6 +637,7 @@ export const App: React.FC = () => {
         connected={gameState.connected}
         ownFix={geo.currentFix}
         gpsStatus={geo.gpsStatus}
+        hasActiveEmergency={hasActiveEmergency}
         ownEmergencyMessage={ownEmergencyMessage}
         onSendEmergencyMessage={handleSendEmergencyMessage}
         onClearOwnEmergencyMessage={handleClearOwnEmergencyMessage}
@@ -650,6 +689,8 @@ export const App: React.FC = () => {
             onMapCoordinateClick={handleMapCoordinateClick}
             layoutInvalidationKey={`${activeTab}_${publicState.status}`}
             hasBottomDock={hasMapBottomDock}
+            emergencyMessages={gameState.emergencyMessages}
+            emergencyFocusTarget={emergencyFocusTarget}
           />
 
           {/* Obere schlanke Status-Pills auf der Karte (blockieren niemals die Kartenmitte!) */}
@@ -1145,11 +1186,12 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Daumenfreundliche Bottom-Navigation */}
+      {/* Daumenfreundliche Bottom-Navigation (färbt sich bei Notfall ebenfalls rot) */}
       <BottomNav
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         showHostTab={showHostTab}
+        hasActiveEmergency={hasActiveEmergency}
         pendingQuestionsBadgeCount={openHiderMediaRequests.length}
         joinRequestsBadgeCount={Object.keys(gameState.joinRequests).length}
       />

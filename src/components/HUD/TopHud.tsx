@@ -34,6 +34,7 @@ export interface TopHudProps {
   connected: boolean;
   ownFix: GeoFix | null;
   gpsStatus: GpsPermissionState;
+  hasActiveEmergency?: boolean;
   ownEmergencyMessage: EmergencyMessage | null;
   onSendEmergencyMessage: (text: string) => Promise<void>;
   onClearOwnEmergencyMessage: () => Promise<void>;
@@ -48,6 +49,7 @@ export const TopHud: React.FC<TopHudProps> = ({
   connected,
   ownFix,
   gpsStatus,
+  hasActiveEmergency = false,
   ownEmergencyMessage,
   onSendEmergencyMessage,
   onClearOwnEmergencyMessage,
@@ -86,7 +88,14 @@ export const TopHud: React.FC<TopHudProps> = ({
   };
 
   return (
-    <header className="pointer-events-auto z-20 border-b-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] pt-[max(0.4rem,env(safe-area-inset-top))] pr-[max(0.65rem,env(safe-area-inset-right))] pb-1.5 pl-[max(0.65rem,env(safe-area-inset-left))] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]">
+    <header
+      data-emergency-active={hasActiveEmergency ? 'true' : 'false'}
+      className={`pointer-events-auto z-20 border-b-[1.5px] pt-[max(0.4rem,env(safe-area-inset-top))] pr-[max(0.65rem,env(safe-area-inset-right))] pb-1.5 pl-[max(0.65rem,env(safe-area-inset-left))] backdrop-blur-[18px] transition-colors duration-300 ${
+        hasActiveEmergency
+          ? 'border-[#FCA5A5] bg-[#B91C1C] text-white shadow-[0_6px_24px_rgba(220,38,38,0.45)]'
+          : 'border-[var(--shell-border)] bg-[var(--shell-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]'
+      }`}
+    >
       <div className="mx-auto flex max-w-4xl items-center justify-between gap-1.5 sm:gap-2">
         {/* Eingebettete schwarze OLED-Telemetrie-Insel: Timer + Phase + Radar (einzeilig & überlaufsicher auf Smartphones) */}
         <div className="cmf-oled flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 sm:flex-initial sm:gap-2.5 sm:px-3">

@@ -66,9 +66,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   onNavigateToMap,
   onLeaveAndLockConsole,
 }) => {
-  const [hidingMinInput, setHidingMinInput] = useState(
-    Math.round(publicState.radarSchedule.hidingDurationMs / 60_000)
-  );
+  const [hidingMinInput, setHidingMinInput] = useState(() => {
+    const mins = Math.round(publicState.radarSchedule.hidingDurationMs / 60_000);
+    return Math.min(55, Math.max(5, Math.round(mins / 5) * 5));
+  });
 
   const openRequests = Object.values(joinRequests).sort(
     (a, b) => a.requestedAt - b.requestedAt
@@ -361,7 +362,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             dataTestId="hiding-time-knob"
             value={hidingMinInput}
             min={5}
-            max={60}
+            max={55}
             step={5}
             unit=" Min."
             onChange={(nextMin) => {

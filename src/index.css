@@ -61,9 +61,12 @@ input,
 textarea,
 label,
 [role='button'],
-[role='switch'],
-[role='slider'] {
+[role='switch'] {
   touch-action: manipulation;
+}
+
+[role='slider'] {
+  touch-action: none;
 }
 
 button,

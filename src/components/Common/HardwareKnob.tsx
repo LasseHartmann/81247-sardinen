@@ -45,6 +45,14 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
   dataTestId,
 }) => {
   const dialRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<{
+    active: boolean;
+    mode: 'ring' | 'center';
+    prevPointerDeg: number;
+    virtualDeg: number;
+    lastClientX: number;
+    lastClientY: number;
+  } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const normalizeNextValue = useCallback(
@@ -111,24 +119,10 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
     rotationDeg = -135 + normalizedProgress * 270;
   }
 
-  const updateValueFromPointerClientXY = useCallback(
-    (clientX: number, clientY: number) => {
-      const el = dialRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const dx = clientX - cx;
-      const dy = clientY - cy;
-
-      if (Math.hypot(dx, dy) < 10) return;
-
-      let degFromTop = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
-      if (degFromTop > 180) degFromTop -= 360;
-      if (degFromTop < -180) degFromTop += 360;
-
+  const applyAngleDegrees = useCallback(
+    (targetDeg: number) => {
       if (wrapAround) {
-        const compassDeg = ((degFromTop % 360) + 360) % 360;
+        const compassDeg = ((targetDeg % 360) + 360) % 360;
         const span = Math.max(1, max - min + step);
         const rawVal = min + (compassDeg / 360) * span;
         const nextVal = normalizeNextValue(rawVal);
@@ -136,7 +130,7 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
         return;
       }
 
-      const clampedDeg = Math.max(-135, Math.min(135, degFromTop));
+      const clampedDeg = Math.max(-135, Math.min(135, targetDeg));
       const ratio = (clampedDeg + 135) / 270;
 
       if (options && options.length > 0) {
@@ -154,25 +148,132 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
     [max, min, normalizeNextValue, onChange, options, step, value, wrapAround]
   );
 
+  const getPointerMetrics = useCallback((clientX: number, clientY: number) => {
+    const el = dialRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = clientX - cx;
+    const dy = clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    let degFromTop = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
+    if (degFromTop > 180) degFromTop -= 360;
+    if (degFromTop <= -180) degFromTop += 360;
+    return { dist, degFromTop };
+  }, []);
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore environments without synthetic pointer capture support
+    }
+
+    const metrics = getPointerMetrics(e.clientX, e.clientY);
+    if (!metrics) return;
+
     setIsDragging(true);
-    updateValueFromPointerClientXY(e.clientX, e.clientY);
+
+    if (metrics.dist >= 16) {
+      const initialVirtual = wrapAround
+        ? ((metrics.degFromTop % 360) + 360) % 360
+        : Math.max(-135, Math.min(135, metrics.degFromTop));
+
+      dragStateRef.current = {
+        active: true,
+        mode: 'ring',
+        prevPointerDeg: metrics.degFromTop,
+        virtualDeg: initialVirtual,
+        lastClientX: e.clientX,
+        lastClientY: e.clientY,
+      };
+      applyAngleDegrees(initialVirtual);
+    } else {
+      dragStateRef.current = {
+        active: true,
+        mode: 'center',
+        prevPointerDeg: metrics.degFromTop,
+        virtualDeg: rotationDeg,
+        lastClientX: e.clientX,
+        lastClientY: e.clientY,
+      };
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
-    updateValueFromPointerClientXY(e.clientX, e.clientY);
+    const drag = dragStateRef.current;
+    if (!drag || !drag.active) return;
+
+    const metrics = getPointerMetrics(e.clientX, e.clientY);
+    if (!metrics) return;
+
+    if (drag.mode === 'center') {
+      if (metrics.dist >= 22) {
+        drag.mode = 'ring';
+        drag.prevPointerDeg = metrics.degFromTop;
+        drag.lastClientX = e.clientX;
+        drag.lastClientY = e.clientY;
+        return;
+      }
+
+      const deltaPx =
+        e.clientX - drag.lastClientX - (e.clientY - drag.lastClientY);
+      drag.lastClientX = e.clientX;
+      drag.lastClientY = e.clientY;
+      drag.virtualDeg = wrapAround
+        ? (((drag.virtualDeg + deltaPx * 1.6) % 360) + 360) % 360
+        : Math.max(-135, Math.min(135, drag.virtualDeg + deltaPx * 1.6));
+      applyAngleDegrees(drag.virtualDeg);
+      return;
+    }
+
+    // In der Nähe der Radmitte (< 12px) Winkel-Flattern durch atan2-Singularität vermeiden
+    if (metrics.dist < 12) return;
+
+    const deltaDeg =
+      ((metrics.degFromTop - drag.prevPointerDeg + 540) % 360) - 180;
+    drag.prevPointerDeg = metrics.degFromTop;
+
+    if (wrapAround) {
+      const nextCompass = ((metrics.degFromTop % 360) + 360) % 360;
+      drag.virtualDeg = nextCompass;
+      applyAngleDegrees(nextCompass);
+      return;
+    }
+
+    // Im 270°-Thermostat-Modus verhindertes Überspringen über die untere 6-Uhr-Lücke (-135° <-> +135°)
+    let nextVirtual = Math.max(-145, Math.min(145, drag.virtualDeg + deltaDeg));
+    if (
+      metrics.degFromTop >= -135 &&
+      metrics.degFromTop <= 135 &&
+      Math.abs(nextVirtual) <= 135
+    ) {
+      nextVirtual = metrics.degFromTop;
+    }
+    drag.virtualDeg = nextVirtual;
+    applyAngleDegrees(Math.max(-135, Math.min(135, nextVirtual)));
   };
 
   const handlePointerUp = () => {
+    dragStateRef.current = null;
     setIsDragging(false);
   };
 
-  // Nothing Dot-Matrix LED-Ring (32 diskrete LED-Punkte für 270°-Thermostat, 36 für 360°-Kompass)
+  // Nothing Dot-Matrix LED-Ring:
+  // - 360°-Kompass: 36 LEDs (alle 10°)
+  // - 10er-Skala (z. B. 5..55 Min. in 5er-Schritten): 31 LEDs, sodass jede Rastung & 30 Min. (Top-Mitte) exakt sitzt
+  // - 5er-Optionsskala / Standard: 29 LEDs
   const ledDots = useMemo(() => {
-    const count = wrapAround ? 36 : 29;
+    const stepSpanCount =
+      !wrapAround && (!options || options.length === 0) && step > 0
+        ? Math.round((max - min) / step)
+        : 0;
+    const count = wrapAround ? 36 : stepSpanCount === 10 ? 31 : 29;
+    const majorEvery = wrapAround ? 9 : stepSpanCount === 10 ? 3 : 7;
+
     const list: Array<{
       deg: number;
       active: boolean;
@@ -189,7 +290,7 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
           deg,
           active: angularDiff <= 22.5,
           isCurrent: angularDiff <= 5.5,
-          major: i % 9 === 0,
+          major: i % majorEvery === 0,
         });
       } else {
         const ratio = i / (count - 1);
@@ -199,12 +300,12 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
           deg,
           active: ratio <= normalizedProgress + 0.005,
           isCurrent,
-          major: i % 7 === 0,
+          major: i % majorEvery === 0,
         });
       }
     }
     return list;
-  }, [normalizedProgress, rotationDeg, wrapAround]);
+  }, [max, min, normalizedProgress, options, rotationDeg, step, wrapAround]);
 
   // Äußere Rändel-Kerben (Knurling) am Aluminium-Gehäusering
   const knurlAngles = useMemo(
@@ -230,16 +331,7 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
 
   const showCompassPresets = wrapAround && min === 0 && max === 355;
   const showHidingTimePresets =
-    !wrapAround && !options && min === 5 && max === 60;
-
-  // SVG-Geometrie (164 x 164 Koordinatensystem, Zentrum 82, 82)
-  const rad = ((rotationDeg - 90) * Math.PI) / 180;
-  // Position der Nothing-Drehmulde (Finger Dimple / Pointer Capsule) auf dem Rotor
-  const dimpleX = 82 + 44 * Math.cos(rad);
-  const dimpleY = 82 + 44 * Math.sin(rad);
-  // Äußere LED-Spitze
-  const tipX = 82 + 64 * Math.cos(rad);
-  const tipY = 82 + 64 * Math.sin(rad);
+    !wrapAround && !options && min === 5 && (max === 55 || max === 60);
 
   const stepBtnLabel = options
     ? 'STUFE'
@@ -313,6 +405,7 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
+          onLostPointerCapture={handlePointerUp}
           onWheel={(e) => {
             e.preventDefault();
             stepByDelta(e.deltaY < 0 ? 1 : -1);
@@ -326,6 +419,7 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
               stepByDelta(-1);
             }
           }}
+          style={{ touchAction: 'none' }}
           title="Im Kreis drehen oder antippen wie beim Nothing / CMF Smart Dial"
           className={`relative flex h-[160px] w-[160px] sm:h-[168px] sm:w-[168px] shrink-0 cursor-grab touch-none items-center justify-center rounded-full select-none active:cursor-grabbing transition-transform duration-200 ${
             isDragging ? 'scale-[1.025]' : ''
@@ -335,7 +429,7 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
             viewBox="0 0 164 164"
             className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
           >
-            {/* 1. Äußerer gefräster Polycarbonat-/Aluminium-Flansch mit 4 Eck-Nietpunkten */}
+            {/* 1. Äußerer gefräster Polycarbonat-/Aluminium-Flansch */}
             <circle
               cx="82"
               cy="82"
@@ -405,10 +499,21 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
               strokeDasharray="1.5 3.5"
             />
 
-            {/* 3. Nothing Dot-Matrix LED-Skalenring (runde LED-Pills wie bei Nothing OS / Glyph) */}
+            {/* Top-Mitte (12-Uhr) Kalibrierungsmarkierung */}
+            <line
+              x1="82"
+              y1="11.5"
+              x2="82"
+              y2="15.5"
+              stroke="#FF4D00"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+
+            {/* 3. Nothing Dot-Matrix LED-Skalenring */}
             {ledDots.map((dot, idx) => {
               const a = ((dot.deg - 90) * Math.PI) / 180;
-              const rDot = 64;
+              const rDot = 64.5;
               const cxDot = 82 + rDot * Math.cos(a);
               const cyDot = 82 + rDot * Math.sin(a);
 
@@ -417,7 +522,7 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
                 : dot.active
                   ? '#F8FAFC'
                   : '#272B33';
-              const radius = dot.isCurrent ? 3.3 : dot.major ? 2.3 : 1.65;
+              const radius = dot.isCurrent ? 3.2 : dot.major ? 2.2 : 1.55;
 
               return (
                 <circle
@@ -426,49 +531,53 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
                   cy={cyDot}
                   r={radius}
                   fill={fill}
-                  style={{
-                    transition: 'fill 110ms ease, r 110ms ease',
-                  }}
                 />
               );
             })}
 
-            {/* 4. Präziser Signal-Orange Zeigerstrahl vom Rotor zur aktiven LED */}
-            <line
-              x1={dimpleX}
-              y1={dimpleY}
-              x2={tipX}
-              y2={tipY}
-              stroke="#FF4D00"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-
-            {/* 5.Innerer drehbarer Smart-Dial-Rotorring */}
+            {/* 4. Innerer drehbarer Smart-Dial-Rotorring (unterhalb des Zeigers) */}
             <circle
               cx="82"
               cy="82"
-              r="51"
+              r="50"
               fill="#111418"
               stroke={isDragging ? '#FF4D00' : '#2E343D'}
               strokeWidth="1.25"
             />
 
-            {/* Charakteristische CMF Smart-Dial Finger-Mulde ( Finger Dimple ) auf dem Rotor */}
-            <circle
-              cx={dimpleX}
-              cy={dimpleY}
-              r={isDragging ? 6.2 : 5.4}
-              fill="#FF4D00"
-              stroke="#0B0D10"
-              strokeWidth="1.8"
-            />
-            <circle
-              cx={dimpleX}
-              cy={dimpleY}
-              r="1.8"
-              fill="#FFFFFF"
-            />
+            {/* 5. Drehbarer Nothing × CMF Zeiger & Finger-Mulde AUF dem Rotor */}
+            <g transform={`rotate(${rotationDeg} 82 82)`}>
+              {/* Präziser Signal-Orange Zeigerstrahl von der Mulde bis knapp vor die LED-Skala */}
+              <line
+                x1="82"
+                y1="38"
+                x2="82"
+                y2="22.5"
+                stroke="#FF4D00"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+              />
+              {/* Scharfe Zeigerspitze Richtung aktiver LED */}
+              <polygon
+                points="82,19.5 79.3,24.5 84.7,24.5"
+                fill="#FF4D00"
+              />
+              {/* Charakteristische CMF Smart-Dial Finger-Mulde (Finger Dimple) */}
+              <circle
+                cx="82"
+                cy="37"
+                r={isDragging ? 6.2 : 5.4}
+                fill="#FF4D00"
+                stroke="#0B0D10"
+                strokeWidth="1.8"
+              />
+              <circle
+                cx="82"
+                cy="37"
+                r="1.75"
+                fill="#FFFFFF"
+              />
+            </g>
 
             {/* 6. Skalenbeschriftung im OLED-Zifferblatt (N/O/S/W bei Kompass, MIN/MAX bei Thermostat) */}
             {wrapAround ? (

@@ -699,6 +699,11 @@ export const App: React.FC = () => {
   );
 
   const hasActiveEmergency = gameState.emergencyMessages.length > 0;
+  const isOutsidePlayArea = Boolean(
+    geo.currentFix &&
+      (publicState.status === 'RUNNING' || publicState.status === 'PAUSED') &&
+      !isPointInPlayArea(geo.currentFix, publicState.playArea.polygon)
+  );
 
   return (
     <div
@@ -743,11 +748,12 @@ export const App: React.FC = () => {
         onUnlockAdmin={handleUnlockAndEnterConsole}
       />
 
-      {/* 50-Meter-Versteck-Leash Warnbanner */}
+      {/* 50-Meter-Versteck-Leash & Gebiets-Warnbanner */}
       <LeashWarningBanner
         isOwnSideHider={ownMember.side === 'HIDER'}
         leashState={geo.leashState}
         publicLeashAlertActive={publicState.leashAlertActive}
+        isOutsidePlayArea={isOutsidePlayArea}
       />
 
       {/* Hauptbereich */}

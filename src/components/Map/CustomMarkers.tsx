@@ -9,21 +9,17 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Eigene Position — Aktiver CMF-Signal-Orange Fokus-Pin (#FF4D00) mit Live-GPS-Radarwelle.
+ * Eigene Position — Aktiver CMF-Signal-Orange Fokus-Punkt (#FF4D00).
  */
-export function createOwnPositionIcon(isHider: boolean): L.DivIcon {
+export function createOwnPositionIcon(_isHider: boolean): L.DivIcon {
   const coreColor = '#FF4D00';
-  const ringBorder = isHider ? '#00A896' : '#FF4D00';
-  const rippleBg = isHider ? 'rgba(0,168,150,0.34)' : 'rgba(255,77,0,0.34)';
   return L.divIcon({
     className: 'sardinen-div-icon',
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
     html: `
-      <div style="position:relative;width:34px;height:34px;display:flex;align-items:center;justify-content:center;">
-        <span class="cmf-gps-ripple" style="position:absolute;inset:3px;border-radius:9999px;background:${rippleBg};pointer-events:none;"></span>
-        <span style="position:absolute;inset:2px;border-radius:9999px;background:rgba(255,77,0,0.16);border:1.5px dashed ${ringBorder};"></span>
-        <span style="position:relative;width:15px;height:15px;border-radius:9999px;background:${coreColor};border:2.5px solid #FFFFFF;box-shadow:0 3px 10px rgba(20,25,30,0.35);"></span>
+      <div style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;">
+        <span style="width:15px;height:15px;border-radius:9999px;background:${coreColor};border:2.5px solid #FFFFFF;box-shadow:0 3px 10px rgba(20,25,30,0.35);"></span>
       </div>
     `,
   });

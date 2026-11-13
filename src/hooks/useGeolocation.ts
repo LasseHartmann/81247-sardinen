@@ -246,6 +246,10 @@ export function useGeolocation(params: UseGeolocationParams): {
         anchorPoint
     );
 
+    const leashStorageKey = anchorPoint
+      ? `sardinen_leash_${anchorPoint.lockedAt}`
+      : null;
+
     if (!isActiveHiderAfterLock || !anchorPoint || !currentFix) {
       consecutiveViolationsRef.current = 0;
       violationStartedAtMsRef.current = null;
@@ -262,23 +266,78 @@ export function useGeolocation(params: UseGeolocationParams): {
       return;
     }
 
-    const dist = distanceMeters(anchorPoint, currentFix);
-    // Anti-Jitter-Filter: Nur Messungen mit accuracy <= 25 m zählen als Verstoß
+    // Nach Page-Reload gespeicherten Leash-Verstoß wiederherstellen, falls noch aktiv
     if (
-      currentFix.accuracy <= LEASH_REQUIRED_ACCURACY_METERS &&
-      dist > LEASH_RADIUS_METERS
+      leashStorageKey &&
+      violationStartedAtMsRef.current === null &&
+      typeof window !== 'undefined'
+    ) {
+      try {
+        const raw = window.sessionStorage.getItem(leashStorageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw) as {
+            startedAt?: number;
+            violations?: number;
+          };
+          if (typeof parsed.startedAt === 'number' && Number.isFinite(parsed.startedAt)) {
+            violationStartedAtMsRef.current = parsed.startedAt;
+            consecutiveViolationsRef.current = Math.max(
+              LEASH_CONSECUTIVE_VIOLATIONS,
+              parsed.violations ?? LEASH_CONSECUTIVE_VIOLATIONS
+            );
+          }
+        }
+      } catch {
+        // Ignoriere Speicherfehler
+      }
+    }
+
+    const dist = distanceMeters(anchorPoint, currentFix);
+    const isAccurateFix = currentFix.accuracy <= LEASH_REQUIRED_ACCURACY_METERS;
+    const isClearlyOutsideDespiteUncertainty =
+      dist - currentFix.accuracy > LEASH_RADIUS_METERS;
+
+    // Anti-Jitter-Filter: Messungen mit accuracy <= 25 m (oder eindeutig außerhalb) zählen als Verstoß
+    if (
+      dist > LEASH_RADIUS_METERS &&
+      (isAccurateFix || isClearlyOutsideDespiteUncertainty)
     ) {
       consecutiveViolationsRef.current += 1;
       if (
-        consecutiveViolationsRef.current >= LEASH_CONSECUTIVE_VIOLATIONS &&
+        (consecutiveViolationsRef.current >= LEASH_CONSECUTIVE_VIOLATIONS ||
+          isClearlyOutsideDespiteUncertainty ||
+          gpsStatus === 'MANUAL_TEST' ||
+          Boolean(publicState?.leashAlertActive)) &&
         violationStartedAtMsRef.current === null
       ) {
-        violationStartedAtMsRef.current = adapter.getServerNow();
+        violationStartedAtMsRef.current = publicState?.leashAlertActive
+          ? adapter.getServerNow() - LEASH_RETURN_COUNTDOWN_MS
+          : adapter.getServerNow();
+      }
+      if (leashStorageKey && violationStartedAtMsRef.current !== null && typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.setItem(
+            leashStorageKey,
+            JSON.stringify({
+              startedAt: violationStartedAtMsRef.current,
+              violations: consecutiveViolationsRef.current,
+            })
+          );
+        } catch {
+          // Ignoriere Speicherfehler
+        }
       }
     } else if (dist <= LEASH_RADIUS_METERS) {
       // Rückkehr innerhalb des 50m-Kreises beendet Countdown lautlos
       consecutiveViolationsRef.current = 0;
       violationStartedAtMsRef.current = null;
+      if (leashStorageKey && typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.removeItem(leashStorageKey);
+        } catch {
+          // Ignoriere Speicherfehler
+        }
+      }
       if (publicState?.leashAlertActive) {
         void adapter.patchControllerPublicTransition({
           leashAlertActive: false,
@@ -332,6 +391,7 @@ export function useGeolocation(params: UseGeolocationParams): {
     publicState?.status,
     publicState?.currentPhase,
     publicState?.leashAlertActive,
+    gpsStatus,
     anchorPoint,
     currentFix,
   ]);

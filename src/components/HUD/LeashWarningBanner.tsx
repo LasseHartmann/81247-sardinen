@@ -74,7 +74,7 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
       {showPublicLeashBanner && (
         <div
           role="status"
-          className="cmf-alert-slide w-full border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-4 py-2 text-center font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase backdrop-blur-md"
+          className="cmf-alert-slide w-full border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-4 py-2 text-center font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase"
         >
           WARNUNG // Die Verstecker haben ihren {LEASH_RADIUS_METERS}m-Versteckradius vorübergehend verlassen!
         </div>

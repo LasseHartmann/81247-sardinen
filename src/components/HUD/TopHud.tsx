@@ -89,7 +89,7 @@ export const TopHud: React.FC<TopHudProps> = ({
   return (
     <header
       data-emergency-active={hasActiveEmergency ? 'true' : 'false'}
-      className={`pointer-events-auto z-20 border-b-[1.5px] pt-[max(0.4rem,env(safe-area-inset-top))] pr-[max(0.65rem,env(safe-area-inset-right))] pb-1.5 pl-[max(0.65rem,env(safe-area-inset-left))] backdrop-blur-[18px] transition-colors duration-300 ${
+      className={`pointer-events-auto z-20 border-b-[1.5px] pt-[max(0.4rem,env(safe-area-inset-top))] pr-[max(0.65rem,env(safe-area-inset-right))] pb-1.5 pl-[max(0.65rem,env(safe-area-inset-left))] transition-colors duration-300 ${
         hasActiveEmergency
           ? 'border-[#FCA5A5] bg-[#B91C1C] text-white shadow-[0_6px_24px_rgba(220,38,38,0.45)]'
           : 'border-[var(--shell-border)] bg-[var(--shell-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]'

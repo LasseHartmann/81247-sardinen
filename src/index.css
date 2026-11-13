@@ -3,9 +3,9 @@
 :root {
   /* Raw Light Polycarbonate Surfaces */
   --bg-page: #DCE1E6;
-  --shell-bg: rgba(236, 239, 242, 0.92);
+  --shell-bg: #ECEFF2;
   --shell-border: #C4CCD4;
-  --module-bg: rgba(248, 250, 252, 0.88);
+  --module-bg: #F6F8FA;
   --module-sub: #EAEFF4;
 
   /* Typography Ink */
@@ -129,22 +129,18 @@ button,
 
 .cmf-chassis {
   background: var(--shell-bg);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
   border: 1.5px solid var(--shell-border);
   border-radius: 1.75rem;
   box-shadow:
-    0 24px 55px -15px rgba(20, 25, 30, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    0 20px 44px -15px rgba(20, 25, 30, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .cmf-module {
   background: var(--module-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--shell-border);
   border-radius: 1.35rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .cmf-well {
@@ -369,8 +365,8 @@ input[type='range'].cmf-range::-moz-range-thumb {
   border: none !important;
 }
 
-.leaflet-tile-pane {
-  filter: grayscale(100%) contrast(1.08) brightness(0.98);
+.sardinen-map-viewport {
+  contain: strict;
 }
 
 .leaflet-container {
@@ -391,7 +387,6 @@ input[type='range'].cmf-range::-moz-range-thumb {
   border-bottom: 1px solid var(--shell-border) !important;
   font-family: 'JetBrains Mono', monospace !important;
   font-weight: 700 !important;
-  backdrop-filter: blur(12px);
 }
 
 .leaflet-control-zoom a:last-child {
@@ -438,7 +433,7 @@ input[type='range'].cmf-range::-moz-range-thumb {
 }
 
 .leaflet-control-attribution {
-  background: rgba(236, 239, 242, 0.88) !important;
+  background: rgba(236, 239, 242, 0.94) !important;
   color: var(--text-muted) !important;
   font-family: 'JetBrains Mono', monospace !important;
   font-size: 9px !important;
@@ -446,7 +441,6 @@ input[type='range'].cmf-range::-moz-range-thumb {
   border-left: 1px solid var(--shell-border) !important;
   border-top-left-radius: 8px !important;
   padding: 2px 7px !important;
-  backdrop-filter: blur(8px);
 }
 
 .leaflet-control-attribution a {
@@ -656,7 +650,7 @@ input[type='range'].cmf-range::-moz-range-thumb {
 }
 
 .cmf-hq-glow {
-  animation: cmfHqBreathe 2.6s ease-in-out infinite;
+  box-shadow: 0 4px 14px rgba(255, 77, 0, 0.42);
 }
 
 .cmf-sos-wave {

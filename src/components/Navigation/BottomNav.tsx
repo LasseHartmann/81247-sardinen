@@ -66,7 +66,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     <nav
       aria-label="Hauptnavigation"
       data-emergency-active={hasActiveEmergency ? 'true' : 'false'}
-      className={`z-30 border-t-[1.5px] pt-1.5 pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.45rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] backdrop-blur-[18px] transition-colors duration-300 ${
+      className={`z-30 border-t-[1.5px] pt-1.5 pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.45rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] transition-colors duration-300 ${
         hasActiveEmergency
           ? 'border-[#FCA5A5] bg-[#B91C1C] text-white shadow-[0_-12px_32px_rgba(220,38,38,0.45)]'
           : 'border-[var(--shell-border)] bg-[var(--shell-bg)] shadow-[0_-12px_32px_rgba(20,25,30,0.08),inset_0_1px_0_rgba(255,255,255,0.75)]'

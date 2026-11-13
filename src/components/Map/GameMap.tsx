@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import { LocateFixed, Maximize2 } from 'lucide-react';
-import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson';
+import type { Feature, Polygon } from 'geojson';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
   LEASH_RADIUS_METERS,
   MAP_DEFAULT_CENTER,
   MAP_DEFAULT_ZOOM,
 } from '../../config/gameConfig';
+import { buildQuestionPreviewGeoJson } from '../../geo/clueGeometry';
 import {
   buildExcludedOrangeMask,
   computePossibleHidingArea,
@@ -19,6 +20,8 @@ import type {
   GeoFix,
   LatLng,
   PublishedRadarCircle,
+  QuestionType,
+  RadiusOptionMeters,
   TeamLocation,
   TeamPublic,
 } from '../../types/game';
@@ -54,7 +57,9 @@ export interface GameMapProps {
   activeTeamIds?: string[];
   clues: ClueRecord[];
   hiddenClueIds: Set<string>;
-  liveConePreview: FeatureCollection | Feature<Polygon | MultiPolygon> | null;
+  activePreviewQuestion?: QuestionType | null;
+  coneBearingDeg?: number;
+  selectedRadius?: RadiusOptionMeters;
   thermoPointA?: LatLng | null;
   thermoPointB?: LatLng | null;
   clickMode: MapClickInteractionMode;
@@ -66,7 +71,7 @@ export interface GameMapProps {
   emergencyFocusTarget?: { lat: number; lng: number; seq: number } | null;
 }
 
-export const GameMap: React.FC<GameMapProps> = ({
+const GameMapInner: React.FC<GameMapProps> = ({
   playArea,
   ownFix,
   anchorGpsOrigin = null,
@@ -79,7 +84,9 @@ export const GameMap: React.FC<GameMapProps> = ({
   activeTeamIds,
   clues,
   hiddenClueIds,
-  liveConePreview,
+  activePreviewQuestion = null,
+  coneBearingDeg = 0,
+  selectedRadius = 250,
   thermoPointA,
   thermoPointB,
   clickMode,
@@ -92,6 +99,7 @@ export const GameMap: React.FC<GameMapProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const canvasRendererRef = useRef<L.Canvas | null>(null);
 
   const hidingZoneLayerRef = useRef<L.LayerGroup | null>(null);
   const previewLayerRef = useRef<L.LayerGroup | null>(null);
@@ -134,23 +142,77 @@ export const GameMap: React.FC<GameMapProps> = ({
     [possibleHidingArea]
   );
 
+  const previewOriginLat = anchorGpsOrigin?.lat ?? null;
+  const previewOriginLng = anchorGpsOrigin?.lng ?? null;
+
+  const liveConePreview = useMemo(() => {
+    if (!activePreviewQuestion) return null;
+    const originPt =
+      previewOriginLat !== null && previewOriginLng !== null
+        ? { lat: previewOriginLat, lng: previewOriginLng }
+        : null;
+    return buildQuestionPreviewGeoJson(
+      activePreviewQuestion,
+      {
+        bearingDeg: coneBearingDeg,
+        radiusMeters: selectedRadius,
+        pointA: thermoPointA ?? undefined,
+        pointB: (thermoPointB ?? originPt) ?? undefined,
+      },
+      originPt,
+      possibleHidingArea ?? playArea
+    );
+  }, [
+    activePreviewQuestion,
+    coneBearingDeg,
+    selectedRadius,
+    thermoPointA,
+    thermoPointB,
+    previewOriginLat,
+    previewOriginLng,
+    possibleHidingArea,
+    playArea,
+  ]);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el || mapRef.current) return;
+
+    const canvasRenderer = L.canvas({ padding: 0.35 });
+    canvasRendererRef.current = canvasRenderer;
 
     const map = L.map(el, {
       center: MAP_DEFAULT_CENTER,
       zoom: MAP_DEFAULT_ZOOM,
       zoomControl: false,
       attributionControl: true,
+      preferCanvas: true,
+      renderer: canvasRenderer,
+      fadeAnimation: false,
     });
 
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const positronUrl =
+      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+    const osmFallbackUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    let switchedToFallback = false;
+
+    const tileLayer = L.tileLayer(positronUrl, {
+      subdomains: 'abcd',
       maxZoom: 19,
-      keepBuffer: 1,
+      keepBuffer: 2,
+      updateWhenIdle: true,
+      updateWhenZooming: false,
       attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OSM</a> // 81247',
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OSM</a> &copy; CARTO // 81247',
     }).addTo(map);
+
+    tileLayer.on('tileerror', () => {
+      if (!switchedToFallback) {
+        switchedToFallback = true;
+        tileLayer.options.subdomains = ['a', 'b', 'c'];
+        tileLayer.setUrl(osmFallbackUrl);
+      }
+    });
 
     hidingZoneLayerRef.current = L.layerGroup().addTo(map);
     previewLayerRef.current = L.layerGroup().addTo(map);
@@ -182,6 +244,7 @@ export const GameMap: React.FC<GameMapProps> = ({
       ownMarkerRef.current = null;
       teamMarkersRef.current.clear();
       emergencyMarkersRef.current.clear();
+      canvasRendererRef.current = null;
       map.remove();
       mapRef.current = null;
     };
@@ -218,8 +281,11 @@ export const GameMap: React.FC<GameMapProps> = ({
     if (!group) return;
     group.clearLayers();
 
+    const renderer = canvasRendererRef.current ?? undefined;
+
     L.geoJSON(excludedOrangeMask, {
       style: {
+        renderer,
         stroke: false,
         fillColor: '#FF4D00',
         fillOpacity: 0.34,
@@ -230,6 +296,7 @@ export const GameMap: React.FC<GameMapProps> = ({
     if (possibleHidingArea) {
       L.geoJSON(possibleHidingArea, {
         style: {
+          renderer,
           color: '#FF4D00',
           weight: 2.5,
           opacity: 0.95,
@@ -242,6 +309,7 @@ export const GameMap: React.FC<GameMapProps> = ({
     // Dauerhafter roter Außenrand des gesamten Spielbereichs (81247)
     L.geoJSON(playArea, {
       style: {
+        renderer,
         color: '#DC2626',
         weight: 3.5,
         opacity: 0.95,
@@ -251,15 +319,22 @@ export const GameMap: React.FC<GameMapProps> = ({
     }).addTo(group);
   }, [playArea, possibleHidingArea, excludedOrangeMask]);
 
+  const anchorPickLat =
+    clickMode.kind === 'PICK_ANCHOR_POINT' ? (anchorGpsOrigin?.lat ?? null) : null;
+  const anchorPickLng =
+    clickMode.kind === 'PICK_ANCHOR_POINT' ? (anchorGpsOrigin?.lng ?? null) : null;
+
   // 2. Optionale Live-Vorschau (nur wenn aktiv im Hinweis-Menü eingeschaltet) + Thermometer-Pins A/B
   useEffect(() => {
     const group = previewLayerRef.current;
     if (!group) return;
     group.clearLayers();
+    const renderer = canvasRendererRef.current ?? undefined;
 
     if (liveConePreview) {
       L.geoJSON(liveConePreview, {
         style: {
+          renderer,
           color: '#00A896',
           weight: 2,
           fillColor: '#00A896',
@@ -285,8 +360,9 @@ export const GameMap: React.FC<GameMapProps> = ({
         .addTo(group);
     }
 
-    if (clickMode.kind === 'PICK_ANCHOR_POINT' && anchorGpsOrigin) {
-      L.circle([anchorGpsOrigin.lat, anchorGpsOrigin.lng], {
+    if (anchorPickLat !== null && anchorPickLng !== null) {
+      L.circle([anchorPickLat, anchorPickLng], {
+        renderer,
         radius: ANCHOR_MANUAL_ADJUST_MAX_METERS,
         color: '#00A896',
         weight: 2,
@@ -296,7 +372,7 @@ export const GameMap: React.FC<GameMapProps> = ({
         interactive: false,
       }).addTo(group);
     }
-  }, [liveConePreview, thermoPointA, thermoPointB, clickMode.kind, anchorGpsOrigin]);
+  }, [liveConePreview, thermoPointA, thermoPointB, anchorPickLat, anchorPickLng]);
 
   // 3. Eigene Position, autorisierte Team-Beacons sowie Hider-Anchor (in-place aktualisiert ohne Flackern!)
   useEffect(() => {
@@ -481,7 +557,7 @@ export const GameMap: React.FC<GameMapProps> = ({
   }, [playArea]);
 
   return (
-    <div className="relative h-full w-full bg-[var(--bg-page)]">
+    <div className="sardinen-map-viewport relative h-full w-full bg-[var(--bg-page)]">
       <div
         ref={containerRef}
         data-testid="leaflet-map-container"
@@ -533,3 +609,105 @@ export const GameMap: React.FC<GameMapProps> = ({
     </div>
   );
 };
+
+function sameLatLng(
+  a: { lat: number; lng: number } | null | undefined,
+  b: { lat: number; lng: number } | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.lat === b.lat && a.lng === b.lng;
+}
+
+function sameTeamLocations(
+  a: Record<string, TeamLocation | null>,
+  b: Record<string, TeamLocation | null>
+): boolean {
+  if (a === b) return true;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (const k of keysA) {
+    const la = a[k];
+    const lb = b[k];
+    if (la === lb) continue;
+    if (!la || !lb) return false;
+    if (
+      la.lat !== lb.lat ||
+      la.lng !== lb.lng ||
+      la.accuracy !== lb.accuracy ||
+      la.activeContributorCount !== lb.activeContributorCount
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export const GameMap = React.memo(GameMapInner, (prev, next) => {
+  if (
+    prev.playArea !== next.playArea ||
+    prev.playAreaConfirmed !== next.playAreaConfirmed ||
+    prev.isOwnSideHider !== next.isOwnSideHider ||
+    prev.showAnchorAndLeash !== next.showAnchorAndLeash ||
+    prev.activePreviewQuestion !== next.activePreviewQuestion ||
+    prev.coneBearingDeg !== next.coneBearingDeg ||
+    prev.selectedRadius !== next.selectedRadius ||
+    prev.layoutInvalidationKey !== next.layoutInvalidationKey ||
+    prev.hasBottomDock !== next.hasBottomDock ||
+    prev.teamsPublic !== next.teamsPublic ||
+    prev.activeTeamIds !== next.activeTeamIds ||
+    prev.hiddenClueIds !== next.hiddenClueIds ||
+    prev.emergencyMessages !== next.emergencyMessages ||
+    prev.emergencyFocusTarget !== next.emergencyFocusTarget ||
+    prev.clickMode.kind !== next.clickMode.kind ||
+    prev.clickMode.label !== next.clickMode.label
+  ) {
+    return false;
+  }
+
+  if (
+    !sameLatLng(prev.ownFix, next.ownFix) ||
+    (prev.ownFix?.accuracy ?? null) !== (next.ownFix?.accuracy ?? null)
+  ) {
+    return false;
+  }
+
+  if (!sameLatLng(prev.anchorGpsOrigin, next.anchorGpsOrigin)) {
+    return false;
+  }
+
+  if (
+    !sameLatLng(prev.anchorPoint, next.anchorPoint) ||
+    (prev.anchorPoint?.accuracy ?? null) !== (next.anchorPoint?.accuracy ?? null)
+  ) {
+    return false;
+  }
+
+  if (!sameLatLng(prev.thermoPointA, next.thermoPointA)) return false;
+  if (!sameLatLng(prev.thermoPointB, next.thermoPointB)) return false;
+
+  if (prev.publishedRadar !== next.publishedRadar) {
+    if (!prev.publishedRadar || !next.publishedRadar) return false;
+    if (
+      prev.publishedRadar.stage !== next.publishedRadar.stage ||
+      prev.publishedRadar.radiusMeters !== next.publishedRadar.radiusMeters ||
+      !sameLatLng(prev.publishedRadar.center, next.publishedRadar.center)
+    ) {
+      return false;
+    }
+  }
+
+  if (!sameTeamLocations(prev.visibleTeamLocations, next.visibleTeamLocations)) {
+    return false;
+  }
+
+  if (prev.clues !== next.clues) {
+    if (prev.clues.length !== next.clues.length) return false;
+    for (let i = 0; i < prev.clues.length; i++) {
+      if (prev.clues[i].id !== next.clues[i].id) return false;
+    }
+  }
+
+  return true;
+});

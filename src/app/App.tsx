@@ -27,8 +27,6 @@ import {
   isPointInPlayArea,
   validateManualAnchorSelection,
 } from '../geo/boundary';
-import { buildQuestionPreviewGeoJson } from '../geo/clueGeometry';
-import { computePossibleHidingArea } from '../geo/hidingArea';
 import { useAuth } from '../hooks/useAuth';
 import {
   lockHiderAnchorAndGenerateRadar,
@@ -489,25 +487,6 @@ export const App: React.FC = () => {
           )
       : [];
 
-  const livePreviewGeo = activePreviewQuestion
-    ? buildQuestionPreviewGeoJson(
-        activePreviewQuestion,
-        {
-          bearingDeg: coneBearingDeg,
-          radiusMeters: selectedRadius,
-          pointA: thermoPointA ?? undefined,
-          pointB: (thermoPointB ?? geo.currentFix) ?? undefined,
-        },
-        geo.currentFix,
-        computePossibleHidingArea({
-          playArea: publicState.playArea.polygon,
-          clues: visibleMapClues,
-          hiddenClueIds,
-          publishedRadar: publicState.radarCircle,
-        }) ?? publicState.playArea.polygon
-      )
-    : null;
-
   const handleMapCoordinateClick = (pt: LatLng) => {
     if (mapClickMode.kind === 'PICK_ANCHOR_POINT') {
       const check = validateManualAnchorSelection({
@@ -777,7 +756,7 @@ export const App: React.FC = () => {
                     lat: fineAdjustAnchorPt.lat,
                     lng: fineAdjustAnchorPt.lng,
                     accuracy: 5,
-                    timestamp: Date.now(),
+                    timestamp: 0,
                   }
                 : geo.currentFix
             }
@@ -793,7 +772,9 @@ export const App: React.FC = () => {
             activeTeamIds={activeRoundTeamIds}
             clues={visibleMapClues}
             hiddenClueIds={hiddenClueIds}
-            liveConePreview={livePreviewGeo}
+            activePreviewQuestion={activePreviewQuestion}
+            coneBearingDeg={coneBearingDeg}
+            selectedRadius={selectedRadius}
             thermoPointA={thermoPointA}
             thermoPointB={thermoPointB}
             clickMode={mapClickMode}
@@ -862,7 +843,7 @@ export const App: React.FC = () => {
                 roundSeekerTeamsForFilter.length > 0 && (
                   <div
                     data-testid="map-hider-team-filter"
-                    className="cmf-no-scrollbar pointer-events-auto flex items-center gap-1 overflow-x-auto rounded-2xl border border-[var(--shell-border)] bg-[var(--shell-bg)]/95 p-1 shadow-lg backdrop-blur-md"
+                    className="cmf-no-scrollbar pointer-events-auto flex items-center gap-1 overflow-x-auto rounded-2xl border border-[var(--shell-border)] bg-[var(--shell-bg)] p-1 shadow-lg"
                   >
                     <button
                       type="button"

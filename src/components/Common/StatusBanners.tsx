@@ -18,7 +18,7 @@ export const StatusBanners: React.FC<StatusBannersProps> = ({
       {!connected && (
         <div
           role="alert"
-          className="cmf-alert-slide flex items-center justify-center gap-2 border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-3 py-1.5 font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase backdrop-blur-md"
+          className="cmf-alert-slide flex items-center justify-center gap-2 border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-3 py-1.5 font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase"
         >
           <WifiOff className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-orange)]" />
           Offline // Synchronisiere automatisch bei Netzrückkehr ...

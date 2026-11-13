@@ -25,8 +25,13 @@ export function useGameTimer(
   const [serverNowMs, setServerNowMs] = useState(() => adapter.getServerNow());
 
   useEffect(() => {
-    const updateNow = () => setServerNowMs(adapter.getServerNow());
-    updateNow();
+    const updateNow = () => {
+      const next = adapter.getServerNow();
+      setServerNowMs((prev) =>
+        Math.floor(prev / 1000) === Math.floor(next / 1000) ? prev : next
+      );
+    };
+    setServerNowMs(adapter.getServerNow());
 
     const interval = setInterval(updateNow, 500);
     const unsubOffset = adapter.subscribeServerTimeOffset(() => {

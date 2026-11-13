@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildRadarScheduleForHidingMinutes,
   DEFAULT_PLAY_AREA_FEATURE,
+  DEFAULT_RADAR_SCHEDULE,
+  getQuestionPenaltyMs,
   isLegacyPlaceholderPlayArea,
   LEGACY_PLACEHOLDER_AREA_NAME,
   TEAM_PALETTE,
@@ -109,7 +112,7 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(audio.approxBytes).toBeLessThanOrEqual(25_000);
   });
 
-  it('erlaubt beim Login exakt die 11 Namen und schaltet Admin-Rechte für Lasse & Linus über den Admin-Code frei', () => {
+  it('erlaubt beim Login exakt die 12 Namen (inkl. Theo) und schaltet Admin-Rechte für Lasse & Linus über den Admin-Code frei', () => {
     const expectedNames = [
       'Lasse',
       'Linus',
@@ -122,19 +125,29 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
       'Louis',
       'Max',
       'Roman',
+      'Theo',
     ];
     expect(PRESET_PLAYERS.map((p) => p.name)).toEqual(expectedNames);
-    expect(PRESET_PLAYERS).toHaveLength(11);
+    expect(PRESET_PLAYERS).toHaveLength(12);
 
     // Nur Lasse & Linus können Admin-Rechte freischalten
     expect(
       PRESET_PLAYERS.filter((p) => p.canUnlockAdmin).map((p) => p.name)
     ).toEqual(['Lasse', 'Linus']);
 
-    // Alle 11 Namen (auch Lasse & Linus) loggen sich direkt per Vorname ein
+    // Alle 12 Namen (auch Lasse, Linus & Theo) loggen sich direkt per Vorname ein
     expect(resolveAllowedPlayerByNameInput('  lasse ')?.name).toBe('Lasse');
     expect(resolveAllowedPlayerByNameInput('LINUS')?.name).toBe('Linus');
     expect(resolveAllowedPlayerByNameInput('  roman  ')?.name).toBe('Roman');
+    expect(resolveAllowedPlayerByNameInput('  theo  ')?.name).toBe('Theo');
+
+    // Standard-Versteckzeit beträgt 20 Minuten und Radius-Radar kostet 3 Minuten
+    expect(DEFAULT_RADAR_SCHEDULE.hidingDurationMs).toBe(20 * 60_000);
+    expect(buildRadarScheduleForHidingMinutes(25).hidingDurationMs).toBe(
+      25 * 60_000
+    );
+    expect(getQuestionPenaltyMs('RADIUS_RADAR')).toBe(3 * 60_000);
+    expect(getQuestionPenaltyMs('DONUT_RING')).toBe(4 * 60_000);
 
     // Admin-Code-Verifikation (2342 gültig, alles andere abgelehnt)
     const valid = verifyAdminCode('2342');

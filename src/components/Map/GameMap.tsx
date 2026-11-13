@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import type { Feature, MultiPolygon, Polygon } from 'geojson';
+import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson';
 import {
   LEASH_RADIUS_METERS,
   MAP_DEFAULT_CENTER,
@@ -25,7 +25,12 @@ import {
 } from './CustomMarkers';
 
 export interface MapClickInteractionMode {
-  kind: 'NONE' | 'TEST_LOCATION' | 'PICK_SPLIT_POINT' | 'PICK_THERMO_A' | 'PICK_THERMO_B';
+  kind:
+    | 'NONE'
+    | 'TEST_LOCATION'
+    | 'PICK_ANCHOR_POINT'
+    | 'PICK_THERMO_A'
+    | 'PICK_THERMO_B';
   label?: string;
 }
 
@@ -42,8 +47,7 @@ export interface GameMapProps {
   activeTeamIds?: string[];
   clues: ClueRecord[];
   hiddenClueIds: Set<string>;
-  liveConePreview: Feature<Polygon | MultiPolygon> | null;
-  selectedSplitPoint?: LatLng | null;
+  liveConePreview: FeatureCollection | Feature<Polygon | MultiPolygon> | null;
   thermoPointA?: LatLng | null;
   thermoPointB?: LatLng | null;
   clickMode: MapClickInteractionMode;
@@ -72,7 +76,6 @@ export const GameMap: React.FC<GameMapProps> = ({
   clues,
   hiddenClueIds,
   liveConePreview,
-  selectedSplitPoint,
   thermoPointA,
   thermoPointB,
   clickMode,
@@ -202,7 +205,7 @@ export const GameMap: React.FC<GameMapProps> = ({
     syncClueOverlaysToLayerGroup(group, clues, hiddenClueIds);
   }, [clues, hiddenClueIds]);
 
-  // 3. Live-Vorschau (45°-Radarkegel, Teilungspunkt, Thermometer A/B)
+  // 3. Live-Vorschau für alle Hinweis-Fragen + Thermometer-Pins A/B
   useEffect(() => {
     const group = previewLayerRef.current;
     if (!group) return;
@@ -210,23 +213,18 @@ export const GameMap: React.FC<GameMapProps> = ({
 
     if (liveConePreview) {
       L.geoJSON(liveConePreview, {
-        style: {
-          color: '#00A896',
-          weight: 2,
-          dashArray: '6, 6',
-          fillColor: '#00A896',
-          fillOpacity: 0.14,
+        style: (feature) => {
+          const isDivider = feature?.properties?.role === 'divider';
+          return {
+            color: isDivider ? '#FF4D00' : '#00A896',
+            weight: isDivider ? 3 : 2,
+            dashArray: '6, 6',
+            fillColor: '#00A896',
+            fillOpacity: 0.16,
+          };
         },
         interactive: false,
       }).addTo(group);
-    }
-
-    if (selectedSplitPoint) {
-      L.marker([selectedSplitPoint.lat, selectedSplitPoint.lng], {
-        icon: createSelectionPinIcon('T', 'primary'),
-      })
-        .bindTooltip('TEILUNGSPUNKT [T]')
-        .addTo(group);
     }
 
     if (thermoPointA) {
@@ -254,7 +252,7 @@ export const GameMap: React.FC<GameMapProps> = ({
         { color: '#FF4D00', weight: 2, dashArray: '6, 6' }
       ).addTo(group);
     }
-  }, [liveConePreview, selectedSplitPoint, thermoPointA, thermoPointB]);
+  }, [liveConePreview, thermoPointA, thermoPointB]);
 
   // 4. Schrumpf-Radar-Kreis (öffentlich ab 25:00 — 3-stufige Hardware-Farbprogression)
   useEffect(() => {

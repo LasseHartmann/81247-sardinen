@@ -4,19 +4,19 @@ import {
   Thermometer,
   Radar,
   Train,
-  Trees,
   CircleDot,
   Disc,
   Camera,
   Mic,
-  Crosshair,
   Clock,
   Lock,
+  Eye,
+  X,
 } from 'lucide-react';
 import {
+  getQuestionPenaltyMs,
   MEDIA_RESPONSE_TIMEOUT_NET_MS,
   QUESTION_CATEGORY_MAP,
-  QUESTION_PENALTY_MS,
 } from '../../config/gameConfig';
 import { distanceMeters } from '../../geo/distance';
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
@@ -34,6 +34,7 @@ import type {
   TeamPublic,
 } from '../../types/game';
 import { formatDurationClock } from '../../utils/formatting';
+import { HardwareKnob } from '../Common/HardwareKnob';
 import type { MapClickInteractionMode } from '../Map/GameMap';
 import { ClueHistoryList } from './ClueHistoryList';
 
@@ -49,21 +50,21 @@ export interface QuestionMenuProps {
   teamClues: Record<string, ClueRecord>;
   hiddenClueIds: Set<string>;
   onToggleClueOverlay: (clueId: string) => void;
-  selectedSplitPoint: LatLng | null;
-  onSelectSplitPoint: (pt: LatLng | null) => void;
   thermoPointA: LatLng | null;
   onSetThermoPointA: (pt: LatLng | null) => void;
   thermoPointB: LatLng | null;
   onSetThermoPointB: (pt: LatLng | null) => void;
   coneBearingDeg: number;
   onChangeConeBearingDeg: (deg: number) => void;
-  conePreviewEnabled: boolean;
-  onToggleConePreview: (enabled: boolean) => void;
+  selectedRadius: RadiusOptionMeters;
+  onChangeSelectedRadius: (r: RadiusOptionMeters) => void;
+  activePreviewQuestion: QuestionType | null;
+  onChangePreviewQuestion: (q: QuestionType | null) => void;
   onRequestMapPointPick: (mode: MapClickInteractionMode) => void;
   onNavigateToMap: () => void;
 }
 
-const RADIUS_OPTIONS: RadiusOptionMeters[] = [50, 100, 250, 500, 1000];
+const RADIUS_OPTIONS: readonly RadiusOptionMeters[] = [50, 100, 250, 500, 1000];
 
 export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   adapter,
@@ -77,21 +78,20 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   teamClues,
   hiddenClueIds,
   onToggleClueOverlay,
-  selectedSplitPoint,
-  onSelectSplitPoint,
   thermoPointA,
   onSetThermoPointA,
   thermoPointB,
   onSetThermoPointB,
   coneBearingDeg,
   onChangeConeBearingDeg,
-  conePreviewEnabled,
-  onToggleConePreview,
+  selectedRadius,
+  onChangeSelectedRadius,
+  activePreviewQuestion,
+  onChangePreviewQuestion,
   onRequestMapPointPick,
   onNavigateToMap,
 }) => {
   const [splitAxis, setSplitAxis] = useState<'SPLIT_NS' | 'SPLIT_EW'>('SPLIT_NS');
-  const [selectedRadius, setSelectedRadius] = useState<RadiusOptionMeters>(250);
   const [busyType, setBusyType] = useState<QuestionType | null>(null);
 
   const isPaused = publicState.status === 'PAUSED' || publicState.pausedAt !== null;
@@ -121,6 +121,43 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
       ? Math.round(distanceMeters(thermoPointA, effectiveEndpointB))
       : 0;
 
+  const toggleOrShowMapPreview = (qType: QuestionType) => {
+    if (activePreviewQuestion === qType) {
+      onChangePreviewQuestion(null);
+    } else {
+      onChangePreviewQuestion(qType);
+      onNavigateToMap();
+    }
+  };
+
+  const renderPreviewButton = (qType: QuestionType) => {
+    const isActive = activePreviewQuestion === qType;
+    return (
+      <button
+        type="button"
+        data-testid={`preview-btn-${qType}`}
+        onClick={() => toggleOrShowMapPreview(qType)}
+        className={`font-tech inline-flex min-h-[42px] items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase ${
+          isActive
+            ? 'cmf-btn-active'
+            : 'cmf-btn-secondary bg-white/60 text-[var(--text-main)]'
+        }`}
+      >
+        {isActive ? (
+          <>
+            <X className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+            <span>Vorschau beenden</span>
+          </>
+        ) : (
+          <>
+            <Eye className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+            <span>Vorschau auf Karte</span>
+          </>
+        )}
+      </button>
+    );
+  };
+
   const purchaseClue = async (
     questionType: QuestionType,
     params: QuestionParams = {}
@@ -129,7 +166,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
     setBusyType(questionType);
     try {
       const category = QUESTION_CATEGORY_MAP[questionType];
-      const penaltyMs = QUESTION_PENALTY_MS[category];
+      const penaltyMs = getQuestionPenaltyMs(questionType);
       const req: ClueRequest = {
         id: generateRandomId('req'),
         teamId: ownTeam.id,
@@ -154,8 +191,8 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         onSetThermoPointA(null);
         onSetThermoPointB(null);
       }
-      if (questionType === 'CONE_45') {
-        onToggleConePreview(false);
+      if (activePreviewQuestion) {
+        onChangePreviewQuestion(null);
       }
     } finally {
       setBusyType(null);
@@ -208,12 +245,28 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
     <div className="cmf-drafting-bg h-full overflow-y-auto p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-2xl space-y-5 pb-12">
         <div className="cmf-chassis p-5">
-          <span className="cmf-badge-amber inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
-            HINWEIS-INSTRUMENTE // {ownTeam?.name}
-          </span>
-          <h2 className="font-dot mt-1.5 text-xl text-[var(--text-main)]">
-            Hinweise gegen Zeitstrafe kaufen
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span className="cmf-badge-amber inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
+                HINWEIS-INSTRUMENTE // {ownTeam?.name}
+              </span>
+              <h2 className="font-dot mt-1.5 text-xl text-[var(--text-main)]">
+                Hinweise gegen Zeitstrafe kaufen
+              </h2>
+            </div>
+
+            {activePreviewQuestion && (
+              <button
+                type="button"
+                data-testid="menu-clear-preview-btn"
+                onClick={() => onChangePreviewQuestion(null)}
+                className="cmf-btn-active font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase"
+              >
+                <X className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                Kartenvorschau beenden
+              </button>
+            )}
+          </div>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Alle Ergebnisse & Karten-Overlays sind ausschließlich für euer eigenes Team sichtbar.
           </p>
@@ -228,7 +281,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               {isPaused
                 ? 'Hinweis-Käufe sind während einer Spielpause gesperrt.'
                 : isHidingPhase
-                  ? 'Hinweis-Käufe starten ab 10:00 (sobald die Versteckphase beendet ist).'
+                  ? `Hinweis-Käufe starten ab ${formatDurationClock(publicState.radarSchedule.hidingDurationMs)} (sobald die Versteckphase beendet ist).`
                   : 'Warte auf gültige GPS-Position für deinen Anfrage-Snapshot ...'}
             </span>
           </div>
@@ -245,16 +298,23 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             </span>
           </div>
 
-          {/* 1A/1B: Nord/Süd oder Ost/West */}
+          {/* 1A/1B: Nord/Süd oder Ost/West (teilt am aktuellen GPS-Standort, ohne freien Kartenpunkt) */}
           <div className="cmf-well p-3.5 space-y-3">
-            <div className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
-              <Compass className="h-4 w-4 text-[var(--cmf-teal)]" />
-              Nord/Süd- oder Ost/West-Teilung
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
+                <Compass className="h-4 w-4 text-[var(--cmf-teal)]" />
+                Nord/Süd- oder Ost/West-Teilung (an eurem GPS-Standort)
+              </span>
             </div>
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setSplitAxis('SPLIT_NS')}
+                onClick={() => {
+                  setSplitAxis('SPLIT_NS');
+                  if (activePreviewQuestion === 'SPLIT_EW') {
+                    onChangePreviewQuestion('SPLIT_NS');
+                  }
+                }}
                 className={`font-tech min-h-[40px] flex-1 px-3 text-xs font-bold uppercase ${
                   splitAxis === 'SPLIT_NS' ? 'cmf-btn-active' : 'cmf-btn-secondary'
                 }`}
@@ -263,7 +323,12 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setSplitAxis('SPLIT_EW')}
+                onClick={() => {
+                  setSplitAxis('SPLIT_EW');
+                  if (activePreviewQuestion === 'SPLIT_NS') {
+                    onChangePreviewQuestion('SPLIT_EW');
+                  }
+                }}
                 className={`font-tech min-h-[40px] flex-1 px-3 text-xs font-bold uppercase ${
                   splitAxis === 'SPLIT_EW' ? 'cmf-btn-active' : 'cmf-btn-secondary'
                 }`}
@@ -272,47 +337,23 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               </button>
             </div>
             <div className="flex flex-wrap gap-2">
+              {renderPreviewButton(splitAxis)}
               <button
                 type="button"
-                onClick={() => {
-                  onRequestMapPointPick({
-                    kind: 'PICK_SPLIT_POINT',
-                    label: 'Tippe auf die Karte, um den Teilungspunkt zu wählen',
-                  });
-                  onNavigateToMap();
-                }}
-                className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 bg-white/60 px-3 py-1.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                data-testid="buy-split-clue-btn"
+                disabled={!canPurchase || busyType !== null}
+                onClick={() =>
+                  void purchaseClue(splitAxis, {
+                    splitPoint: ownFix
+                      ? { lat: ownFix.lat, lng: ownFix.lng }
+                      : undefined,
+                  })
+                }
+                className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
               >
-                <Crosshair className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                {selectedSplitPoint
-                  ? `Punkt [${selectedSplitPoint.lat.toFixed(4)}, ${selectedSplitPoint.lng.toFixed(4)}]`
-                  : 'Teilungspunkt auf Karte wählen (sonst GPS)'}
+                Hinweis kaufen (+2 Min.)
               </button>
-              {selectedSplitPoint && (
-                <button
-                  type="button"
-                  onClick={() => onSelectSplitPoint(null)}
-                  className="cmf-btn-secondary font-tech min-h-[38px] px-2.5 text-[11px] font-bold uppercase"
-                >
-                  Auf GPS zurücksetzen
-                </button>
-              )}
             </div>
-            <button
-              type="button"
-              data-testid="buy-split-clue-btn"
-              disabled={!canPurchase || busyType !== null}
-              onClick={() =>
-                void purchaseClue(splitAxis, {
-                  splitPoint:
-                    selectedSplitPoint ??
-                    (ownFix ? { lat: ownFix.lat, lng: ownFix.lng } : undefined),
-                })
-              }
-              className="cmf-btn-primary font-dot min-h-[44px] w-full px-4 py-2 text-xs font-bold"
-            >
-              Hinweis kaufen (+2 Min.)
-            </button>
           </div>
 
           {/* 1C: Thermometer (100m Laufweg) */}
@@ -384,73 +425,65 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               )}
             </div>
 
-            <button
-              type="button"
-              disabled={
-                !canPurchase ||
-                !thermoPointA ||
-                !effectiveEndpointB ||
-                thermoDistanceMeters < 100 ||
-                busyType !== null
-              }
-              onClick={() =>
-                thermoPointA &&
-                effectiveEndpointB &&
-                void purchaseClue('THERMOMETER', {
-                  pointA: thermoPointA,
-                  pointB: effectiveEndpointB,
-                })
-              }
-              className="cmf-btn-primary font-dot min-h-[44px] w-full px-4 py-2 text-xs font-bold"
-            >
-              Endpunkt prüfen (Punkt B, +2 Min.)
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {renderPreviewButton('THERMOMETER')}
+              <button
+                type="button"
+                disabled={
+                  !canPurchase ||
+                  !thermoPointA ||
+                  !effectiveEndpointB ||
+                  thermoDistanceMeters < 100 ||
+                  busyType !== null
+                }
+                onClick={() =>
+                  thermoPointA &&
+                  effectiveEndpointB &&
+                  void purchaseClue('THERMOMETER', {
+                    pointA: thermoPointA,
+                    pointB: effectiveEndpointB,
+                  })
+                }
+                className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
+              >
+                Endpunkt prüfen (Punkt B, +2 Min.)
+              </button>
+            </div>
           </div>
 
-          {/* 1D: 45-Grad-Radarkegel */}
+          {/* 1D: 45-Grad-Radarkegel mit CMF-Drehknopf */}
           <div className="cmf-well p-3.5 space-y-3">
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
                 <Radar className="h-4 w-4 text-[var(--cmf-teal)]" />
                 45-Grad-Radarkegel
               </span>
-              <span className="cmf-oled px-2.5 py-1 font-dot text-xs text-[var(--cmf-amber)]">
-                PEILUNG {coneBearingDeg}°
-              </span>
             </div>
 
-            <input
-              type="range"
-              min={0}
-              max={360}
-              step={1}
-              aria-label="Kegel-Richtung in Grad"
+            <HardwareKnob
+              label="KEGEL-PEILUNG (AZIMUT)"
+              ariaLabel="Kegel-Richtung in Grad"
+              dataTestId="cone-bearing-knob"
               value={coneBearingDeg}
-              onChange={(e) => {
-                onChangeConeBearingDeg(Number(e.target.value));
-                if (!conePreviewEnabled) onToggleConePreview(true);
+              min={0}
+              max={355}
+              step={5}
+              wrapAround
+              unit="°"
+              onChange={(nextDeg) => {
+                onChangeConeBearingDeg(nextDeg);
               }}
-              className="cmf-range w-full"
             />
 
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onToggleConePreview(true);
-                  onNavigateToMap();
-                }}
-                className="cmf-btn-secondary font-tech min-h-[44px] bg-white/60 px-3 text-[11px] font-bold text-[var(--text-main)] uppercase"
-              >
-                Vorschau auf Karte
-              </button>
+            <div className="flex flex-wrap gap-2">
+              {renderPreviewButton('CONE_45')}
               <button
                 type="button"
                 disabled={!canPurchase || busyType !== null}
                 onClick={() =>
                   void purchaseClue('CONE_45', { bearingDeg: coneBearingDeg })
                 }
-                className="cmf-btn-primary font-dot min-h-[44px] flex-1 px-4 py-2 text-xs font-bold"
+                className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
               >
                 Kegel scannen (+2 Min.)
               </button>
@@ -458,94 +491,113 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           </div>
         </section>
 
-        {/* KATEGORIE 2: Umgebungs-Checks mit OSM/Overpass (+3 Min.) */}
+        {/* KATEGORIE 2: Umgebungs-Check mit OSM/Overpass (+3 Min.) — Grünflächen-Check entfernt */}
         <section className="cmf-module p-4 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
-              Kategorie 2: 81247-Umgebungs-Checks (OSM)
+              Kategorie 2: 81247-Umgebungs-Check (OSM)
             </h3>
             <span className="cmf-badge-amber rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
               +3 Min. Strafzeit
             </span>
           </div>
 
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            <button
-              type="button"
-              disabled={!canPurchase || busyType !== null}
-              onClick={() => void purchaseClue('OSM_TRANSIT')}
-              className="cmf-btn-secondary flex min-h-[54px] items-center justify-center gap-2 px-3.5 py-3 text-xs font-bold text-[var(--text-main)]"
-            >
+          <div className="cmf-well p-3.5 space-y-3">
+            <div className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
               <Train className="h-4 w-4 shrink-0 text-[var(--cmf-amber)]" />
-              <span>ÖPNV im Umkreis von 150 m? (+3 Min.)</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={!canPurchase || busyType !== null}
-              onClick={() => void purchaseClue('OSM_GREEN')}
-              className="cmf-btn-secondary flex min-h-[54px] items-center justify-center gap-2 px-3.5 py-3 text-xs font-bold text-[var(--text-main)]"
-            >
-              <Trees className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
-              <span>Liegt das Versteck in einer Grünfläche? (+3 Min.)</span>
-            </button>
+              <span>ÖPNV-Haltestelle im Umkreis von 150 m?</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {renderPreviewButton('OSM_TRANSIT')}
+              <button
+                type="button"
+                disabled={!canPurchase || busyType !== null}
+                onClick={() => void purchaseClue('OSM_TRANSIT')}
+                className="cmf-btn-primary font-dot flex min-h-[42px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold"
+              >
+                <Train className="h-4 w-4 shrink-0" />
+                <span>ÖPNV im Umkreis von 150 m prüfen (+3 Min.)</span>
+              </button>
+            </div>
           </div>
         </section>
 
-        {/* KATEGORIE 3: Distanz-Scanner (+4 Min.) */}
+        {/* KATEGORIE 3: Distanz-Scanner (Radius-Radar +3 Min. per Drehknopf / Donut-Ring +4 Min.) */}
         <section className="cmf-module p-4 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
               Kategorie 3: Distanz-Scanner
             </h3>
             <span className="cmf-badge-amber rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
-              +4 Min. Strafzeit
+              +3 / +4 Min. Strafzeit
             </span>
           </div>
 
           <div className="cmf-well p-3.5 space-y-3">
-            <div className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
-              <CircleDot className="h-4 w-4 text-[var(--cmf-teal)]" />
-              Radius-Radar um euren Standort
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
+                <CircleDot className="h-4 w-4 text-[var(--cmf-teal)]" />
+                Radius-Radar um euren Standort
+              </span>
+              <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
+                +3 Min.
+              </span>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {RADIUS_OPTIONS.map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setSelectedRadius(r)}
-                  className={`font-tech min-h-[38px] flex-1 px-2 text-xs font-bold ${
-                    selectedRadius === r ? 'cmf-btn-active' : 'cmf-btn-secondary'
-                  }`}
-                >
-                  {r}m
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              disabled={!canPurchase || busyType !== null}
-              onClick={() =>
-                void purchaseClue('RADIUS_RADAR', {
-                  radiusMeters: selectedRadius,
-                })
+
+            <HardwareKnob
+              label="SCAN-RADIUS (METER)"
+              ariaLabel="Radius-Radar Distanz in Metern"
+              dataTestId="radius-radar-knob"
+              value={selectedRadius}
+              options={RADIUS_OPTIONS}
+              unit=" m"
+              onChange={(nextR) =>
+                onChangeSelectedRadius(nextR as RadiusOptionMeters)
               }
-              className="cmf-btn-primary font-dot min-h-[44px] w-full px-4 py-2 text-xs font-bold"
-            >
-              Radius prüfen (+4 Min.)
-            </button>
+            />
+
+            <div className="flex flex-wrap gap-2">
+              {renderPreviewButton('RADIUS_RADAR')}
+              <button
+                type="button"
+                data-testid="buy-radius-radar-btn"
+                disabled={!canPurchase || busyType !== null}
+                onClick={() =>
+                  void purchaseClue('RADIUS_RADAR', {
+                    radiusMeters: selectedRadius,
+                  })
+                }
+                className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
+              >
+                Radius prüfen (+3 Min.)
+              </button>
+            </div>
           </div>
 
-          <button
-            type="button"
-            data-testid="buy-donut-clue-btn"
-            disabled={!canPurchase || busyType !== null}
-            onClick={() => void purchaseClue('DONUT_RING')}
-            className="cmf-btn-active font-dot flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-3 text-xs font-bold"
-          >
-            <Disc className="h-4 w-4 text-[var(--cmf-teal)]" />
-            Donut-Ring kaufen (+4 Min.) • 200m-Distanzband
-          </button>
+          <div className="cmf-well p-3.5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
+                <Disc className="h-4 w-4 text-[var(--cmf-teal)]" />
+                Donut-Ring • 200m-Distanzband
+              </span>
+              <span className="cmf-badge-amber rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
+                +4 Min.
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {renderPreviewButton('DONUT_RING')}
+              <button
+                type="button"
+                data-testid="buy-donut-clue-btn"
+                disabled={!canPurchase || busyType !== null}
+                onClick={() => void purchaseClue('DONUT_RING')}
+                className="cmf-btn-active font-dot flex min-h-[42px] flex-1 items-center justify-center gap-2 px-4 py-2 text-xs font-bold"
+              >
+                <Disc className="h-4 w-4 text-[var(--cmf-teal)]" />
+                Donut-Ring kaufen (+4 Min.)
+              </button>
+            </div>
+          </div>
         </section>
 
         {/* KATEGORIE 4: Manuelle Foto- & Audio-Hinweise (+5 Min.) */}
@@ -573,34 +625,43 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               </span>
             </div>
           ) : (
-            <div className="grid gap-2">
-              <button
-                type="button"
-                disabled={!canPurchase || busyType !== null}
-                onClick={() => void purchaseClue('MEDIA_SKY')}
-                className="cmf-btn-secondary flex min-h-[46px] items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-bold text-[var(--text-main)]"
-              >
-                <Camera className="h-4 w-4 text-[var(--cmf-teal)]" />
-                Foto vom Himmel / Blätterdach anfordern (+5 Min.)
-              </button>
-              <button
-                type="button"
-                disabled={!canPurchase || busyType !== null}
-                onClick={() => void purchaseClue('MEDIA_GROUND')}
-                className="cmf-btn-secondary flex min-h-[46px] items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-bold text-[var(--text-main)]"
-              >
-                <Camera className="h-4 w-4 text-[var(--cmf-amber)]" />
-                Foto vom Boden anfordern (+5 Min.)
-              </button>
-              <button
-                type="button"
-                disabled={!canPurchase || busyType !== null}
-                onClick={() => void purchaseClue('MEDIA_AUDIO')}
-                className="cmf-btn-secondary flex min-h-[46px] items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-bold text-[var(--text-main)]"
-              >
-                <Mic className="h-4 w-4 text-[var(--cmf-orange)]" />
-                10s Audio anfordern (+5 Min.)
-              </button>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                {renderPreviewButton('MEDIA_SKY')}
+                <button
+                  type="button"
+                  disabled={!canPurchase || busyType !== null}
+                  onClick={() => void purchaseClue('MEDIA_SKY')}
+                  className="cmf-btn-secondary flex min-h-[44px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
+                >
+                  <Camera className="h-4 w-4 text-[var(--cmf-teal)]" />
+                  Foto vom Himmel / Blätterdach (+5 Min.)
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {renderPreviewButton('MEDIA_GROUND')}
+                <button
+                  type="button"
+                  disabled={!canPurchase || busyType !== null}
+                  onClick={() => void purchaseClue('MEDIA_GROUND')}
+                  className="cmf-btn-secondary flex min-h-[44px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
+                >
+                  <Camera className="h-4 w-4 text-[var(--cmf-amber)]" />
+                  Foto vom Boden (+5 Min.)
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {renderPreviewButton('MEDIA_AUDIO')}
+                <button
+                  type="button"
+                  disabled={!canPurchase || busyType !== null}
+                  onClick={() => void purchaseClue('MEDIA_AUDIO')}
+                  className="cmf-btn-secondary flex min-h-[44px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
+                >
+                  <Mic className="h-4 w-4 text-[var(--cmf-orange)]" />
+                  10s Audio anfordern (+5 Min.)
+                </button>
+              </div>
             </div>
           )}
         </section>

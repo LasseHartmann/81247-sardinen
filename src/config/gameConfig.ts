@@ -47,13 +47,28 @@ export const DEFAULT_SAFETY_POINT: SafetyPoint = {
 };
 
 export const DEFAULT_RADAR_SCHEDULE: RadarSchedule = {
-  hidingDurationMs: 10 * 60_000, // 10:00
-  stage1Ms: 25 * 60_000, // 25:00 -> 800m
-  stage2Ms: 30 * 60_000, // 30:00 -> 400m
-  stage3Ms: 35 * 60_000, // 35:00 -> 200m
-  stage4Ms: 40 * 60_000, // 40:00 -> 100m
-  stage5Ms: 45 * 60_000, // 45:00 -> 25m
+  hidingDurationMs: 20 * 60_000, // 20:00 Standard-Versteckzeit
+  stage1Ms: 35 * 60_000, // 35:00 -> 800m
+  stage2Ms: 40 * 60_000, // 40:00 -> 400m
+  stage3Ms: 45 * 60_000, // 45:00 -> 200m
+  stage4Ms: 50 * 60_000, // 50:00 -> 100m
+  stage5Ms: 55 * 60_000, // 55:00 -> 25m
 };
+
+export function buildRadarScheduleForHidingMinutes(
+  hidingMinutes: number
+): RadarSchedule {
+  const clampedMin = Math.max(1, Math.round(hidingMinutes));
+  const hidingDurationMs = clampedMin * 60_000;
+  return {
+    hidingDurationMs,
+    stage1Ms: hidingDurationMs + 15 * 60_000,
+    stage2Ms: hidingDurationMs + 20 * 60_000,
+    stage3Ms: hidingDurationMs + 25 * 60_000,
+    stage4Ms: hidingDurationMs + 30 * 60_000,
+    stage5Ms: hidingDurationMs + 35 * 60_000,
+  };
+}
 
 export const QUESTION_CATEGORY_MAP: Record<QuestionType, 1 | 2 | 3 | 4> = {
   SPLIT_NS: 1,
@@ -75,6 +90,13 @@ export const QUESTION_PENALTY_MS: Record<1 | 2 | 3 | 4, number> = {
   3: 4 * 60_000,
   4: 5 * 60_000,
 };
+
+export function getQuestionPenaltyMs(questionType: QuestionType): number {
+  if (questionType === 'RADIUS_RADAR') {
+    return 3 * 60_000; // +3 Min. Strafzeit für Radius-Radar
+  }
+  return QUESTION_PENALTY_MS[QUESTION_CATEGORY_MAP[questionType]];
+}
 
 export const MEDIA_RESPONSE_TIMEOUT_NET_MS = 120_000; // 120s Netto-Spielzeit
 export const MEDIA_REFUND_MS = 5 * 60_000; // -5 Min. Rückerstattung

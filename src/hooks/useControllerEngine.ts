@@ -164,10 +164,16 @@ export async function executeControllerTick(
 
   // 1. Phasenwechsel & Radar-Stufen-Publikation (nur wenn aktiv und nicht pausiert)
   if (isRunningUnpaused) {
-    const duePhase = getPhaseForElapsedMs(
+    const rawDuePhase = getPhaseForElapsedMs(
       netElapsedMs,
       publicState.radarSchedule
     );
+    const duePhase =
+      rawDuePhase === 'HIDING' &&
+      publicState.searchStartTimestamp !== null &&
+      publicState.currentPhase !== 'HIDING'
+        ? publicState.currentPhase
+        : rawDuePhase;
 
     // Automatische Fixierung des Anchor Points ab 10:00, falls noch nicht manuell fixiert
     if (duePhase !== 'HIDING' && !hiderPrivate.anchorPoint) {

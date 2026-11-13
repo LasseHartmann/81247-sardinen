@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { DEFAULT_RADAR_SCHEDULE } from '../config/gameConfig';
 import { getPhaseForElapsedMs } from '../geo/radar';
 import type { DatabaseAdapter } from '../services/databaseAdapter';
 import type { GamePhase, PublicGameState } from '../types/game';
-import { computeNetElapsedMs } from '../utils/formatting';
+import { computeNetElapsedMs, formatDurationClock } from '../utils/formatting';
 
 export interface GameTimerSnapshot {
   serverNowMs: number;
@@ -50,7 +51,9 @@ export function useGameTimer(
       serverNowMs,
       netElapsedMs: 0,
       computedPhase: 'LOBBY',
-      hidingRemainingMs: publicState?.radarSchedule.hidingDurationMs ?? 600_000,
+      hidingRemainingMs:
+        publicState?.radarSchedule.hidingDurationMs ??
+        DEFAULT_RADAR_SCHEDULE.hidingDurationMs,
       nextStageRemainingMs: null,
       nextStageLabel: 'Wartet auf Rundenstart',
     };
@@ -58,30 +61,39 @@ export function useGameTimer(
 
   const netElapsedMs = computeNetElapsedMs(publicState, serverNowMs);
   const sched = publicState.radarSchedule;
-  const computedPhase = getPhaseForElapsedMs(netElapsedMs, sched);
-  const hidingRemainingMs = Math.max(0, sched.hidingDurationMs - netElapsedMs);
+  const rawPhase = getPhaseForElapsedMs(netElapsedMs, sched);
+  const computedPhase =
+    rawPhase === 'HIDING' &&
+    publicState.searchStartTimestamp !== null &&
+    publicState.currentPhase !== 'HIDING'
+      ? publicState.currentPhase
+      : rawPhase;
+  const hidingRemainingMs =
+    computedPhase === 'HIDING'
+      ? Math.max(0, sched.hidingDurationMs - netElapsedMs)
+      : 0;
 
   let nextStageRemainingMs: number | null = null;
   let nextStageLabel = 'Finales 25m-Radar aktiv';
 
-  if (netElapsedMs < sched.hidingDurationMs) {
+  if (computedPhase === 'HIDING' && netElapsedMs < sched.hidingDurationMs) {
     nextStageRemainingMs = sched.hidingDurationMs - netElapsedMs;
-    nextStageLabel = 'Suchstart bei 10:00';
+    nextStageLabel = `Suchstart bei ${formatDurationClock(sched.hidingDurationMs)}`;
   } else if (netElapsedMs < sched.stage1Ms) {
     nextStageRemainingMs = sched.stage1Ms - netElapsedMs;
-    nextStageLabel = 'Erster Radar-Kreis (800 m) bei 25:00';
+    nextStageLabel = `Erster Radar-Kreis (800 m) bei ${formatDurationClock(sched.stage1Ms)}`;
   } else if (netElapsedMs < sched.stage2Ms) {
     nextStageRemainingMs = sched.stage2Ms - netElapsedMs;
-    nextStageLabel = 'Radar 400 m bei 30:00';
+    nextStageLabel = `Radar 400 m bei ${formatDurationClock(sched.stage2Ms)}`;
   } else if (netElapsedMs < sched.stage3Ms) {
     nextStageRemainingMs = sched.stage3Ms - netElapsedMs;
-    nextStageLabel = 'Radar 200 m bei 35:00';
+    nextStageLabel = `Radar 200 m bei ${formatDurationClock(sched.stage3Ms)}`;
   } else if (netElapsedMs < sched.stage4Ms) {
     nextStageRemainingMs = sched.stage4Ms - netElapsedMs;
-    nextStageLabel = 'Radar 100 m bei 40:00';
+    nextStageLabel = `Radar 100 m bei ${formatDurationClock(sched.stage4Ms)}`;
   } else if (netElapsedMs < sched.stage5Ms) {
     nextStageRemainingMs = sched.stage5Ms - netElapsedMs;
-    nextStageLabel = 'Endspiel-Radar 25 m bei 45:00';
+    nextStageLabel = `Endspiel-Radar 25 m bei ${formatDurationClock(sched.stage5Ms)}`;
   }
 
   return {

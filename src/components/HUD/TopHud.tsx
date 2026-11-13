@@ -200,6 +200,7 @@ export const TopHud: React.FC<TopHudProps> = ({
           {canUnlockAdmin && (
             <button
               type="button"
+              data-testid="open-admin-code-btn"
               onClick={() => {
                 setEmergencyDrawerOpen(false);
                 setAdminErr(null);
@@ -211,7 +212,7 @@ export const TopHud: React.FC<TopHudProps> = ({
               }`}
             >
               <KeyRound className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
-              <span className="hidden xs:inline">Admin</span>
+              <span>Admin</span>
             </button>
           )}
         </div>
@@ -301,6 +302,7 @@ export const TopHud: React.FC<TopHudProps> = ({
         >
           <input
             type="password"
+            data-testid="admin-code-input"
             inputMode="numeric"
             autoFocus
             value={adminCode}
@@ -310,6 +312,7 @@ export const TopHud: React.FC<TopHudProps> = ({
           />
           <button
             type="submit"
+            data-testid="submit-admin-code-btn"
             disabled={!adminCode.trim()}
             className="cmf-btn-primary font-dot min-h-[38px] px-4 py-1.5 text-xs"
           >

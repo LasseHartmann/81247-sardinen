@@ -5,6 +5,7 @@ import type {
   MultiPolygon,
   Polygon,
 } from 'geojson';
+import { FALLBACK_TRANSIT_STOPS_81247 } from '../config/fallbackOsm81247';
 import type {
   ClueOverlayStyle,
   DonutBandLabel,
@@ -562,5 +563,183 @@ export function evaluateDeterministicQuestion(
       return evaluateDonutRing(seekerSnapshot, anchorPoint, playArea, false);
     default:
       throw new Error(`Fragetyp ${questionType} ist keine deterministische Geo-Frage.`);
+  }
+}
+
+/**
+ * Erzeugt die Live-Kartenvorschau (GeoJSON) für jede mögliche Hinweis-Frage,
+ * geclippt auf das 81247-Spielgebiet.
+ */
+export function buildQuestionPreviewGeoJson(
+  questionType: QuestionType,
+  params: QuestionParams,
+  origin: LatLng | null,
+  playArea: Feature<Polygon>
+): FeatureCollection | Feature<Polygon | MultiPolygon> | null {
+  const [minLng, minLat, maxLng, maxLat] = turf.bbox(playArea);
+  const pad = 0.08;
+
+  switch (questionType) {
+    case 'SPLIT_NS': {
+      if (!origin) return null;
+      const northBox = turf.bboxPolygon([
+        minLng - pad,
+        origin.lat,
+        maxLng + pad,
+        maxLat + pad,
+      ]);
+      const clippedNorth = safeClipWithPlayArea(northBox, playArea);
+      const dividerLine = turf.lineString(
+        [
+          [minLng - 0.01, origin.lat],
+          [maxLng + 0.01, origin.lat],
+        ],
+        { role: 'divider' }
+      );
+      const features: Feature[] = [dividerLine];
+      if (clippedNorth) features.push(clippedNorth);
+      return turf.featureCollection(features);
+    }
+
+    case 'SPLIT_EW': {
+      if (!origin) return null;
+      const eastBox = turf.bboxPolygon([
+        origin.lng,
+        minLat - pad,
+        maxLng + pad,
+        maxLat + pad,
+      ]);
+      const clippedEast = safeClipWithPlayArea(eastBox, playArea);
+      const dividerLine = turf.lineString(
+        [
+          [origin.lng, minLat - 0.01],
+          [origin.lng, maxLat + 0.01],
+        ],
+        { role: 'divider' }
+      );
+      const features: Feature[] = [dividerLine];
+      if (clippedEast) features.push(clippedEast);
+      return turf.featureCollection(features);
+    }
+
+    case 'THERMOMETER': {
+      const ptA = params.pointA ?? origin;
+      const ptB = params.pointB ?? origin;
+      if (!ptA) return null;
+      if (!ptB || distanceMeters(ptA, ptB) < 5) {
+        // Wenn nur Punkt A existiert: zeige 100m-Mindestlaufkreis um Punkt A
+        const minWalkCircle = turf.circle([ptA.lng, ptA.lat], 100, {
+          units: 'meters',
+          steps: 48,
+        });
+        const clipped = safeClipWithPlayArea(minWalkCircle, playArea);
+        return clipped ? turf.featureCollection([clipped]) : null;
+      }
+
+      const midLat = (ptA.lat + ptB.lat) / 2;
+      const midLng = (ptA.lng + ptB.lng) / 2;
+      const mPerLng = metersPerDegLngAt(midLat);
+      const toLocalXY = (pt: LatLng): [number, number] => [
+        (pt.lng - midLng) * mPerLng,
+        (pt.lat - midLat) * METERS_PER_DEG_LAT,
+      ];
+      const toLatLngCoord = (x: number, y: number): [number, number] => [
+        midLng + x / mPerLng,
+        midLat + y / METERS_PER_DEG_LAT,
+      ];
+
+      const [ax, ay] = toLocalXY(ptA);
+      const [bx, by] = toLocalXY(ptB);
+      const vx = bx - ax;
+      const vy = by - ay;
+      const len = Math.hypot(vx, vy) || 1;
+      const ux = vx / len;
+      const uy = vy / len;
+      const nx = -uy;
+      const ny = ux;
+
+      const span = 25_000;
+      const p1 = toLatLngCoord(nx * span, ny * span);
+      const p2 = toLatLngCoord(-nx * span, -ny * span);
+      const p3 = toLatLngCoord(-nx * span + ux * span, -ny * span + uy * span);
+      const p4 = toLatLngCoord(nx * span + ux * span, ny * span + uy * span);
+      const warmerHalf = turf.polygon([[p1, p2, p3, p4, p1]]);
+      const clippedWarmer = safeClipWithPlayArea(warmerHalf, playArea);
+
+      const lineSpan = 6_000;
+      const bisectorLine = turf.lineString(
+        [
+          toLatLngCoord(-nx * lineSpan, -ny * lineSpan),
+          toLatLngCoord(nx * lineSpan, ny * lineSpan),
+        ],
+        { role: 'divider' }
+      );
+      const features: Feature[] = [bisectorLine];
+      if (clippedWarmer) features.push(clippedWarmer);
+      return turf.featureCollection(features);
+    }
+
+    case 'CONE_45': {
+      if (!origin) return null;
+      return buildCone45Polygon(origin, params.bearingDeg ?? 0, playArea);
+    }
+
+    case 'OSM_TRANSIT': {
+      const features: Feature[] = [];
+      for (const stop of FALLBACK_TRANSIT_STOPS_81247) {
+        const circle = turf.circle([stop.lng, stop.lat], 150, {
+          units: 'meters',
+          steps: 28,
+        });
+        const clipped = safeClipWithPlayArea(circle, playArea);
+        if (clipped) features.push(clipped);
+      }
+      return turf.featureCollection(features);
+    }
+
+    case 'RADIUS_RADAR': {
+      if (!origin) return null;
+      const r = params.radiusMeters ?? 250;
+      const circle = turf.circle([origin.lng, origin.lat], r, {
+        units: 'meters',
+        steps: 64,
+      });
+      const clipped = safeClipWithPlayArea(circle, playArea);
+      return clipped
+        ? turf.featureCollection([clipped])
+        : turf.featureCollection([circle]);
+    }
+
+    case 'DONUT_RING': {
+      if (!origin) return null;
+      const radii = [200, 400, 600, 800, 1000];
+      const features: Feature[] = [];
+      for (const r of radii) {
+        const circlePoly = turf.circle([origin.lng, origin.lat], r, {
+          units: 'meters',
+          steps: 64,
+        });
+        const clipped = safeClipWithPlayArea(circlePoly, playArea);
+        if (clipped) {
+          const line = turf.polygonToLine(clipped);
+          if (line.type === 'FeatureCollection') {
+            features.push(...line.features);
+          } else {
+            features.push(line);
+          }
+        }
+      }
+      return turf.featureCollection(features);
+    }
+
+    case 'MEDIA_SKY':
+    case 'MEDIA_GROUND':
+    case 'MEDIA_AUDIO': {
+      // Zeigt das gesamte aktive 81247-Suchgebiet als Hinweis-Zielbereich
+      return turf.featureCollection([playArea]);
+    }
+
+    default:
+      return null;
   }
 }

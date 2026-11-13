@@ -178,11 +178,12 @@ export function useAuth(): {
         return;
       }
 
-      // Beim frischen Öffnen/Neuladen der App sicherstellen, dass ein offenes Admin-Flag gesperrt startet
-      if (member && member.isHost && !attemptedHostLockOnBoot) {
+      // Beim frischen Öffnen/Neuladen der App einmalig beim ersten Member-Snapshot prüfen,
+      // ob noch ein altes isHost-Flag offen war (niemals beim späteren ersten Freischalten!)
+      if (member && !attemptedHostLockOnBoot) {
         attemptedHostLockOnBoot = true;
-        void adapter
-          .updateMember(authUser.uid, {
+        if (member.isHost) {
+          const lockedBootMember: MemberRecord = {
             uid: member.uid,
             playerId: member.playerId,
             name: member.name,
@@ -190,8 +191,12 @@ export function useAuth(): {
             enabled: true,
             side: member.side,
             teamId: member.teamId,
-          })
-          .catch(() => {});
+          };
+          setFirebaseMember(lockedBootMember);
+          void adapter
+            .updateMember(authUser.uid, lockedBootMember)
+            .catch(() => {});
+        }
       }
     });
 
@@ -489,15 +494,18 @@ export function useAuth(): {
       }
 
       try {
-        await adapter.updateMember(authUser.uid, {
+        const unlockedMember: MemberRecord = {
           ...activeMember,
           isHost: true,
           enabled: true,
           side: activeMember.side === 'UNASSIGNED' ? 'HIDER' : activeMember.side,
           adminAuthHash: check.adminAuthHash,
-        });
+        };
+        setFirebaseMember(unlockedMember);
+        await adapter.updateMember(authUser.uid, unlockedMember);
         return { ok: true };
       } catch {
+        setFirebaseMember(activeMember);
         return {
           ok: false,
           error:

@@ -9,6 +9,7 @@ import {
   isValidPlayAreaPolygon,
 } from '../src/geo/boundary';
 import {
+  buildQuestionPreviewGeoJson,
   evaluateCone45,
   evaluateDonutRing,
   evaluateOsmGreen,
@@ -235,5 +236,33 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
     expect(
       isPointInPlayArea({ lat: 48.1632, lng: 11.4572 }, DEFAULT_PLAY_AREA_FEATURE)
     ).toBe(true);
+
+    // Prüfe Kartenvorschau (buildQuestionPreviewGeoJson) für alle möglichen Fragen
+    const origin = { lat: 48.165, lng: 11.466 };
+    for (const qType of [
+      'SPLIT_NS',
+      'SPLIT_EW',
+      'THERMOMETER',
+      'CONE_45',
+      'OSM_TRANSIT',
+      'RADIUS_RADAR',
+      'DONUT_RING',
+      'MEDIA_SKY',
+      'MEDIA_GROUND',
+      'MEDIA_AUDIO',
+    ] as const) {
+      const preview = buildQuestionPreviewGeoJson(
+        qType,
+        {
+          bearingDeg: 90,
+          radiusMeters: 250,
+          pointA: origin,
+          pointB: destinationPoint(origin, 150, 45),
+        },
+        origin,
+        PLAY_AREA_81247
+      );
+      expect(preview).not.toBeNull();
+    }
   });
 });

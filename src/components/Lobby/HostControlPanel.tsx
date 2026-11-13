@@ -13,10 +13,12 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import {
+  buildRadarScheduleForHidingMinutes,
   createDefaultPublicState,
   createDefaultTeams,
   TEAM_PALETTE,
 } from '../../config/gameConfig';
+import { HardwareKnob } from '../Common/HardwareKnob';
 import {
   deduplicateEnabledMembers,
   isMemberTabOnline,
@@ -117,10 +119,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
         leashAlertActive: false,
         activeTeamIds: occupiedTeamIds,
         hiderLock: activeHiderLock,
-        radarSchedule: {
-          ...publicState.radarSchedule,
-          hidingDurationMs: Math.max(1, hidingMinInput) * 60_000,
-        },
+        radarSchedule: buildRadarScheduleForHidingMinutes(hidingMinInput),
       },
       nextTeams,
       {
@@ -147,10 +146,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           leashAlertActive: false,
           activeTeamIds: occupiedTeamIds,
           hiderLock: activeHiderLock,
-          radarSchedule: {
-            ...publicState.radarSchedule,
-            hidingDurationMs: Math.max(1, hidingMinInput) * 60_000,
-          },
+          radarSchedule: buildRadarScheduleForHidingMinutes(hidingMinInput),
         })
         .catch(() => {});
     }
@@ -349,30 +345,27 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             <h3 className="font-industrial text-base text-[var(--text-main)]">
               Systemsteuerung
             </h3>
-            <label className="flex items-center gap-2 font-tech text-xs font-medium text-[var(--text-muted)]">
-              <span>VERSTECKZEIT (MIN):</span>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                value={hidingMinInput}
-                onChange={(e) => {
-                  const nextMin = Math.max(1, Number(e.target.value) || 10);
-                  setHidingMinInput(nextMin);
-                  void adapter
-                    .savePublicStateByHost({
-                      ...publicState,
-                      radarSchedule: {
-                        ...publicState.radarSchedule,
-                        hidingDurationMs: nextMin * 60_000,
-                      },
-                    })
-                    .catch(() => {});
-                }}
-                className="cmf-input font-tech w-16 px-2 py-1 text-center text-xs font-bold"
-              />
-            </label>
           </div>
+
+          <HardwareKnob
+            label="VERSTECKZEIT (STANDARD 20 MIN)"
+            ariaLabel="Versteckzeit in Minuten"
+            dataTestId="hiding-time-knob"
+            value={hidingMinInput}
+            min={5}
+            max={60}
+            step={5}
+            unit=" Min."
+            onChange={(nextMin) => {
+              setHidingMinInput(nextMin);
+              void adapter
+                .savePublicStateByHost({
+                  ...publicState,
+                  radarSchedule: buildRadarScheduleForHidingMinutes(nextMin),
+                })
+                .catch(() => {});
+            }}
+          />
 
           {/* OLED Status- & Bereitschafts-Anzeige */}
           <div className="cmf-oled flex flex-wrap items-center justify-between gap-3 p-3.5">

@@ -4,7 +4,6 @@ import {
   Crown,
   Eye,
   EyeOff,
-  KeyRound,
   Lock,
   LogIn,
   LogOut,
@@ -12,6 +11,7 @@ import {
   Users,
 } from 'lucide-react';
 import { TEAM_PALETTE } from '../../config/gameConfig';
+import { PRESET_PLAYERS } from '../../config/players';
 import {
   deduplicateEnabledMembers,
   isMemberTabOnline,
@@ -289,7 +289,6 @@ export interface LobbyStatusCardProps {
   onSetHiderPassword: (rawPassword: string) => Promise<void>;
   onToggleOwnReady: (nextReady: boolean) => Promise<void>;
   onOpenHostTab?: () => void;
-  onUnlockAdmin?: (code: string) => Promise<{ ok: boolean; error?: string }>;
   onLogout: () => Promise<void>;
 }
 
@@ -303,7 +302,6 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   onSetHiderPassword,
   onToggleOwnReady,
   onOpenHostTab,
-  onUnlockAdmin,
   onLogout,
 }) => {
   const memberList = deduplicateEnabledMembers(members, presence);
@@ -331,11 +329,6 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
       assignedNames,
     };
   }).filter((t) => t.assignedNames.length > 0);
-
-  const [adminPromptOpen, setAdminPromptOpen] = useState(false);
-  const [adminCode, setAdminCode] = useState('');
-  const [adminError, setAdminError] = useState<string | null>(null);
-  const [unlocking, setUnlocking] = useState(false);
 
   const [pwDraft, setPwDraft] = useState('');
   const [showPwDraft, setShowPwDraft] = useState(false);
@@ -365,29 +358,6 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
       : readyRatio < 1
         ? 'var(--cmf-amber)'
         : 'var(--cmf-orange)';
-
-  const canShowAdminUnlock =
-    !ownMember.isHost &&
-    Boolean(onUnlockAdmin) &&
-    (ownMember.playerId === 'lasse' || ownMember.playerId === 'linus');
-
-  const handleUnlockSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!onUnlockAdmin) return;
-    setAdminError(null);
-    setUnlocking(true);
-    try {
-      const res = await onUnlockAdmin(adminCode);
-      if (res.ok) {
-        setAdminPromptOpen(false);
-        setAdminCode('');
-      } else {
-        setAdminError(res.error ?? 'Falscher Admin-Code.');
-      }
-    } finally {
-      setUnlocking(false);
-    }
-  };
 
   const handleSaveHiderPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -608,7 +578,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         <div className="mb-2 flex items-center justify-between font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
           <span className="flex items-center gap-1.5">
             <Users className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-            Spieler ({memberList.length} / 11)
+            Spieler ({memberList.length} / {PRESET_PLAYERS.length})
           </span>
           {hasPasswordSet && (
             <span className="text-[var(--cmf-teal)]">
@@ -690,76 +660,6 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                 ? `Bereit bestätigt (${readyCount}/${memberList.length})`
                 : `Ich bin bereit! (${readyCount}/${memberList.length})`}
             </button>
-          )}
-        </div>
-      )}
-
-      {canShowAdminUnlock && (
-        <div className="mt-3">
-          {!adminPromptOpen ? (
-            <button
-              type="button"
-              data-testid="open-admin-code-btn"
-              onClick={() => {
-                setAdminError(null);
-                setAdminPromptOpen(true);
-              }}
-              className="cmf-btn-secondary font-tech flex min-h-[42px] w-full items-center justify-center gap-2 px-4 py-2 text-xs font-bold uppercase"
-            >
-              <KeyRound className="h-4 w-4 text-[var(--cmf-amber)]" />
-              Admin-Code eingeben
-            </button>
-          ) : (
-            <form
-              onSubmit={(e) => void handleUnlockSubmit(e)}
-              className="cmf-module space-y-2 p-3"
-            >
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="admin-code-input"
-                  className="font-tech text-[11px] font-bold text-[var(--text-main)] uppercase"
-                >
-                  Admin-Code // {ownMember.name}
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAdminPromptOpen(false);
-                    setAdminError(null);
-                    setAdminCode('');
-                  }}
-                  className="font-tech text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
-                >
-                  [Abbrechen]
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  id="admin-code-input"
-                  data-testid="admin-code-input"
-                  type="password"
-                  inputMode="numeric"
-                  autoFocus
-                  value={adminCode}
-                  onChange={(e) => setAdminCode(e.target.value)}
-                  placeholder="4-stelliger Code"
-                  className="cmf-input font-tech min-h-[42px] flex-1 px-3 py-2 text-sm font-bold tracking-widest"
-                />
-                <button
-                  type="submit"
-                  data-testid="submit-admin-code-btn"
-                  disabled={unlocking || !adminCode.trim()}
-                  className="cmf-btn-primary font-dot min-h-[42px] px-4 py-2 text-xs font-bold"
-                >
-                  {unlocking ? '...' : 'Freischalten'}
-                </button>
-              </div>
-              {adminError && (
-                <p className="font-tech text-[11px] font-bold text-[var(--cmf-orange)]">
-                  {adminError}
-                </p>
-              )}
-            </form>
           )}
         </div>
       )}

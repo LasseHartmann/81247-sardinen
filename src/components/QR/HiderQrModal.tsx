@@ -9,6 +9,7 @@ export interface HiderQrModalProps {
   hiderPrivate: HiderPrivateState | null;
   teamsPublic: Record<string, TeamPublic>;
   activeTeamIds?: string[];
+  sardineGroupMemberNames?: string[];
 }
 
 export const HiderQrView: React.FC<HiderQrModalProps> = ({
@@ -16,6 +17,7 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
   hiderPrivate,
   teamsPublic,
   activeTeamIds,
+  sardineGroupMemberNames = [],
 }) => {
   if (!hiderPrivate || !hiderPrivate.qrSecret || !hiderPrivate.shortCode) {
     return (
@@ -86,28 +88,49 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
           </div>
         </div>
 
-        <div className="cmf-module p-4 text-xs">
-          <div className="flex items-center gap-2 border-b cmf-divider pb-2.5 font-industrial text-sm text-[var(--text-main)]">
-            <Users className="h-4 w-4 text-[var(--cmf-teal)]" />
-            Bereits im Versteck angekommene Teams ({joinedTeams.length})
+        <div className="cmf-module p-4 text-xs space-y-3">
+          <div>
+            <div className="flex items-center gap-2 border-b cmf-divider pb-2.5 font-industrial text-sm text-[var(--text-main)]">
+              <Users className="h-4 w-4 text-[var(--cmf-teal)]" />
+              Aktuelles Verstecker-Team ({sardineGroupMemberNames.length})
+            </div>
+            {sardineGroupMemberNames.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {sardineGroupMemberNames.map((memberName) => (
+                  <span
+                    key={memberName}
+                    className="cmf-well inline-flex items-center gap-1.5 px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--text-main)] uppercase"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--cmf-teal)]" />
+                    {memberName}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-          {joinedTeams.length === 0 ? (
-            <p className="mt-2.5 text-[var(--text-muted)]">
-              Noch kein Sucher-Team hat den Code gescannt. Bleibt ruhig im 20m-Radius!
-            </p>
-          ) : (
-            <ul className="mt-2.5 space-y-1.5">
-              {joinedTeams.map((t) => (
-                <li
-                  key={t.id}
-                  className="cmf-well flex items-center gap-2 px-3 py-2 font-semibold text-[var(--text-main)]"
-                >
-                  <ShieldCheck className="h-4 w-4 text-[var(--cmf-teal)]" />
-                  <span>{t.name}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+
+          <div className="border-t cmf-divider pt-2.5">
+            <div className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+              Zu den Versteckern gewechselte Sucher-Teams ({joinedTeams.length})
+            </div>
+            {joinedTeams.length === 0 ? (
+              <p className="mt-1.5 text-[var(--text-muted)]">
+                Noch kein Sucher-Team hat den Code gescannt. Sobald ein Teammitglied scannt, wird das gesamte Team zum Verstecker-Team hinzugefügt!
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-1.5">
+                {joinedTeams.map((t) => (
+                  <li
+                    key={t.id}
+                    className="cmf-well flex items-center gap-2 px-3 py-2 font-semibold text-[var(--text-main)]"
+                  >
+                    <ShieldCheck className="h-4 w-4 text-[var(--cmf-teal)]" />
+                    <span>{t.name} (komplettes Team jetzt Verstecker)</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
     </div>

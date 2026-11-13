@@ -7,16 +7,19 @@ import {
   CircleDot,
   Disc,
   Camera,
-  Mic,
+  Users,
   Clock,
   Lock,
   Eye,
   X,
+  Filter,
+  Map as MapIcon,
 } from 'lucide-react';
 import {
   getQuestionPenaltyMs,
   MEDIA_RESPONSE_TIMEOUT_NET_MS,
   QUESTION_CATEGORY_MAP,
+  TEAM_PALETTE,
 } from '../../config/gameConfig';
 import { distanceMeters } from '../../geo/distance';
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
@@ -48,6 +51,12 @@ export interface QuestionMenuProps {
   canUseMapClicks: boolean;
   teamRequests: Record<string, ClueRequest>;
   teamClues: Record<string, ClueRecord>;
+  cluesByTeam: Record<string, Record<string, ClueRecord>>;
+  requestsByTeam: Record<string, Record<string, ClueRequest>>;
+  teamsPublic: Record<string, TeamPublic>;
+  activeTeamIds?: string[];
+  hiderFilterTeamId: string;
+  onChangeHiderFilterTeamId: (teamId: string) => void;
   hiddenClueIds: Set<string>;
   onToggleClueOverlay: (clueId: string) => void;
   thermoPointA: LatLng | null;
@@ -76,6 +85,12 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   canUseMapClicks,
   teamRequests,
   teamClues,
+  cluesByTeam,
+  requestsByTeam,
+  teamsPublic,
+  activeTeamIds,
+  hiderFilterTeamId,
+  onChangeHiderFilterTeamId,
   hiddenClueIds,
   onToggleClueOverlay,
   thermoPointA,
@@ -199,33 +214,163 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
     }
   };
 
-  // Für Verstecker & Spielleiter zeigt dieser Tab das Protokoll aller Hinweise im Spiel
+  // Für Verstecker, im Versteck angekommene Sardinen-Teams & Spielleiter:
+  // Team-individuelle Filterung aller freigeschalteten Hinweise pro Team!
   if (!isSeekerActive) {
+    const activeSet = activeTeamIds ? new Set(activeTeamIds) : null;
+    const filterableTeams = TEAM_PALETTE.map((p) => {
+      const pub = teamsPublic[p.id];
+      const teamClueList = Object.values(cluesByTeam[p.id] ?? {}).filter(
+        (c) => c.sessionId === publicState.sessionId
+      );
+      return {
+        id: p.id,
+        name: pub?.name ?? p.name,
+        color: pub?.color ?? p.color,
+        status: pub?.status ?? 'ACTIVE',
+        memberCount: pub?.memberPlayerIds.length ?? 0,
+        clues: teamClueList,
+      };
+    }).filter(
+      (t) =>
+        t.memberCount > 0 ||
+        t.clues.length > 0 ||
+        (activeSet ? activeSet.has(t.id) : false)
+    );
+
+    const effectiveLogTeamFilter =
+      hiderFilterTeamId === 'NONE' ||
+      (hiderFilterTeamId !== 'ALL' &&
+        !filterableTeams.some((t) => t.id === hiderFilterTeamId))
+        ? 'ALL'
+        : hiderFilterTeamId;
+
+    const allSessionClues = filterableTeams.flatMap((t) => t.clues);
+    const filteredClues =
+      effectiveLogTeamFilter === 'ALL'
+        ? allSessionClues
+        : (filterableTeams.find((t) => t.id === effectiveLogTeamFilter)?.clues ??
+          []);
+
+    const combinedRequestsMap: Record<string, ClueRequest> = Object.assign(
+      {},
+      ...Object.values(requestsByTeam)
+    );
+    const selectedTeamMeta = filterableTeams.find(
+      (t) => t.id === effectiveLogTeamFilter
+    );
+
     return (
       <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
         <div className="mx-auto max-w-2xl space-y-4 pb-10">
-          <div className="cmf-chassis p-4 sm:p-5">
-            <span className="cmf-badge-teal inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
-              TELEMETRIE // LOGBUCH
-            </span>
-            <h2 className="font-dot mt-1.5 text-xl text-[var(--text-main)]">
-              Ausgewertete Hinweise & Overlays
-            </h2>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">
-              {ownTeam?.status === 'JOINED_SARDINES'
-                ? 'Ihr seid bereits bei den Sardinen! Hier seht ihr eure bisherigen Hinweise.'
-                : 'Übersicht aller ausgewerteten Team-Hinweise der laufenden Runde.'}
-            </p>
+          <div className="cmf-chassis p-4 sm:p-5 space-y-3">
+            <div>
+              <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
+                <Filter className="h-3 w-3" />
+                VERSTECKER-RADAR // TEAM-HINWEISE FILTERN
+              </span>
+              <h2 className="font-dot mt-1.5 text-lg sm:text-xl text-[var(--text-main)]">
+                Freigeschaltete Hinweise pro Team
+              </h2>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                {ownTeam?.status === 'JOINED_SARDINES'
+                  ? 'Euer gesamtes Team gehört jetzt zu den Versteckern (Sardinen)! Wählt ein Sucher-Team, um dessen freigeschaltete Hinweise und Karten-Eingrenzung zu prüfen.'
+                  : 'Wählt ein Sucher-Team aus, um exakt zu sehen, welche Hinweise dieses Team bereits freigeschaltet hat.'}
+              </p>
+            </div>
+
+            {/* Team-Filter-Leiste */}
+            <div
+              data-testid="hider-team-clue-filter"
+              className="flex flex-wrap gap-1.5 border-t cmf-divider pt-3"
+            >
+              <button
+                type="button"
+                data-testid="filter-team-ALL"
+                onClick={() => onChangeHiderFilterTeamId('ALL')}
+                className={`font-tech inline-flex min-h-[38px] items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-bold uppercase ${
+                  effectiveLogTeamFilter === 'ALL'
+                    ? 'cmf-btn-active'
+                    : 'cmf-btn-secondary bg-white/75 text-[var(--text-main)]'
+                }`}
+              >
+                <span>Alle Teams</span>
+                <span className="rounded-full bg-black/15 px-1.5 py-0.2 text-[10px]">
+                  {allSessionClues.length}
+                </span>
+              </button>
+
+              {filterableTeams.map((teamItem) => {
+                const isSelected = effectiveLogTeamFilter === teamItem.id;
+                return (
+                  <button
+                    key={teamItem.id}
+                    type="button"
+                    data-testid={`filter-team-${teamItem.id}`}
+                    onClick={() => onChangeHiderFilterTeamId(teamItem.id)}
+                    className={`font-tech inline-flex min-h-[38px] items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-bold uppercase ${
+                      isSelected
+                        ? 'cmf-btn-active'
+                        : 'cmf-btn-secondary bg-white/75 text-[var(--text-main)]'
+                    }`}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: teamItem.color }}
+                    />
+                    <span>{teamItem.name}</span>
+                    <span className="rounded-full bg-black/15 px-1.5 py-0.2 text-[10px]">
+                      {teamItem.clues.length}
+                    </span>
+                    {teamItem.status === 'JOINED_SARDINES' && (
+                      <span className="text-[9px] text-[var(--cmf-teal)]">
+                        [IM HQ]
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedTeamMeta && (
+              <div className="cmf-oled flex flex-wrap items-center justify-between gap-2 p-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: selectedTeamMeta.color }}
+                  />
+                  <span className="font-tech font-bold text-[#F8FAFC] uppercase">
+                    {selectedTeamMeta.name}: {selectedTeamMeta.clues.length} Hinweis
+                    {selectedTeamMeta.clues.length === 1 ? '' : 'e'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChangeHiderFilterTeamId(selectedTeamMeta.id);
+                    onNavigateToMap();
+                  }}
+                  className="cmf-btn-primary font-dot inline-flex min-h-[36px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold"
+                >
+                  <MapIcon className="h-3.5 w-3.5" />
+                  <span>Karten-Sicht von {selectedTeamMeta.name}</span>
+                </button>
+              </div>
+            )}
           </div>
 
           <ClueHistoryList
-            clues={Object.values(teamClues)}
-            requestsMap={teamRequests}
+            clues={filteredClues}
+            requestsMap={combinedRequestsMap}
             hiddenClueIds={hiddenClueIds}
             gameStartTimestamp={publicState.gameStartTimestamp}
             onToggleClueOverlay={onToggleClueOverlay}
-            onAcknowledgeMedia={(tId, rId) =>
-              adapter.acknowledgeAndStripMedia(tId, rId, adapter.getServerNow())
+            teamsPublic={teamsPublic}
+            showTeamBadge={effectiveLogTeamFilter === 'ALL'}
+            emptyMessage={
+              selectedTeamMeta
+                ? `${selectedTeamMeta.name} hat in dieser Runde noch keine Hinweise freigeschaltet.`
+                : 'Noch kein Sucher-Team hat in dieser Runde Hinweise freigeschaltet.'
             }
           />
         </div>
@@ -631,11 +776,11 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           </div>
         </section>
 
-        {/* KATEGORIE 4: Manuelle Foto- & Audio-Hinweise (+5 Min.) */}
+        {/* KATEGORIE 4: Manuelle Live-Foto-Hinweise inkl. Gruppen-Selfie (+5 Min.) */}
         <section id="q-cat-4" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
-              Kategorie 4: Live-Foto & 10s-Audio der Sardinen
+              Kategorie 4: Live-Fotos der Sardinen
             </h3>
             <span className="cmf-badge-orange rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
               +5 Min. Strafzeit
@@ -649,14 +794,14 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             <div className="cmf-oled flex items-center justify-between p-3.5 text-xs">
               <span className="flex items-center gap-2 font-tech font-bold text-[#F8FAFC] uppercase">
                 <Clock className="h-4 w-4 animate-spin text-[var(--cmf-amber)]" />
-                Warte auf Verstecker-Antwort ...
+                Warte auf Verstecker-Foto ...
               </span>
               <span className="font-dot text-base text-[var(--cmf-amber)]">
                 {formatDurationClock(manualRemainingMs)}
               </span>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               <div className="flex flex-wrap gap-2">
                 {renderPreviewButton('MEDIA_SKY')}
                 <button
@@ -681,17 +826,23 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                   Foto vom Boden (+5 Min.)
                 </button>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {renderPreviewButton('MEDIA_AUDIO')}
-                <button
-                  type="button"
-                  disabled={!canPurchase || busyType !== null}
-                  onClick={() => void purchaseClue('MEDIA_AUDIO')}
-                  className="cmf-btn-secondary flex min-h-[44px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
-                >
-                  <Mic className="h-4 w-4 text-[var(--cmf-orange)]" />
-                  10s Audio anfordern (+5 Min.)
-                </button>
+              <div className="cmf-well space-y-2 p-3">
+                <div className="flex flex-wrap gap-2">
+                  {renderPreviewButton('MEDIA_SELFIE')}
+                  <button
+                    type="button"
+                    data-testid="buy-group-selfie-btn"
+                    disabled={!canPurchase || busyType !== null}
+                    onClick={() => void purchaseClue('MEDIA_SELFIE')}
+                    className="cmf-btn-secondary flex min-h-[44px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
+                  >
+                    <Users className="h-4 w-4 text-[var(--cmf-orange)]" />
+                    Gruppen-Selfie anfordern (+5 Min.)
+                  </button>
+                </div>
+                <p className="font-tech text-[10px] font-semibold text-[var(--text-muted)] uppercase">
+                  Regel: Der komplette Kopf jedes Mitglieds der aktuellen Verstecker-Gruppe muss vollständig im Bild sein!
+                </p>
               </div>
             </div>
           )}

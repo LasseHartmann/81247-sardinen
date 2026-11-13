@@ -17,7 +17,10 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { ANCHOR_ACCURACY_WARNING_METERS } from '../config/gameConfig';
+import {
+  ANCHOR_ACCURACY_WARNING_METERS,
+  TEAM_PALETTE,
+} from '../config/gameConfig';
 import { computeHiderPasswordHash, findPresetPlayerById } from '../config/players';
 import { isPointInPlayArea } from '../geo/boundary';
 import { buildQuestionPreviewGeoJson } from '../geo/clueGeometry';
@@ -152,6 +155,12 @@ export const App: React.FC = () => {
     null
   );
   const [seekerHidingMinimized, setSeekerHidingMinimized] = useState(false);
+  const [hiderFilterTeamId, setHiderFilterTeamId] = useState<string>('NONE');
+
+  useEffect(() => {
+    setHiderFilterTeamId('NONE');
+    setHiddenClueIds(new Set());
+  }, [publicState?.sessionId]);
 
   const [bootAdminModalOpen, setBootAdminModalOpen] = useState(false);
   const [bootAdminCode, setBootAdminCode] = useState('');
@@ -378,25 +387,88 @@ export const App: React.FC = () => {
   const isJoinedSardines = ownTeam?.status === 'JOINED_SARDINES';
   const isSardineDashboardView =
     ownMember.side === 'HIDER' || isJoinedSardines;
+  const isActiveSeeker = Boolean(
+    ownMember.side === 'SEEKER' && ownTeam && !isJoinedSardines
+  );
   const canUseMapClicks = Boolean(publicState.allowTestClicks);
   const showHostTab = Boolean(ownMember.isHost);
 
   const activeRoundTeamIds =
     publicState.status === 'LOBBY' ? undefined : publicState.activeTeamIds;
 
-  // Aggregiere sichtbare Hinweise & Requests für den aktuellen Spieler
-  const visibleClues: ClueRecord[] =
-    ownMember.side === 'SEEKER' && ownTeam
-      ? Object.values(gameState.cluesByTeam[ownTeam.id] ?? {})
-      : Object.values(gameState.cluesByTeam).flatMap((m) => Object.values(m));
+  // Alle aktuellen Mitglieder der Verstecker-Gruppe (originale Hider + komplette Teams, die den Code gescannt haben)
+  const sardineGroupMemberNames = deduplicateEnabledMembers(
+    gameState.members,
+    gameState.presence
+  )
+    .filter(
+      (m) =>
+        m.side === 'HIDER' ||
+        (m.side === 'SEEKER' &&
+          Boolean(m.teamId) &&
+          gameState.teamsPublic[m.teamId!]?.status === 'JOINED_SARDINES')
+    )
+    .map((m) => m.name)
+    .sort((a, b) => a.localeCompare(b, 'de'));
+
+  const activeRoundSet = activeRoundTeamIds
+    ? new Set(activeRoundTeamIds)
+    : null;
+  const roundSeekerTeamsForFilter = TEAM_PALETTE.map((p) => {
+    const pub = gameState.teamsPublic[p.id];
+    const teamCluesList = Object.values(gameState.cluesByTeam[p.id] ?? {}).filter(
+      (c) => c.sessionId === publicState.sessionId
+    );
+    return {
+      id: p.id,
+      name: pub?.name ?? p.name,
+      color: pub?.color ?? p.color,
+      status: pub?.status ?? 'ACTIVE',
+      memberCount: pub?.memberPlayerIds.length ?? 0,
+      clues: teamCluesList,
+    };
+  }).filter(
+    (t) =>
+      t.memberCount > 0 ||
+      t.clues.length > 0 ||
+      (activeRoundSet ? activeRoundSet.has(t.id) : false)
+  );
+
+  // Strikt gruppen-individuelle Hinweise für aktive Sucher-Teams;
+  // Verstecker & gefundene Sardinen-Teams können gezielt nach einzelnen Teams filtern!
+  const visibleMapClues: ClueRecord[] =
+    isActiveSeeker && ownTeam
+      ? Object.values(gameState.cluesByTeam[ownTeam.id] ?? {}).filter(
+          (c) => c.sessionId === publicState.sessionId
+        )
+      : hiderFilterTeamId === 'NONE'
+        ? []
+        : hiderFilterTeamId === 'ALL'
+          ? roundSeekerTeamsForFilter.flatMap((t) => t.clues)
+          : (roundSeekerTeamsForFilter.find((t) => t.id === hiderFilterTeamId)
+              ?.clues ?? []);
+
+  const seekerOwnTeamCluesMap: Record<string, ClueRecord> =
+    isActiveSeeker && ownTeam
+      ? Object.fromEntries(
+          Object.entries(gameState.cluesByTeam[ownTeam.id] ?? {}).filter(
+            ([, c]) => c.sessionId === publicState.sessionId
+          )
+        )
+      : {};
 
   const visibleRequestsMap: Record<string, ClueRequest> =
-    ownMember.side === 'SEEKER' && ownTeam
+    isActiveSeeker && ownTeam
       ? (gameState.requestsByTeam[ownTeam.id] ?? {})
       : Object.assign({}, ...Object.values(gameState.requestsByTeam));
 
+  const visibleMapTeamLocations =
+    isActiveSeeker && ownTeam
+      ? { [ownTeam.id]: gameState.teamLocations[ownTeam.id] ?? null }
+      : gameState.teamLocations;
+
   const openHiderMediaRequests: ClueRequest[] =
-    ownMember.side === 'HIDER' || ownMember.isHost
+    isSardineDashboardView || (!isActiveSeeker && ownMember.isHost)
       ? Object.values(gameState.requestsByTeam)
           .flatMap((m) => Object.values(m))
           .filter(
@@ -418,7 +490,7 @@ export const App: React.FC = () => {
         geo.currentFix,
         computePossibleHidingArea({
           playArea: publicState.playArea.polygon,
-          clues: visibleClues,
+          clues: visibleMapClues,
           hiddenClueIds,
           publishedRadar: publicState.radarCircle,
         }) ?? publicState.playArea.polygon
@@ -674,13 +746,13 @@ export const App: React.FC = () => {
             isOwnSideHider={isSardineDashboardView}
             anchorPoint={hiderPrivate?.anchorPoint ?? null}
             showAnchorAndLeash={Boolean(
-              isSardineDashboardView || ownMember.isHost
+              isSardineDashboardView || (!isActiveSeeker && ownMember.isHost)
             )}
             publishedRadar={publicState.radarCircle}
-            visibleTeamLocations={gameState.teamLocations}
+            visibleTeamLocations={visibleMapTeamLocations}
             teamsPublic={gameState.teamsPublic}
             activeTeamIds={activeRoundTeamIds}
-            clues={visibleClues}
+            clues={visibleMapClues}
             hiddenClueIds={hiddenClueIds}
             liveConePreview={livePreviewGeo}
             thermoPointA={thermoPointA}
@@ -693,49 +765,104 @@ export const App: React.FC = () => {
             emergencyFocusTarget={emergencyFocusTarget}
           />
 
-          {/* Obere schlanke Status-Pills auf der Karte (blockieren niemals die Kartenmitte!) */}
-          {(canUseMapClicks || isJoinedSardines) && (
-            <div className="pointer-events-none absolute top-2.5 right-2.5 left-2.5 z-[400] flex flex-wrap items-center justify-between gap-2">
-              {canUseMapClicks && (
-                <button
-                  type="button"
-                  data-testid="map-set-test-pos-btn"
-                  onClick={() =>
-                    setMapClickMode((prev) =>
-                      prev.kind === 'TEST_LOCATION'
-                        ? { kind: 'NONE' }
-                        : {
-                            kind: 'TEST_LOCATION',
-                            label:
-                              'Tippe auf einen Ort in 81247 München, um deine Test-Position zu setzen',
-                          }
-                    )
-                  }
-                  className={`pointer-events-auto inline-flex min-h-[40px] items-center gap-1.5 px-3 py-1.5 font-tech text-[11px] font-bold tracking-wider uppercase shadow-lg ${
-                    mapClickMode.kind === 'TEST_LOCATION'
-                      ? 'cmf-btn-primary font-dot'
-                      : 'cmf-oled text-[#F8FAFC]'
-                  }`}
-                >
-                  <Crosshair
-                    className={`h-3.5 w-3.5 ${
-                      mapClickMode.kind === 'TEST_LOCATION'
-                        ? 'text-white'
-                        : 'text-[var(--cmf-orange)]'
-                    }`}
-                  />
-                  {mapClickMode.kind === 'TEST_LOCATION'
-                    ? 'Klick abbrechen'
-                    : 'Test-Standort'}
-                </button>
-              )}
+          {/* Obere schlanke Status-Pills & Verstecker-Teamfilter auf der Karte */}
+          {(canUseMapClicks ||
+            isJoinedSardines ||
+            (isSardineDashboardView &&
+              publicState.status !== 'LOBBY' &&
+              roundSeekerTeamsForFilter.length > 0)) && (
+            <div className="pointer-events-none absolute top-2.5 right-2.5 left-2.5 z-[400] flex flex-col gap-1.5">
+              {(canUseMapClicks || isJoinedSardines) && (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  {canUseMapClicks && (
+                    <button
+                      type="button"
+                      data-testid="map-set-test-pos-btn"
+                      onClick={() =>
+                        setMapClickMode((prev) =>
+                          prev.kind === 'TEST_LOCATION'
+                            ? { kind: 'NONE' }
+                            : {
+                                kind: 'TEST_LOCATION',
+                                label:
+                                  'Tippe auf einen Ort in 81247 München, um deine Test-Position zu setzen',
+                              }
+                        )
+                      }
+                      className={`pointer-events-auto inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 font-tech text-[11px] font-bold tracking-wider uppercase shadow-lg ${
+                        mapClickMode.kind === 'TEST_LOCATION'
+                          ? 'cmf-btn-primary font-dot'
+                          : 'cmf-oled text-[#F8FAFC]'
+                      }`}
+                    >
+                      <Crosshair
+                        className={`h-3.5 w-3.5 ${
+                          mapClickMode.kind === 'TEST_LOCATION'
+                            ? 'text-white'
+                            : 'text-[var(--cmf-orange)]'
+                        }`}
+                      />
+                      {mapClickMode.kind === 'TEST_LOCATION'
+                        ? 'Klick abbrechen'
+                        : 'Test-Standort'}
+                    </button>
+                  )}
 
-              {isJoinedSardines && (
-                <div className="cmf-oled pointer-events-auto inline-flex items-center gap-2 px-3 py-1.5 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
-                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
-                  <span>Bei den Sardinen // HQ & QR aktiv</span>
+                  {isJoinedSardines && (
+                    <div className="cmf-oled pointer-events-auto inline-flex items-center gap-2 px-3 py-1.5 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
+                      <span>Verstecker-Team // HQ & QR aktiv</span>
+                    </div>
+                  )}
                 </div>
               )}
+
+              {isSardineDashboardView &&
+                publicState.status !== 'LOBBY' &&
+                roundSeekerTeamsForFilter.length > 0 && (
+                  <div
+                    data-testid="map-hider-team-filter"
+                    className="cmf-no-scrollbar pointer-events-auto flex items-center gap-1 overflow-x-auto rounded-2xl border border-[var(--shell-border)] bg-[var(--shell-bg)]/95 p-1 shadow-lg backdrop-blur-md"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setHiderFilterTeamId('NONE')}
+                      className={`shrink-0 rounded-xl px-2.5 py-1.5 font-tech text-[10px] font-bold uppercase transition-colors ${
+                        hiderFilterTeamId === 'NONE'
+                          ? 'bg-[#14171A] text-white'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                      }`}
+                    >
+                      Hinweise: Aus
+                    </button>
+                    {roundSeekerTeamsForFilter.map((t) => {
+                      const active = hiderFilterTeamId === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() =>
+                            setHiderFilterTeamId((prev) =>
+                              prev === t.id ? 'NONE' : t.id
+                            )
+                          }
+                          className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 font-tech text-[10px] font-bold uppercase transition-colors ${
+                            active
+                              ? 'bg-[#14171A] text-white'
+                              : 'bg-white/70 text-[var(--text-main)]'
+                          }`}
+                        >
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: t.color }}
+                          />
+                          <span>{t.name}</span>
+                          <span className="opacity-75">({t.clues.length})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
             </div>
           )}
 
@@ -1098,11 +1225,13 @@ export const App: React.FC = () => {
             ownFix={geo.currentFix}
             canUseMapClicks={canUseMapClicks}
             teamRequests={visibleRequestsMap}
-            teamClues={
-              ownMember.side === 'SEEKER' && ownTeam
-                ? (gameState.cluesByTeam[ownTeam.id] ?? {})
-                : Object.fromEntries(visibleClues.map((c) => [c.id, c]))
-            }
+            teamClues={seekerOwnTeamCluesMap}
+            cluesByTeam={gameState.cluesByTeam}
+            requestsByTeam={gameState.requestsByTeam}
+            teamsPublic={gameState.teamsPublic}
+            activeTeamIds={activeRoundTeamIds}
+            hiderFilterTeamId={hiderFilterTeamId}
+            onChangeHiderFilterTeamId={setHiderFilterTeamId}
             hiddenClueIds={hiddenClueIds}
             onToggleClueOverlay={handleToggleClueOverlay}
             thermoPointA={thermoPointA}
@@ -1128,6 +1257,7 @@ export const App: React.FC = () => {
               hiderPrivate={hiderPrivate}
               teamsPublic={gameState.teamsPublic}
               activeTeamIds={activeRoundTeamIds}
+              sardineGroupMemberNames={sardineGroupMemberNames}
             />
           ) : (
             <SeekerScannerView
@@ -1173,8 +1303,8 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* Schwebendes Hider-Antwortfenster für offene Kategorie-4-Medienanfragen */}
-      {ownMember.side === 'HIDER' && (
+      {/* Schwebendes Antwortfenster für offene Kategorie-4-Fotoanfragen (für alle Mitglieder der Verstecker-Gruppe) */}
+      {isSardineDashboardView && (
         <HiderMediaResponseModal
           adapter={adapter}
           openRequests={openHiderMediaRequests}
@@ -1183,6 +1313,7 @@ export const App: React.FC = () => {
           anchorPoint={hiderPrivate?.anchorPoint ?? null}
           publicState={publicState}
           netElapsedMs={timer.netElapsedMs}
+          sardineGroupMemberNames={sardineGroupMemberNames}
         />
       )}
 

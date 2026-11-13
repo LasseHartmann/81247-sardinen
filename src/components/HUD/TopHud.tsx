@@ -141,23 +141,31 @@ export const TopHud: React.FC<TopHudProps> = ({
 
         {/* Rechte Hardware-Statusleiste: Strafzeit, GPS, Funk, Notfall & Admin */}
         <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
-          {ownTeam && (
-            <div
-              title="Aufgelaufene Hinweis-Strafzeit deines Teams"
-              className={`rounded-lg px-1.5 py-1 text-[10px] font-bold tracking-wide uppercase sm:px-2 sm:text-[11px] ${
-                ownTeam.penaltyMs > 0
-                  ? 'cmf-badge-orange'
-                  : 'cmf-well hidden font-tech text-[var(--text-muted)] min-[390px]:inline-flex'
-              }`}
-            >
-              <span className="sm:hidden">
-                +{Math.round(ownTeam.penaltyMs / 60000)}m
-              </span>
-              <span className="hidden sm:inline">
-                {formatPenaltyMinutes(ownTeam.penaltyMs)}
-              </span>
-            </div>
-          )}
+          {ownTeam &&
+            (ownTeam.status === 'JOINED_SARDINES' ? (
+              <div
+                title="Euer gesamtes Team gehört jetzt zum Verstecker-Team (Sardinen)"
+                className="cmf-badge-teal rounded-lg px-1.5 py-1 font-tech text-[10px] font-bold tracking-wide uppercase sm:px-2 sm:text-[11px]"
+              >
+                SARDINEN
+              </div>
+            ) : (
+              <div
+                title="Aufgelaufene Hinweis-Strafzeit deines Teams"
+                className={`rounded-lg px-1.5 py-1 text-[10px] font-bold tracking-wide uppercase sm:px-2 sm:text-[11px] ${
+                  ownTeam.penaltyMs > 0
+                    ? 'cmf-badge-orange'
+                    : 'cmf-well hidden font-tech text-[var(--text-muted)] min-[390px]:inline-flex'
+                }`}
+              >
+                <span className="sm:hidden">
+                  +{Math.round(ownTeam.penaltyMs / 60000)}m
+                </span>
+                <span className="hidden sm:inline">
+                  {formatPenaltyMinutes(ownTeam.penaltyMs)}
+                </span>
+              </div>
+            ))}
 
           <div
             title="GPS-Status & Genauigkeit"

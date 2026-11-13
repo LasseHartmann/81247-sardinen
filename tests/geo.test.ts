@@ -255,7 +255,7 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
       'DONUT_RING',
       'MEDIA_SKY',
       'MEDIA_GROUND',
-      'MEDIA_AUDIO',
+      'MEDIA_SELFIE',
     ] as const) {
       const preview = buildQuestionPreviewGeoJson(
         qType,

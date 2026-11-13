@@ -81,7 +81,7 @@ export const QUESTION_CATEGORY_MAP: Record<QuestionType, 1 | 2 | 3 | 4> = {
   DONUT_RING: 3,
   MEDIA_SKY: 4,
   MEDIA_GROUND: 4,
-  MEDIA_AUDIO: 4,
+  MEDIA_SELFIE: 4,
 };
 
 export const QUESTION_PENALTY_MS: Record<1 | 2 | 3 | 4, number> = {

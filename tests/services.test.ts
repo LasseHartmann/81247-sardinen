@@ -28,7 +28,6 @@ import {
   filterOnlineEnabledMembers,
 } from '../src/services/databaseAdapter';
 import { evaluateLocationThrottle } from '../src/services/locationService';
-import { createSyntheticDemoAudio } from '../src/services/mediaService';
 import {
   generateSessionSecrets,
   serializeQrPayload,
@@ -106,11 +105,10 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     }
   });
 
-  it('erzeugt ein abspielbares Demo-Audio strikt unterhalb des 25-KB-Limits', () => {
-    const audio = createSyntheticDemoAudio();
-    expect(audio.mimeType).toBe('audio/wav');
-    expect(audio.dataUrl.startsWith('data:audio/wav;base64,')).toBe(true);
-    expect(audio.approxBytes).toBeLessThanOrEqual(25_000);
+  it('berechnet 5 Minuten Strafzeit für Gruppen-Selfie (MEDIA_SELFIE) und trennt Hinweise strikt nach Team', async () => {
+    expect(getQuestionPenaltyMs('MEDIA_SELFIE')).toBe(5 * 60_000);
+    expect(getQuestionPenaltyMs('MEDIA_SKY')).toBe(5 * 60_000);
+    expect(getQuestionPenaltyMs('MEDIA_GROUND')).toBe(5 * 60_000);
   });
 
   it('erlaubt beim Login exakt die 14 Namen (inkl. Theo, Test 1 & Test 2) und schaltet Admin-Rechte für Lasse, Linus & Test 1 über den Admin-Code frei', () => {

@@ -705,7 +705,7 @@ export function buildQuestionPreviewGeoJson(
 
     case 'MEDIA_SKY':
     case 'MEDIA_GROUND':
-    case 'MEDIA_AUDIO': {
+    case 'MEDIA_SELFIE': {
       return turf.featureCollection([playArea]);
     }
 

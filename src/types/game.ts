@@ -209,7 +209,7 @@ export type QuestionType =
   | 'DONUT_RING'
   | 'MEDIA_SKY'
   | 'MEDIA_GROUND'
-  | 'MEDIA_AUDIO';
+  | 'MEDIA_SELFIE';
 
 export type RadiusOptionMeters = 50 | 100 | 250 | 500 | 1000;
 
@@ -294,7 +294,7 @@ export interface ClueRecord {
   overlayGeoJson?: FeatureCollection | Feature | null;
   overlayStyle?: ClueOverlayStyle;
   hasMedia?: boolean;
-  mediaKind?: 'IMAGE' | 'AUDIO';
+  mediaKind?: 'IMAGE';
   usedOfflineOsmFallback?: boolean;
   isFallbackCompensation?: boolean;
 }

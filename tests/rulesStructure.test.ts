@@ -58,9 +58,13 @@ describe('Security-Audit: database.rules.json & Client-Code-Garantien', () => {
     expect(locRules['.write']).toContain("isHost').val() === true");
     expect(locRules['.validate']).toContain('!newData.exists()');
 
-    // Kein globales .read auf /clues oder /requests
+    // Kein globales .read auf /clues oder /requests; gruppen-individuelle Sicht + Zugriff für Hider & JOINED_SARDINES
     expect(gameNode.clues['.read']).toBeUndefined();
     expect(gameNode.requests['.read']).toBeUndefined();
+    expect(gameNode.clues.$teamId['.read']).toContain('=== $teamId');
+    expect(gameNode.clues.$teamId['.read']).toContain("=== 'HIDER'");
+    expect(gameNode.clues.$teamId['.read']).toContain("=== 'JOINED_SARDINES'");
+    expect(locRules['.read']).toContain("=== 'JOINED_SARDINES'");
   });
 
   it('erzwingt Base64-Payload-Caps (<= 95000 Zeichen) auf /requests/$teamId/$requestId', () => {

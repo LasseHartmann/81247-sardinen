@@ -1,16 +1,12 @@
-import React, { useRef, useState } from 'react';
-import { Camera, Mic, Square, XCircle, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { Camera, Users, XCircle, Clock } from 'lucide-react';
 import { MEDIA_RESPONSE_TIMEOUT_NET_MS } from '../../config/gameConfig';
 import {
   refundAndCompensateMediaRequest,
   submitHiderMediaResponse,
 } from '../../hooks/useControllerEngine';
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
-import {
-  compressImageFileForClue,
-  startTenSecondAudioCapture,
-  type ActiveAudioRecordingHandle,
-} from '../../services/mediaService';
+import { compressImageFileForClue } from '../../services/mediaService';
 import type {
   AnchorPoint,
   ClueRequest,
@@ -28,6 +24,7 @@ export interface HiderMediaResponseModalProps {
   anchorPoint: AnchorPoint | null;
   publicState: PublicGameState;
   netElapsedMs: number;
+  sardineGroupMemberNames: string[];
 }
 
 export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = ({
@@ -38,11 +35,10 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
   anchorPoint,
   publicState,
   netElapsedMs,
+  sardineGroupMemberNames,
 }) => {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
-  const audioHandleRef = useRef<ActiveAudioRecordingHandle | null>(null);
 
   if (openRequests.length === 0 || !anchorPoint) {
     return null;
@@ -50,7 +46,7 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
 
   const req = openRequests[0];
   const team = teamsPublic[req.teamId];
-  const isAudio = req.questionType === 'MEDIA_AUDIO';
+  const isSelfie = req.questionType === 'MEDIA_SELFIE';
   const deadlineNet =
     req.mediaDeadlineNetElapsedMs ??
     (req.netElapsedAtRequestMs ?? netElapsedMs) + MEDIA_RESPONSE_TIMEOUT_NET_MS;
@@ -80,43 +76,6 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
     }
   };
 
-  const handleStartAudio = async () => {
-    setErrorMsg(null);
-    try {
-      setRecordingSeconds(0);
-      const handle = await startTenSecondAudioCapture((sec) =>
-        setRecordingSeconds(sec)
-      );
-      audioHandleRef.current = handle;
-      const recorded = await handle.resultPromise;
-      audioHandleRef.current = null;
-      setRecordingSeconds(null);
-      setBusy(true);
-      await submitHiderMediaResponse({
-        adapter,
-        req,
-        mediaBase64: recorded.dataUrl,
-        mediaMimeType: recorded.mimeType,
-        mediaSynthetic: false,
-        serverNowMs: adapter.getServerNow(),
-      });
-    } catch (err) {
-      audioHandleRef.current = null;
-      setRecordingSeconds(null);
-      setErrorMsg(
-        err instanceof Error
-          ? err.message
-          : 'Mikrofon nicht verfügbar.'
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleStopAudioEarly = () => {
-    audioHandleRef.current?.stopEarly();
-  };
-
   const handleReject = async () => {
     setBusy(true);
     setErrorMsg(null);
@@ -142,7 +101,7 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
         <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
           <div>
             <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
-              MEDIENANFRAGE // {team?.name ?? req.teamId}
+              FOTO-ANFRAGE // {team?.name ?? req.teamId}
             </span>
             <h3 className="font-industrial text-base text-[var(--text-main)]">
               {getQuestionLabelDe(req.questionType)}
@@ -154,13 +113,31 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
           </div>
         </div>
 
-        <p className="mt-2.5 text-xs text-[var(--text-muted)]">
-          {isAudio
-            ? 'Nimm 10 Sekunden unverfälschte Umgebungsgeräusche auf (max. 25 KB).'
-            : req.questionType === 'MEDIA_SKY'
+        {isSelfie ? (
+          <div className="cmf-well mt-2.5 space-y-1.5 border border-[var(--cmf-orange)]/45 p-3 text-xs">
+            <p className="flex items-center gap-1.5 font-tech text-[11px] font-bold text-[var(--cmf-orange)] uppercase">
+              <Users className="h-4 w-4 shrink-0" />
+              Pflichtregel Gruppen-Selfie:
+            </p>
+            <p className="font-semibold text-[var(--text-main)]">
+              Der komplette Kopf jedes Mitglieds eurer aktuellen Verstecker-Gruppe muss vollständig auf dem Foto zu sehen sein!
+            </p>
+            {sardineGroupMemberNames.length > 0 && (
+              <p className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
+                Muss im Bild sein ({sardineGroupMemberNames.length}):{' '}
+                <span className="font-bold text-[var(--text-main)]">
+                  {sardineGroupMemberNames.join(', ')}
+                </span>
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="mt-2.5 text-xs text-[var(--text-muted)]">
+            {req.questionType === 'MEDIA_SKY'
               ? 'Fotografiere senkrecht nach oben in den Himmel / das Blätterdach (EXIF-GPS wird automatisch entfernt, <= 60 KB).'
               : 'Fotografiere senkrecht nach unten auf den Bodenbelag (EXIF-GPS wird automatisch entfernt, <= 60 KB).'}
-        </p>
+          </p>
+        )}
 
         {errorMsg && (
           <div className="cmf-badge-orange mt-2.5 rounded-lg p-2.5 text-xs font-semibold">
@@ -169,44 +146,26 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
         )}
 
         <div className="mt-3.5 space-y-2">
-          {!isAudio ? (
-            <label className="cmf-btn-primary font-dot flex min-h-[46px] w-full cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold">
-              <Camera className="h-4 w-4" />
-              {busy ? 'Komprimiere & sende ...' : 'Kamera öffnen / Foto auswählen'}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                disabled={busy}
-                onChange={(e) => void handleFileChange(e)}
-                className="hidden"
-              />
-            </label>
-          ) : recordingSeconds !== null ? (
-            <button
-              type="button"
-              onClick={handleStopAudioEarly}
-              className="cmf-oled font-dot flex min-h-[46px] w-full items-center justify-center gap-2.5 px-4 py-2.5 text-xs font-bold text-[#F8FAFC]"
-            >
-              <span className="nothing-red-dot" />
-              <Square className="h-3.5 w-3.5 text-[var(--nothing-red)]" />
-              AUFNAHME ({recordingSeconds} / 10S) — JETZT ABSENDEN
-            </button>
-          ) : (
-            <button
-              type="button"
+          <label className="cmf-btn-primary font-dot flex min-h-[46px] w-full cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold">
+            <Camera className="h-4 w-4" />
+            {busy
+              ? 'Komprimiere & sende ...'
+              : isSelfie
+                ? 'Gruppen-Selfie aufnehmen / auswählen'
+                : 'Kamera öffnen / Foto auswählen'}
+            <input
+              type="file"
+              accept="image/*"
+              capture={isSelfie ? 'user' : 'environment'}
               disabled={busy}
-              onClick={() => void handleStartAudio()}
-              className="cmf-btn-primary font-dot flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
-            >
-              <Mic className="h-4 w-4" />
-              10s Mikrofon-Aufnahme starten
-            </button>
-          )}
+              onChange={(e) => void handleFileChange(e)}
+              className="hidden"
+            />
+          </label>
 
           <button
             type="button"
-            disabled={busy || recordingSeconds !== null}
+            disabled={busy}
             onClick={() => void handleReject()}
             className="cmf-btn-secondary font-tech inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase"
           >

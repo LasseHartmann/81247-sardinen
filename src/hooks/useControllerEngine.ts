@@ -539,7 +539,7 @@ export async function submitHiderMediaResponse(params: {
     return false;
   }
 
-  const isAudio = claimed.questionType === 'MEDIA_AUDIO';
+  const isSelfie = claimed.questionType === 'MEDIA_SELFIE';
   const clue: ClueRecord = {
     id: `clue_${claimed.id}`,
     requestId: claimed.id,
@@ -548,16 +548,20 @@ export async function submitHiderMediaResponse(params: {
     questionType: claimed.questionType,
     category: 4,
     title: getQuestionLabelDe(claimed.questionType),
-    answerText: isAudio ? '10s Audio empfangen' : 'Foto-Hinweis empfangen',
+    answerText: isSelfie
+      ? 'Gruppen-Selfie empfangen (alle Köpfe im Bild)'
+      : 'Foto-Hinweis empfangen',
     detailText: mediaSynthetic
-      ? 'Synthetisches Demo-Medium von den Versteckern übermittelt.'
-      : 'Live-Aufnahme der Verstecker bereit zur Ansicht.',
+      ? 'Synthetisches Demo-Foto von den Versteckern übermittelt.'
+      : isSelfie
+        ? 'Gruppen-Selfie der aktuellen Verstecker-Gruppe bereit zur Ansicht.'
+        : 'Live-Aufnahme der Verstecker bereit zur Ansicht.',
     isPositiveHit: true,
     penaltyMs: claimed.penaltyMs,
     createdAt: serverNowMs,
     overlayGeoJson: null,
     hasMedia: true,
-    mediaKind: isAudio ? 'AUDIO' : 'IMAGE',
+    mediaKind: 'IMAGE',
   };
 
   await adapter.saveClue(claimed.teamId, clue);

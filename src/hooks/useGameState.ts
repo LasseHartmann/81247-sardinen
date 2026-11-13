@@ -311,8 +311,11 @@ export function useGameState(
     const isControllerRole = Boolean(
       ownMember.isHost || ownMember.side === 'HIDER'
     );
+    const isHiderTeamMember = Boolean(
+      isControllerRole || ownTeamStatus === 'JOINED_SARDINES'
+    );
 
-    const allowedTeamIds = isControllerRole
+    const allowedTeamIds = isHiderTeamMember
       ? TEAM_PALETTE.map((t) => t.id)
       : ownMember.teamId
         ? [ownMember.teamId]
@@ -351,6 +354,7 @@ export function useGameState(
     ownMember?.isHost,
     ownMember?.side,
     ownMember?.teamId,
+    ownTeamStatus,
   ]);
 
   return {

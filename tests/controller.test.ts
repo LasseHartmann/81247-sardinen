@@ -200,7 +200,7 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
     expect(teamClues[0].answerText).toContain('Distanzband:');
   });
 
-  it('unterstützt Medien-Beantwortung + Base64-Bereinigung sowie Hider-Ablehnung ohne Doppel-Erstattung', async () => {
+  it('unterstützt Gruppen-Selfie-Beantwortung + Base64-Bereinigung sowie Hider-Ablehnung ohne Doppel-Erstattung', async () => {
     const t0 = 1_700_000_000_000;
     const demo = createDemoStore({ inMemoryOnly: true, initialNowMs: t0 });
     const { adapter } = demo;
@@ -208,11 +208,11 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
 
     await adapter.adjustTeamPenaltyAndClueCountAtomically('team-2', 5 * 60_000, 1);
     const awaitingReq: ClueRequest = {
-      id: 'req_audio_2',
+      id: 'req_selfie_2',
       teamId: 'team-2',
       requestedByUid: 'demo_uid_nick',
       sessionId: s0.state.public.sessionId,
-      questionType: 'MEDIA_AUDIO',
+      questionType: 'MEDIA_SELFIE',
       category: 4,
       params: {},
       status: 'AWAITING_HIDER_MEDIA',
@@ -227,11 +227,16 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
     const ok = await submitHiderMediaResponse({
       adapter,
       req: awaitingReq,
-      mediaBase64: 'data:audio/webm;base64,AAAA',
-      mediaMimeType: 'audio/webm',
+      mediaBase64: 'data:image/jpeg;base64,AAAA',
+      mediaMimeType: 'image/jpeg',
       serverNowMs: t0 + 15_000,
     });
     expect(ok).toBe(true);
+    expect(demo.getSnapshot().clues['team-2']['clue_req_selfie_2'].answerText).toContain(
+      'Gruppen-Selfie'
+    );
+    // Team 1 hat diesen Hinweis NICHT (strikt gruppen-individuell!)
+    expect(demo.getSnapshot().clues['team-1']?.['clue_req_selfie_2']).toBeUndefined();
 
     // Nachfolgender verspäteter Timeout-/Ablehnungsversuch auf bereits beantworteter Anfrage schlägt sauber fehl
     const lateRefund = await refundAndCompensateMediaRequest({
@@ -247,8 +252,8 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
     expect(demo.getSnapshot().teams['team-2'].public.penaltyMs).toBe(5 * 60_000);
 
     // Bestätigung durch Sucher bereinigt schweres Base64-Feld, erhält aber Hinweisverlauf
-    await adapter.acknowledgeAndStripMedia('team-2', 'req_audio_2', t0 + 30_000);
-    const stripped = demo.getSnapshot().requests['team-2']['req_audio_2'];
+    await adapter.acknowledgeAndStripMedia('team-2', 'req_selfie_2', t0 + 30_000);
+    const stripped = demo.getSnapshot().requests['team-2']['req_selfie_2'];
     expect(stripped.mediaBase64).toBeUndefined();
     expect(stripped.mediaAcknowledgedAt).toBe(t0 + 30_000);
   });

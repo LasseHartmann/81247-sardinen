@@ -160,7 +160,7 @@ export function getQuestionLabelDe(type: QuestionType): string {
       return 'Foto: Himmel / Blätterdach';
     case 'MEDIA_GROUND':
       return 'Foto: Bodenstruktur';
-    case 'MEDIA_AUDIO':
-      return '10s Umgebungsgeräusche';
+    case 'MEDIA_SELFIE':
+      return 'Foto: Gruppen-Selfie (alle Köpfe)';
   }
 }

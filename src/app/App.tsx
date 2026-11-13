@@ -19,6 +19,7 @@ import { ANCHOR_ACCURACY_WARNING_METERS } from '../config/gameConfig';
 import { computeHiderPasswordHash } from '../config/players';
 import { isPointInPlayArea } from '../geo/boundary';
 import { buildQuestionPreviewGeoJson } from '../geo/clueGeometry';
+import { computePossibleHidingArea } from '../geo/hidingArea';
 import { useAuth } from '../hooks/useAuth';
 import {
   lockHiderAnchorAndGenerateRadar,
@@ -394,7 +395,12 @@ export const App: React.FC = () => {
           pointB: (thermoPointB ?? geo.currentFix) ?? undefined,
         },
         geo.currentFix,
-        publicState.playArea.polygon
+        computePossibleHidingArea({
+          playArea: publicState.playArea.polygon,
+          clues: visibleClues,
+          hiddenClueIds,
+          publishedRadar: publicState.radarCircle,
+        }) ?? publicState.playArea.polygon
       )
     : null;
 

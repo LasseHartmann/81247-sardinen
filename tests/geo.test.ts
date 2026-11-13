@@ -14,10 +14,16 @@ import {
   evaluateDonutRing,
   evaluateOsmGreen,
   evaluateOsmTransit,
+  evaluateRadiusRadar,
   evaluateSplitEastWest,
   evaluateSplitNorthSouth,
   evaluateThermometer,
 } from '../src/geo/clueGeometry';
+import {
+  buildExcludedOrangeMask,
+  computePossibleHidingArea,
+} from '../src/geo/hidingArea';
+import type { ClueRecord } from '../src/types/game';
 import {
   bearingDegrees,
   destinationPoint,
@@ -264,5 +270,107 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
       );
       expect(preview).not.toBeNull();
     }
+  });
+
+  it('kombiniert Spielgebiet, Schrumpf-Radar und mehrere Hinweise zu einem sauberen Versteckbereich ohne Linien-Artefakte und färbt den Rest als einheitliche Außenmaske', () => {
+    const anchor = { lat: 48.1632, lng: 11.4572 }; // Schloss Blutenburg (in 81247)
+    const splitPt = { lat: 48.16, lng: 11.462 }; // südlich & östlich von Blutenburg
+    const farSeeker = { lat: 48.168, lng: 11.47 }; // > 250 m entfernt
+
+    const nsEval = evaluateSplitNorthSouth(splitPt, anchor, DEFAULT_PLAY_AREA_FEATURE);
+    const ewEval = evaluateSplitEastWest(splitPt, anchor, DEFAULT_PLAY_AREA_FEATURE);
+    const missRadarEval = evaluateRadiusRadar(
+      farSeeker,
+      250,
+      anchor,
+      DEFAULT_PLAY_AREA_FEATURE
+    );
+
+    // Sicherstellen, dass keine Trennlinien (LineString) mehr in den Hinweis-Overlays liegen
+    for (const ev of [nsEval, ewEval, missRadarEval]) {
+      const feats =
+        ev.overlayGeoJson?.type === 'FeatureCollection'
+          ? ev.overlayGeoJson.features
+          : ev.overlayGeoJson
+            ? [ev.overlayGeoJson]
+            : [];
+      for (const f of feats) {
+        expect(f.geometry.type).not.toBe('LineString');
+      }
+    }
+
+    const toClue = (
+      id: string,
+      questionType: ClueRecord['questionType'],
+      ev: ReturnType<typeof evaluateSplitNorthSouth>
+    ): ClueRecord => ({
+      id,
+      requestId: `req-${id}`,
+      sessionId: 's1',
+      teamId: 'team-1',
+      questionType,
+      category: 1,
+      createdAt: 1000,
+      penaltyMs: 360000,
+      title: ev.title,
+      answerText: ev.answerText,
+      detailText: ev.detailText,
+      isPositiveHit: ev.isPositiveHit,
+      overlayGeoJson: ev.overlayGeoJson,
+      overlayStyle: ev.overlayStyle,
+    });
+
+    const clues: ClueRecord[] = [
+      toClue('c1', 'SPLIT_NS', nsEval),
+      toClue('c2', 'SPLIT_EW', ewEval),
+      toClue('c3', 'RADIUS_RADAR', missRadarEval),
+    ];
+
+    const possibleArea = computePossibleHidingArea({
+      playArea: DEFAULT_PLAY_AREA_FEATURE,
+      clues,
+      hiddenClueIds: new Set(),
+      publishedRadar: {
+        stage: 2,
+        center: { lat: 48.1638, lng: 11.458 },
+        radiusMeters: 900,
+        publishedAt: 1000,
+      },
+    });
+
+    expect(possibleArea).not.toBeNull();
+    // Wahrer Versteckpunkt liegt im verbleibenden möglichen Versteckbereich:
+    expect(
+      isInsideFeatureCollectionPolygons(anchor.lat, anchor.lng, possibleArea)
+    ).toBe(true);
+
+    // Südlich von splitPt (ausgeschlossen durch SPLIT_NS) und im verfehlten 250m-Kreis (farSeeker) ausgeschlossen:
+    const excludedSouthPt = { lat: 48.157, lng: 11.4572 };
+    expect(
+      isInsideFeatureCollectionPolygons(
+        excludedSouthPt.lat,
+        excludedSouthPt.lng,
+        possibleArea
+      )
+    ).toBe(false);
+    expect(
+      isInsideFeatureCollectionPolygons(farSeeker.lat, farSeeker.lng, possibleArea)
+    ).toBe(false);
+
+    // Orangefarbene Außenmaske enthält alles außerhalb von possibleArea, aber nicht den wahren Ankerpunkt:
+    const orangeMask = buildExcludedOrangeMask(possibleArea);
+    expect(
+      isInsideFeatureCollectionPolygons(anchor.lat, anchor.lng, orangeMask)
+    ).toBe(false);
+    expect(
+      isInsideFeatureCollectionPolygons(
+        excludedSouthPt.lat,
+        excludedSouthPt.lng,
+        orangeMask
+      )
+    ).toBe(true);
+    expect(
+      isInsideFeatureCollectionPolygons(farSeeker.lat, farSeeker.lng, orangeMask)
+    ).toBe(true);
   });
 });

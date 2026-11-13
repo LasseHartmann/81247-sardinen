@@ -1,12 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson';
+import { MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM } from '../../config/gameConfig';
 import {
-  LEASH_RADIUS_METERS,
-  MAP_DEFAULT_CENTER,
-  MAP_DEFAULT_ZOOM,
-} from '../../config/gameConfig';
-import { buildInvertedWorldMask } from '../../geo/boundary';
+  buildExcludedOrangeMask,
+  computePossibleHidingArea,
+} from '../../geo/hidingArea';
 import type {
   AnchorPoint,
   ClueRecord,
@@ -16,7 +15,6 @@ import type {
   TeamLocation,
   TeamPublic,
 } from '../../types/game';
-import { syncClueOverlaysToLayerGroup } from './ClueOverlays';
 import {
   createAnchorPointIcon,
   createOwnPositionIcon,
@@ -55,16 +53,8 @@ export interface GameMapProps {
   layoutInvalidationKey?: string | number;
 }
 
-function resolveRadarHardwareColor(stage: number): string {
-  // 3-stage hardware color progression: --cmf-teal -> --cmf-amber -> --cmf-orange
-  if (stage <= 2) return '#00A896';
-  if (stage <= 4) return '#F0A500';
-  return '#FF4D00';
-}
-
 export const GameMap: React.FC<GameMapProps> = ({
   playArea,
-  playAreaConfirmed,
   ownFix,
   isOwnSideHider,
   anchorPoint,
@@ -85,16 +75,30 @@ export const GameMap: React.FC<GameMapProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
 
-  const boundaryLayerRef = useRef<L.LayerGroup | null>(null);
-  const clueLayerRef = useRef<L.LayerGroup | null>(null);
+  const hidingZoneLayerRef = useRef<L.LayerGroup | null>(null);
   const previewLayerRef = useRef<L.LayerGroup | null>(null);
-  const radarLayerRef = useRef<L.LayerGroup | null>(null);
   const actorsLayerRef = useRef<L.LayerGroup | null>(null);
 
   const onClickRef = useRef(onMapCoordinateClick);
   onClickRef.current = onMapCoordinateClick;
   const clickModeRef = useRef(clickMode);
   clickModeRef.current = clickMode;
+
+  const possibleHidingArea = useMemo(
+    () =>
+      computePossibleHidingArea({
+        playArea,
+        clues,
+        hiddenClueIds,
+        publishedRadar,
+      }),
+    [playArea, clues, hiddenClueIds, publishedRadar]
+  );
+
+  const excludedOrangeMask = useMemo(
+    () => buildExcludedOrangeMask(possibleHidingArea),
+    [possibleHidingArea]
+  );
 
   useEffect(() => {
     const el = containerRef.current;
@@ -116,10 +120,8 @@ export const GameMap: React.FC<GameMapProps> = ({
         '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OSM</a> // 81247',
     }).addTo(map);
 
-    boundaryLayerRef.current = L.layerGroup().addTo(map);
-    clueLayerRef.current = L.layerGroup().addTo(map);
+    hidingZoneLayerRef.current = L.layerGroup().addTo(map);
     previewLayerRef.current = L.layerGroup().addTo(map);
-    radarLayerRef.current = L.layerGroup().addTo(map);
     actorsLayerRef.current = L.layerGroup().addTo(map);
 
     map.on('click', (ev: L.LeafletMouseEvent) => {
@@ -160,52 +162,49 @@ export const GameMap: React.FC<GameMapProps> = ({
 
   const hasFittedInitialBoundsRef = useRef(false);
 
-  // 1. Spielfeld-Polygon + mattierte Außenmaske im Raw-Light-Hardware-Look
+  // Initialer Kartenausschnitt auf das 81247-Gebiet
   useEffect(() => {
-    const group = boundaryLayerRef.current;
     const map = mapRef.current;
+    if (!map || hasFittedInitialBoundsRef.current) return;
+    const tempPoly = L.geoJSON(playArea);
+    const bounds = tempPoly.getBounds();
+    if (bounds.isValid()) {
+      hasFittedInitialBoundsRef.current = true;
+      map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
+    }
+  }, [playArea]);
+
+  // 1. Einheitlicher möglicher Versteckbereich:
+  //    - Nur die Grenze des noch möglichen Versteckbereichs wird gezeichnet.
+  //    - Der gesamte ausgeschlossene Rest wird einheitlich orange gefärbt (keine überlappenden Linien!).
+  useEffect(() => {
+    const group = hidingZoneLayerRef.current;
     if (!group) return;
     group.clearLayers();
 
-    const mask = buildInvertedWorldMask(playArea);
-    L.geoJSON(mask, {
+    L.geoJSON(excludedOrangeMask, {
       style: {
         stroke: false,
-        fillColor: '#9AA4AE',
+        fillColor: '#FF4D00',
         fillOpacity: 0.34,
       },
       interactive: false,
     }).addTo(group);
 
-    const strokeColor = playAreaConfirmed ? '#00A896' : '#F0A500';
-    const polyLayer = L.geoJSON(playArea, {
-      style: {
-        color: strokeColor,
-        weight: 2.5,
-        dashArray: '6, 6',
-        fillColor: '#00A896',
-        fillOpacity: 0.04,
-      },
-      interactive: false,
-    }).addTo(group);
-
-    if (map && !hasFittedInitialBoundsRef.current) {
-      const bounds = polyLayer.getBounds();
-      if (bounds.isValid()) {
-        hasFittedInitialBoundsRef.current = true;
-        map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
-      }
+    if (possibleHidingArea) {
+      L.geoJSON(possibleHidingArea, {
+        style: {
+          color: '#FF4D00',
+          weight: 2.5,
+          opacity: 0.95,
+          fillOpacity: 0,
+        },
+        interactive: false,
+      }).addTo(group);
     }
-  }, [playArea, playAreaConfirmed]);
+  }, [possibleHidingArea, excludedOrangeMask]);
 
-  // 2. Hinweis-Overlays
-  useEffect(() => {
-    const group = clueLayerRef.current;
-    if (!group) return;
-    syncClueOverlaysToLayerGroup(group, clues, hiddenClueIds);
-  }, [clues, hiddenClueIds]);
-
-  // 3. Live-Vorschau für alle Hinweis-Fragen + Thermometer-Pins A/B
+  // 2. Optionale Live-Vorschau (nur wenn aktiv im Hinweis-Menü eingeschaltet) + Thermometer-Pins A/B
   useEffect(() => {
     const group = previewLayerRef.current;
     if (!group) return;
@@ -213,15 +212,11 @@ export const GameMap: React.FC<GameMapProps> = ({
 
     if (liveConePreview) {
       L.geoJSON(liveConePreview, {
-        style: (feature) => {
-          const isDivider = feature?.properties?.role === 'divider';
-          return {
-            color: isDivider ? '#FF4D00' : '#00A896',
-            weight: isDivider ? 3 : 2,
-            dashArray: '6, 6',
-            fillColor: '#00A896',
-            fillOpacity: 0.16,
-          };
+        style: {
+          color: '#00A896',
+          weight: 2,
+          fillColor: '#00A896',
+          fillOpacity: 0.18,
         },
         interactive: false,
       }).addTo(group);
@@ -242,59 +237,15 @@ export const GameMap: React.FC<GameMapProps> = ({
         .bindTooltip('THERMOMETER ENDE [B]')
         .addTo(group);
     }
-
-    if (thermoPointA && thermoPointB) {
-      L.polyline(
-        [
-          [thermoPointA.lat, thermoPointA.lng],
-          [thermoPointB.lat, thermoPointB.lng],
-        ],
-        { color: '#FF4D00', weight: 2, dashArray: '6, 6' }
-      ).addTo(group);
-    }
   }, [liveConePreview, thermoPointA, thermoPointB]);
 
-  // 4. Schrumpf-Radar-Kreis (öffentlich ab 25:00 — 3-stufige Hardware-Farbprogression)
-  useEffect(() => {
-    const group = radarLayerRef.current;
-    if (!group) return;
-    group.clearLayers();
-
-    if (publishedRadar) {
-      const stageColor = resolveRadarHardwareColor(publishedRadar.stage);
-      L.circle([publishedRadar.center.lat, publishedRadar.center.lng], {
-        radius: publishedRadar.radiusMeters,
-        color: stageColor,
-        weight: 2.5,
-        dashArray: '6, 6',
-        fillColor: stageColor,
-        fillOpacity: 0.14,
-        interactive: false,
-      })
-        .bindTooltip(
-          `RADAR STUFE ${publishedRadar.stage} // ${publishedRadar.radiusMeters}M`
-        )
-        .addTo(group);
-    }
-  }, [publishedRadar]);
-
-  // 5. Eigene Position, autorisierte Team-Beacons sowie Hider-Anchor + 20m-Leash
+  // 3. Eigene Position, autorisierte Team-Beacons sowie Hider-Anchor (ohne störende Kreislinien)
   useEffect(() => {
     const group = actorsLayerRef.current;
     if (!group) return;
     group.clearLayers();
 
     if (showAnchorAndLeash && anchorPoint) {
-      L.circle([anchorPoint.lat, anchorPoint.lng], {
-        radius: LEASH_RADIUS_METERS,
-        color: '#00A896',
-        weight: 2,
-        dashArray: '6, 6',
-        fillColor: '#00A896',
-        fillOpacity: 0.14,
-        interactive: false,
-      }).addTo(group);
-
       L.marker([anchorPoint.lat, anchorPoint.lng], {
         icon: createAnchorPointIcon(),
       })
@@ -327,16 +278,6 @@ export const GameMap: React.FC<GameMapProps> = ({
     }
 
     if (ownFix) {
-      L.circle([ownFix.lat, ownFix.lng], {
-        radius: Math.min(80, Math.max(4, ownFix.accuracy)),
-        color: '#00A896',
-        weight: 1.5,
-        dashArray: '4, 4',
-        fillColor: '#00A896',
-        fillOpacity: 0.1,
-        interactive: false,
-      }).addTo(group);
-
       L.marker([ownFix.lat, ownFix.lng], {
         icon: createOwnPositionIcon(isOwnSideHider),
       })

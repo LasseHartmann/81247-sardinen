@@ -44,7 +44,7 @@ function metersPerDegLngAt(latDeg: number): number {
 
 function safeClipWithPlayArea(
   candidate: Feature<Polygon | MultiPolygon>,
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): Feature<Polygon | MultiPolygon> | null {
   try {
     const clipped = turf.intersect(
@@ -75,15 +75,7 @@ export function evaluateSplitNorthSouth(
     : turf.bboxPolygon([minLng - pad, splitPoint.lat, maxLng + pad, maxLat + pad]);
 
   const clippedExcluded = safeClipWithPlayArea(excludedPoly, playArea);
-  const dividerLine = turf.lineString(
-    [
-      [minLng - 0.01, splitPoint.lat],
-      [maxLng + 0.01, splitPoint.lat],
-    ],
-    { role: 'divider' }
-  );
-
-  const features: Feature[] = [dividerLine];
+  const features: Feature[] = [];
   if (clippedExcluded) {
     clippedExcluded.properties = { role: 'excluded' };
     features.push(clippedExcluded);
@@ -119,15 +111,7 @@ export function evaluateSplitEastWest(
     : turf.bboxPolygon([splitPoint.lng, minLat - pad, maxLng + pad, maxLat + pad]);
 
   const clippedExcluded = safeClipWithPlayArea(excludedPoly, playArea);
-  const dividerLine = turf.lineString(
-    [
-      [splitPoint.lng, minLat - 0.01],
-      [splitPoint.lng, maxLat + 0.01],
-    ],
-    { role: 'divider' }
-  );
-
-  const features: Feature[] = [dividerLine];
+  const features: Feature[] = [];
   if (clippedExcluded) {
     clippedExcluded.properties = { role: 'excluded' };
     features.push(clippedExcluded);
@@ -202,16 +186,7 @@ export function evaluateThermometer(
   const halfPlane = turf.polygon([[p1, p2, p3, p4, p1]]);
   const clippedExcluded = safeClipWithPlayArea(halfPlane, playArea);
 
-  const lineSpan = 6_000;
-  const bisectorLine = turf.lineString(
-    [
-      toLatLngCoord(-nx * lineSpan, -ny * lineSpan),
-      toLatLngCoord(nx * lineSpan, ny * lineSpan),
-    ],
-    { role: 'divider' }
-  );
-
-  const features: Feature[] = [bisectorLine];
+  const features: Feature[] = [];
   if (clippedExcluded) {
     clippedExcluded.properties = { role: 'excluded' };
     features.push(clippedExcluded);
@@ -236,7 +211,7 @@ export function evaluateThermometer(
 export function buildCone45Polygon(
   origin: LatLng,
   bearingDeg: number,
-  playArea: Feature<Polygon>,
+  playArea: Feature<Polygon | MultiPolygon>,
   maxRangeMeters = 8_500
 ): Feature<Polygon | MultiPolygon> | null {
   const steps = 48;
@@ -568,13 +543,13 @@ export function evaluateDeterministicQuestion(
 
 /**
  * Erzeugt die Live-Kartenvorschau (GeoJSON) für jede mögliche Hinweis-Frage,
- * geclippt auf das 81247-Spielgebiet.
+ * sauber geclippt auf den aktuell verbleibenden Suchbereich (ohne überstehende Hilfslinien).
  */
 export function buildQuestionPreviewGeoJson(
   questionType: QuestionType,
   params: QuestionParams,
   origin: LatLng | null,
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): FeatureCollection | Feature<Polygon | MultiPolygon> | null {
   const [minLng, minLat, maxLng, maxLat] = turf.bbox(playArea);
   const pad = 0.08;
@@ -589,16 +564,7 @@ export function buildQuestionPreviewGeoJson(
         maxLat + pad,
       ]);
       const clippedNorth = safeClipWithPlayArea(northBox, playArea);
-      const dividerLine = turf.lineString(
-        [
-          [minLng - 0.01, origin.lat],
-          [maxLng + 0.01, origin.lat],
-        ],
-        { role: 'divider' }
-      );
-      const features: Feature[] = [dividerLine];
-      if (clippedNorth) features.push(clippedNorth);
-      return turf.featureCollection(features);
+      return clippedNorth ? turf.featureCollection([clippedNorth]) : null;
     }
 
     case 'SPLIT_EW': {
@@ -610,16 +576,7 @@ export function buildQuestionPreviewGeoJson(
         maxLat + pad,
       ]);
       const clippedEast = safeClipWithPlayArea(eastBox, playArea);
-      const dividerLine = turf.lineString(
-        [
-          [origin.lng, minLat - 0.01],
-          [origin.lng, maxLat + 0.01],
-        ],
-        { role: 'divider' }
-      );
-      const features: Feature[] = [dividerLine];
-      if (clippedEast) features.push(clippedEast);
-      return turf.featureCollection(features);
+      return clippedEast ? turf.featureCollection([clippedEast]) : null;
     }
 
     case 'THERMOMETER': {
@@ -627,7 +584,6 @@ export function buildQuestionPreviewGeoJson(
       const ptB = params.pointB ?? origin;
       if (!ptA) return null;
       if (!ptB || distanceMeters(ptA, ptB) < 5) {
-        // Wenn nur Punkt A existiert: zeige 100m-Mindestlaufkreis um Punkt A
         const minWalkCircle = turf.circle([ptA.lng, ptA.lat], 100, {
           units: 'meters',
           steps: 48,
@@ -665,18 +621,7 @@ export function buildQuestionPreviewGeoJson(
       const p4 = toLatLngCoord(nx * span + ux * span, ny * span + uy * span);
       const warmerHalf = turf.polygon([[p1, p2, p3, p4, p1]]);
       const clippedWarmer = safeClipWithPlayArea(warmerHalf, playArea);
-
-      const lineSpan = 6_000;
-      const bisectorLine = turf.lineString(
-        [
-          toLatLngCoord(-nx * lineSpan, -ny * lineSpan),
-          toLatLngCoord(nx * lineSpan, ny * lineSpan),
-        ],
-        { role: 'divider' }
-      );
-      const features: Feature[] = [bisectorLine];
-      if (clippedWarmer) features.push(clippedWarmer);
-      return turf.featureCollection(features);
+      return clippedWarmer ? turf.featureCollection([clippedWarmer]) : null;
     }
 
     case 'CONE_45': {
@@ -685,13 +630,30 @@ export function buildQuestionPreviewGeoJson(
     }
 
     case 'OSM_TRANSIT': {
-      const features: Feature[] = [];
+      const circles: Feature<Polygon | MultiPolygon>[] = [];
       for (const stop of FALLBACK_TRANSIT_STOPS_81247) {
-        const circle = turf.circle([stop.lng, stop.lat], 150, {
-          units: 'meters',
-          steps: 28,
-        });
-        const clipped = safeClipWithPlayArea(circle, playArea);
+        circles.push(
+          turf.circle([stop.lng, stop.lat], 150, {
+            units: 'meters',
+            steps: 28,
+          })
+        );
+      }
+      try {
+        const united =
+          circles.length > 1
+            ? turf.union(turf.featureCollection(circles))
+            : circles[0];
+        if (united) {
+          const clipped = safeClipWithPlayArea(united, playArea);
+          return clipped ? turf.featureCollection([clipped]) : null;
+        }
+      } catch {
+        // Fallback
+      }
+      const features: Feature[] = [];
+      for (const c of circles) {
+        const clipped = safeClipWithPlayArea(c, playArea);
         if (clipped) features.push(clipped);
       }
       return turf.featureCollection(features);
@@ -712,21 +674,30 @@ export function buildQuestionPreviewGeoJson(
 
     case 'DONUT_RING': {
       if (!origin) return null;
-      const radii = [200, 400, 600, 800, 1000];
+      const bands: Array<[number, number]> = [
+        [0, 200],
+        [400, 600],
+        [800, 1000],
+      ];
       const features: Feature[] = [];
-      for (const r of radii) {
-        const circlePoly = turf.circle([origin.lng, origin.lat], r, {
+      for (const [innerR, outerR] of bands) {
+        const outerPoly = turf.circle([origin.lng, origin.lat], outerR, {
           units: 'meters',
           steps: 64,
         });
-        const clipped = safeClipWithPlayArea(circlePoly, playArea);
-        if (clipped) {
-          const line = turf.polygonToLine(clipped);
-          if (line.type === 'FeatureCollection') {
-            features.push(...line.features);
-          } else {
-            features.push(line);
-          }
+        let ringPoly: Feature<Polygon | MultiPolygon> | null = outerPoly;
+        if (innerR > 0) {
+          const innerPoly = turf.circle([origin.lng, origin.lat], innerR, {
+            units: 'meters',
+            steps: 64,
+          });
+          ringPoly = turf.difference(
+            turf.featureCollection([outerPoly, innerPoly])
+          );
+        }
+        if (ringPoly) {
+          const clipped = safeClipWithPlayArea(ringPoly, playArea);
+          if (clipped) features.push(clipped);
         }
       }
       return turf.featureCollection(features);
@@ -735,7 +706,6 @@ export function buildQuestionPreviewGeoJson(
     case 'MEDIA_SKY':
     case 'MEDIA_GROUND':
     case 'MEDIA_AUDIO': {
-      // Zeigt das gesamte aktive 81247-Suchgebiet als Hinweis-Zielbereich
       return turf.featureCollection([playArea]);
     }
 

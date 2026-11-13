@@ -563,12 +563,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                     )}
                   </div>
 
-                  <div className="flex w-full sm:w-auto items-center gap-2">
+                  <div className="flex w-full min-w-0 sm:w-auto items-center gap-2">
                     <select
                       aria-label={`Rolle für ${m.name}`}
                       value={currentValue}
                       onChange={(e) => void handleAssignMember(m, e.target.value)}
-                      className="cmf-input min-h-[44px] flex-1 sm:flex-initial px-3 py-2 text-base sm:text-xs font-semibold"
+                      className="cmf-input min-h-[44px] min-w-0 flex-1 sm:flex-initial sm:max-w-[220px] px-3 py-2 text-base sm:text-xs font-semibold"
                     >
                       <option value="HIDER">Verstecker (Die Sardinen)</option>
                       {TEAM_PALETTE.map((t) => (

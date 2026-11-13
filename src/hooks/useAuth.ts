@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { isFirebaseConfigured } from '../config/firebase';
-import { PLAYER_SEAT_HEARTBEAT_MS } from '../config/gameConfig';
 import {
   findPresetPlayerById,
   resolveAllowedPlayerByNameInput,
@@ -212,53 +211,7 @@ export function useAuth(): {
 
   const activeMember = isSessionUnlocked ? firebaseMember : null;
 
-  // Globale 1-Person-pro-Name-Sitzsperre (pro UID/Gerät, keine Tab-Sperre im selben Browser)
-  useEffect(() => {
-    if (!authUser || !activeMember?.enabled) return;
-
-    let cancelled = false;
-    const playerId = activeMember.playerId;
-    const playerName = activeMember.name;
-    const uid = authUser.uid;
-
-    const beat = async () => {
-      if (cancelled) return;
-      try {
-        const res = await adapter.tryAcquireOrRenewPlayerSeat(
-          playerId,
-          uid,
-          tabId,
-          adapter.getServerNow()
-        );
-        if (!cancelled && !res.acquired) {
-          setSeatConflictError(
-            `${playerName} ist bereits auf einem anderen Gerät aktiv.`
-          );
-        } else if (!cancelled) {
-          setSeatConflictError(null);
-        }
-      } catch {
-        // Bei kurzzeitigem Offline-Zustand nicht sperren
-      }
-    };
-
-    void beat();
-    const interval = setInterval(() => {
-      void beat();
-    }, PLAYER_SEAT_HEARTBEAT_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [
-    adapter,
-    authUser,
-    activeMember?.enabled,
-    activeMember?.name,
-    activeMember?.playerId,
-    tabId,
-  ]);
+  // Mehrere Geräte pro Spieler sind ausdrücklich erlaubt — es findet keine Ein-Gerät-Sitzsperre statt.
 
   // Präsenz nur registrieren, solange der Spieler aktiv eingeloggt ist
   useEffect(() => {
@@ -382,10 +335,17 @@ export function useAuth(): {
           (m) =>
             m.enabled && m.playerId === matched.id && m.side !== 'UNASSIGNED'
         );
+        const remoteAssignment = await adapter.fetchPlayerAssignment(matched.id);
+        const effectiveAssignment =
+          remoteAssignment && remoteAssignment.side !== 'UNASSIGNED'
+            ? remoteAssignment
+            : existingAssigned
+              ? { side: existingAssigned.side, teamId: existingAssigned.teamId }
+              : null;
 
         const isTargetHider = Boolean(
           ctx.activeHiderLock?.hiderPlayerIds.includes(matched.id) ||
-            existingAssigned?.side === 'HIDER' ||
+            effectiveAssignment?.side === 'HIDER' ||
             (firebaseMember?.playerId === matched.id &&
               firebaseMember.side === 'HIDER')
         );
@@ -413,35 +373,16 @@ export function useAuth(): {
         // Erst NACH erfolgreicher Prüfung ggf. auf einen anderen Spieler wechseln
         let finalSignedIn = initialSignedIn;
         if (firebaseMember && firebaseMember.playerId !== matched.id) {
-          await adapter
-            .releasePlayerSeat(firebaseMember.playerId, initialSignedIn.uid, tabId)
-            .catch(() => {});
           await adapter.signOut();
           finalSignedIn = await adapter.signInWithPresetPlayer(matched.loginEmail);
         }
 
-        // Prüfe, ob bereits ein anderes Gerät diesen Spielernamen aktiv nutzt
-        try {
-          const seat = await adapter.tryAcquireOrRenewPlayerSeat(
-            matched.id,
-            finalSignedIn.uid,
-            tabId,
-            adapter.getServerNow()
-          );
-          if (!seat.acquired) {
-            setLoginError(
-              `${matched.name} ist bereits auf einem anderen Gerät eingeloggt!`
-            );
-            return;
-          }
-        } catch {
-          // Falls playerClaims-Rules noch nicht aktiv sind, Login erlauben
-        }
-
         const inheritedSide =
-          existingAssigned?.side ?? (isTargetHider ? 'HIDER' : 'UNASSIGNED');
+          effectiveAssignment?.side ?? (isTargetHider ? 'HIDER' : 'UNASSIGNED');
         const inheritedTeamId =
-          inheritedSide === 'SEEKER' ? (existingAssigned?.teamId ?? null) : null;
+          inheritedSide === 'SEEKER'
+            ? (effectiveAssignment?.teamId ?? null)
+            : null;
 
         await adapter.registerSelfMemberIfMissing({
           uid: finalSignedIn.uid,

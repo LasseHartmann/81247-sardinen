@@ -1,7 +1,6 @@
 import {
   createDefaultPublicState,
   createDefaultTeams,
-  PLAYER_SEAT_TTL_MS,
 } from '../config/gameConfig';
 import { PRESET_PLAYERS } from '../config/players';
 import { snapPointIntoPlayArea } from '../geo/boundary';
@@ -43,6 +42,7 @@ export interface DemoDatabaseTree {
   gpsSimActive: boolean;
   members: Record<string, MemberRecord>;
   playerClaims: Record<string, PlayerSeatClaim>;
+  assignments?: Record<string, { side: MemberRecord['side']; teamId: string | null }>;
   joinRequests: Record<string, JoinRequest>;
   presence: Record<string, Record<string, PresenceSession>>;
   teams: Record<
@@ -439,6 +439,31 @@ export function createDemoStore(options?: {
       });
     },
 
+    async fetchPlayerAssignment(playerId) {
+      const t = readTree();
+      const fromMap = t.assignments?.[playerId];
+      if (fromMap) return structuredClone(fromMap);
+      const assignedMember = Object.values(t.members).find(
+        (m) => m.enabled && m.playerId === playerId && m.side !== 'UNASSIGNED'
+      );
+      return assignedMember
+        ? {
+            side: assignedMember.side,
+            teamId: assignedMember.side === 'SEEKER' ? (assignedMember.teamId ?? null) : null,
+          }
+        : null;
+    },
+
+    async savePlayerAssignment(playerId, side, teamId): Promise<void> {
+      writeTree((t) => {
+        if (!t.assignments) t.assignments = {};
+        t.assignments[playerId] = {
+          side,
+          teamId: side === 'SEEKER' ? (teamId ?? null) : null,
+        };
+      });
+    },
+
     async removeMemberByHost(uid): Promise<void> {
       writeTree((t) => {
         delete t.members[uid];
@@ -483,26 +508,13 @@ export function createDemoStore(options?: {
       tabId,
       nowMs
     ): Promise<{ acquired: boolean; holder: PlayerSeatClaim | null }> {
-      let acquired = false;
-      let holder: PlayerSeatClaim | null = null;
+      // Mehrere Geräte pro Spieler sind ausdrücklich erlaubt.
+      const next: PlayerSeatClaim = { uid, tabId, heartbeatAt: nowMs };
       writeTree((t) => {
         if (!t.playerClaims) t.playerClaims = {};
-        const cur = t.playerClaims[playerId];
-        if (
-          !cur ||
-          cur.heartbeatAt < nowMs - PLAYER_SEAT_TTL_MS ||
-          cur.uid === uid
-        ) {
-          const next: PlayerSeatClaim = { uid, tabId, heartbeatAt: nowMs };
-          t.playerClaims[playerId] = next;
-          acquired = true;
-          holder = next;
-        } else {
-          acquired = false;
-          holder = structuredClone(cur);
-        }
+        t.playerClaims[playerId] = next;
       });
-      return { acquired, holder };
+      return { acquired: true, holder: next };
     },
 
     async releasePlayerSeat(playerId, uid): Promise<void> {

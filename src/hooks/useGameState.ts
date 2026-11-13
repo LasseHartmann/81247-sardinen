@@ -185,6 +185,38 @@ export function useGameState(
     [presence]
   );
 
+  // Wenn ein Spieler sich auf einem zweiten Gerät eingeloggt hat, gleicht ein aktiver Host ggf. fehlende Rollenzuweisungen automatisch ab
+  useEffect(() => {
+    if (!ownMember?.enabled || !ownMember.isHost) return;
+    const assignedByPlayerId = new Map<
+      string,
+      { side: MemberRecord['side']; teamId: string | null }
+    >();
+    for (const m of Object.values(members)) {
+      if (m.enabled && m.side !== 'UNASSIGNED') {
+        assignedByPlayerId.set(m.playerId, {
+          side: m.side,
+          teamId: m.side === 'SEEKER' ? (m.teamId ?? null) : null,
+        });
+      }
+    }
+    for (const m of Object.values(members)) {
+      if (!m.enabled) continue;
+      const target = assignedByPlayerId.get(m.playerId);
+      if (!target) continue;
+      const curTeam = m.side === 'SEEKER' ? (m.teamId ?? null) : null;
+      if (m.side === 'UNASSIGNED' && (m.side !== target.side || curTeam !== target.teamId)) {
+        void adapter
+          .updateMember(m.uid, {
+            ...m,
+            side: target.side,
+            teamId: target.teamId,
+          })
+          .catch(() => {});
+      }
+    }
+  }, [adapter, members, ownMember?.enabled, ownMember?.isHost]);
+
   const ownTeamStatus = ownMember?.teamId
     ? teamsPublic[ownMember.teamId]?.status
     : undefined;

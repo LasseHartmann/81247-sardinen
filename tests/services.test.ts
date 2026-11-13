@@ -221,7 +221,7 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(loc3.lat).toBe(48.172);
     expect(loc3.lng).toBe(11.482);
 
-    // Mehrere Tabs desselben Spielers (gleiche UID) sind erlaubt, fremdes Gerät (andere UID) wird blockiert!
+    // Mehrere Tabs UND mehrere Geräte (verschiedene UIDs) desselben Spielers sind erlaubt!
     const store = createDemoStore({ inMemoryOnly: true, initialNowMs: t0 });
     const firstTab = await store.adapter.tryAcquireOrRenewPlayerSeat(
       'thomas',
@@ -231,7 +231,7 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     );
     expect(firstTab.acquired).toBe(true);
 
-    // Zweiter Tab derselben UID ist erlaubt (keine Tab-Sperre!)
+    // Zweiter Tab derselben UID ist erlaubt
     const secondTabSameUser = await store.adapter.tryAcquireOrRenewPlayerSeat(
       'thomas',
       'uid_1',
@@ -240,24 +240,23 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     );
     expect(secondTabSameUser.acquired).toBe(true);
 
-    // Eine zweite Person auf einem anderen Gerät (andere UID) wird blockiert
-    const secondPerson = await store.adapter.tryAcquireOrRenewPlayerSeat(
+    // Zweites Gerät (andere UID) darf sich ebenfalls gleichzeitig mit demselben Namen einloggen
+    const secondDevice = await store.adapter.tryAcquireOrRenewPlayerSeat(
       'thomas',
       'uid_2',
       'tab_x',
       t0 + 5_000
     );
-    expect(secondPerson.acquired).toBe(false);
+    expect(secondDevice.acquired).toBe(true);
 
-    // Nach Abmelden ist der Name sofort wieder frei
-    await store.adapter.releasePlayerSeat('thomas', 'uid_1', 'tab_b');
-    const afterRelease = await store.adapter.tryAcquireOrRenewPlayerSeat(
-      'thomas',
-      'uid_2',
-      'tab_x',
-      t0 + 6_000
-    );
-    expect(afterRelease.acquired).toBe(true);
+    // Rollenzuweisung wird bei Multi-Device-Login sauber für neue Geräte vorgehalten
+    await store.adapter.savePlayerAssignment('thomas', 'SEEKER', 'team-2');
+    expect(await store.adapter.fetchPlayerAssignment('thomas')).toEqual({
+      side: 'SEEKER',
+      teamId: 'team-2',
+    });
+
+    await store.adapter.releasePlayerSeat('thomas', 'uid_2', 'tab_x');
 
     // Kicken eines Spielers durch den Spielleiter entfernt Member-Eintrag, Sitz-Claim und Team-Zugehörigkeit
     await store.adapter.kickPlayerByHost('thomas', ['demo_uid_thomas', 'uid_2']);

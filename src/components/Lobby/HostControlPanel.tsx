@@ -231,6 +231,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
         });
       }
     }
+    await adapter.savePlayerAssignment(member.playerId, side, teamId);
 
     for (const palette of TEAM_PALETTE) {
       const curTeam = teamsPublic[palette.id];

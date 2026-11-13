@@ -21,7 +21,6 @@ import {
   GAME_ID,
   isLegacyPlaceholderPlayArea,
   OFFICIAL_81247_AREA_NAME,
-  PLAYER_SEAT_TTL_MS,
   TEAM_MEMBER_FIX_MAX_AGE_MS,
   TEAM_PALETTE,
 } from '../config/gameConfig';
@@ -78,6 +77,8 @@ export interface DatabaseAdapter {
 
   signInWithPresetPlayer(loginEmail: string, password?: string): Promise<AuthUserSummary>;
   registerSelfMemberIfMissing(member: MemberRecord): Promise<void>;
+  fetchPlayerAssignment(playerId: string): Promise<{ side: MemberRecord['side']; teamId: string | null } | null>;
+  savePlayerAssignment(playerId: string, side: MemberRecord['side'], teamId: string | null): Promise<void>;
   claimInitialHostRole(uid: string, playerId: string, name: string): Promise<void>;
   removeMemberByHost(uid: string): Promise<void>;
   kickPlayerByHost(playerId: string, memberUids: string[]): Promise<void>;
@@ -533,6 +534,35 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       }
     },
 
+    async fetchPlayerAssignment(playerId) {
+      try {
+        const snap = await get(ref(db, `${ROOT_PATH}/assignments/${playerId}`));
+        if (!snap.exists()) return null;
+        const val = snap.val() as { side?: MemberRecord['side']; teamId?: string | null };
+        if (!val?.side) return null;
+        return {
+          side: val.side,
+          teamId: val.side === 'SEEKER' ? (val.teamId ?? null) : null,
+        };
+      } catch {
+        return null;
+      }
+    },
+
+    async savePlayerAssignment(playerId, side, teamId): Promise<void> {
+      try {
+        await set(
+          ref(db, `${ROOT_PATH}/assignments/${playerId}`),
+          stripUndefinedDeep({
+            side,
+            teamId: side === 'SEEKER' ? (teamId ?? null) : null,
+          })
+        );
+      } catch {
+        // Ignorieren, falls ältere Firebase-Rules aktiv sind
+      }
+    },
+
     async removeMemberByHost(uid): Promise<void> {
       await remove(ref(db, `${ROOT_PATH}/members/${uid}`));
     },
@@ -588,39 +618,16 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       tabId,
       nowMs
     ): Promise<{ acquired: boolean; holder: PlayerSeatClaim | null }> {
-      const claimRef = ref(db, `${ROOT_PATH}/playerClaims/${playerId}`);
-      let won = false;
-      const tx = await runTransaction(claimRef, (cur: PlayerSeatClaim | null) => {
-        if (
-          !cur ||
-          cur.heartbeatAt < nowMs - PLAYER_SEAT_TTL_MS ||
-          cur.uid === uid
-        ) {
-          won = true;
-          return {
-            uid,
-            tabId,
-            heartbeatAt: nowMs,
-          };
-        }
-        won = false;
-        return; // Abbruch: anderes Gerät (andere UID) hält aktiven Sitz
-      });
-
-      const currentVal = (tx.snapshot.val() as PlayerSeatClaim | null) ?? null;
-      const acquired =
-        Boolean(tx.committed && won) ||
-        Boolean(currentVal && currentVal.uid === uid);
-
-      if (acquired) {
-        onDisconnect(claimRef)
-          .remove()
-          .catch(() => {});
+      // Mehrere Geräte pro Spieler sind ausdrücklich erlaubt.
+      const claim: PlayerSeatClaim = { uid, tabId, heartbeatAt: nowMs };
+      try {
+        await set(ref(db, `${ROOT_PATH}/playerClaims/${playerId}`), claim);
+      } catch {
+        // Falls parallel ein anderes Gerät schreibt oder Rules greifen, Login dennoch erlauben
       }
-
       return {
-        acquired,
-        holder: currentVal,
+        acquired: true,
+        holder: claim,
       };
     },
 

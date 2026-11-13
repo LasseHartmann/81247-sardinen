@@ -97,10 +97,25 @@ export const GameMap: React.FC<GameMapProps> = ({
   const previewLayerRef = useRef<L.LayerGroup | null>(null);
   const actorsLayerRef = useRef<L.LayerGroup | null>(null);
 
+  const anchorMarkerRef = useRef<L.Marker | null>(null);
+  const ownMarkerRef = useRef<L.Marker | null>(null);
+  const teamMarkersRef = useRef<
+    Map<string, { marker: L.Marker; name: string; color: string }>
+  >(new Map());
+  const emergencyMarkersRef = useRef<
+    Map<string, { marker: L.Marker; senderName: string }>
+  >(new Map());
+
   const onClickRef = useRef(onMapCoordinateClick);
   onClickRef.current = onMapCoordinateClick;
   const clickModeRef = useRef(clickMode);
   clickModeRef.current = clickMode;
+
+  const cluesSignature = clues.map((c) => c.id).join('|');
+  const hiddenSignature = Array.from(hiddenClueIds).sort().join('|');
+  const radarSignature = publishedRadar
+    ? `${publishedRadar.stage}_${publishedRadar.center.lat}_${publishedRadar.center.lng}_${publishedRadar.radiusMeters}`
+    : '';
 
   const possibleHidingArea = useMemo(
     () =>
@@ -110,7 +125,8 @@ export const GameMap: React.FC<GameMapProps> = ({
         hiddenClueIds,
         publishedRadar,
       }),
-    [playArea, clues, hiddenClueIds, publishedRadar]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [playArea, cluesSignature, hiddenSignature, radarSignature]
   );
 
   const excludedOrangeMask = useMemo(
@@ -162,6 +178,10 @@ export const GameMap: React.FC<GameMapProps> = ({
 
     return () => {
       resizeObserver.disconnect();
+      anchorMarkerRef.current = null;
+      ownMarkerRef.current = null;
+      teamMarkersRef.current.clear();
+      emergencyMarkersRef.current.clear();
       map.remove();
       mapRef.current = null;
     };
@@ -267,23 +287,33 @@ export const GameMap: React.FC<GameMapProps> = ({
     }
   }, [liveConePreview, thermoPointA, thermoPointB, clickMode.kind, anchorGpsOrigin]);
 
-  // 3. Eigene Position, autorisierte Team-Beacons sowie Hider-Anchor (ohne störende Kreislinien)
+  // 3. Eigene Position, autorisierte Team-Beacons sowie Hider-Anchor (in-place aktualisiert ohne Flackern!)
   useEffect(() => {
     const group = actorsLayerRef.current;
     if (!group) return;
-    group.clearLayers();
 
+    // 3a. Hider-Anchor Marker
     if (showAnchorAndLeash && anchorPoint) {
-      L.marker([anchorPoint.lat, anchorPoint.lng], {
-        icon: createAnchorPointIcon(),
-      })
-        .bindPopup(
-          `<strong>SARDINEN-VERSTECK // HQ</strong><br/>RADIUS: ${LEASH_RADIUS_METERS}M (±${anchorPoint.accuracy}M)`
+      const popupHtml = `<strong>SARDINEN-VERSTECK // HQ</strong><br/>RADIUS: ${LEASH_RADIUS_METERS}M (±${anchorPoint.accuracy}M)`;
+      if (!anchorMarkerRef.current) {
+        anchorMarkerRef.current = L.marker(
+          [anchorPoint.lat, anchorPoint.lng],
+          { icon: createAnchorPointIcon() }
         )
-        .addTo(group);
+          .bindPopup(popupHtml)
+          .addTo(group);
+      } else {
+        anchorMarkerRef.current.setLatLng([anchorPoint.lat, anchorPoint.lng]);
+        anchorMarkerRef.current.setPopupContent(popupHtml);
+      }
+    } else if (anchorMarkerRef.current) {
+      group.removeLayer(anchorMarkerRef.current);
+      anchorMarkerRef.current = null;
     }
 
+    // 3b. Team-Beacons
     const activeSet = activeTeamIds ? new Set(activeTeamIds) : null;
+    const seenTeams = new Set<string>();
 
     for (const [teamId, loc] of Object.entries(visibleTeamLocations)) {
       if (!loc) continue;
@@ -291,29 +321,63 @@ export const GameMap: React.FC<GameMapProps> = ({
       const pub = teamsPublic[teamId];
       if (!pub || pub.status === 'JOINED_SARDINES' || pub.memberPlayerIds.length === 0) continue;
 
+      seenTeams.add(teamId);
       const contributorInfo =
         loc.activeContributorCount && loc.activeContributorCount > 1
           ? ` [AVG:${loc.activeContributorCount}]`
           : '';
+      const popupHtml = `<strong>${pub.name.toUpperCase()}</strong>${contributorInfo}<br/>GPS: ±${Math.round(loc.accuracy)}M`;
 
-      L.marker([loc.lat, loc.lng], {
-        icon: createTeamBeaconIcon(pub.name, pub.color),
-      })
-        .bindPopup(
-          `<strong>${pub.name.toUpperCase()}</strong>${contributorInfo}<br/>GPS: ±${Math.round(loc.accuracy)}M`
-        )
-        .addTo(group);
+      const existing = teamMarkersRef.current.get(teamId);
+      if (!existing) {
+        const marker = L.marker([loc.lat, loc.lng], {
+          icon: createTeamBeaconIcon(pub.name, pub.color),
+        })
+          .bindPopup(popupHtml)
+          .addTo(group);
+        teamMarkersRef.current.set(teamId, {
+          marker,
+          name: pub.name,
+          color: pub.color,
+        });
+      } else {
+        existing.marker.setLatLng([loc.lat, loc.lng]);
+        existing.marker.setPopupContent(popupHtml);
+        if (existing.name !== pub.name || existing.color !== pub.color) {
+          existing.marker.setIcon(createTeamBeaconIcon(pub.name, pub.color));
+          existing.name = pub.name;
+          existing.color = pub.color;
+        }
+      }
     }
 
+    for (const [teamId, entry] of teamMarkersRef.current.entries()) {
+      if (!seenTeams.has(teamId)) {
+        group.removeLayer(entry.marker);
+        teamMarkersRef.current.delete(teamId);
+      }
+    }
+
+    // 3c. Eigene Position
     if (ownFix) {
-      L.marker([ownFix.lat, ownFix.lng], {
-        icon: createOwnPositionIcon(isOwnSideHider),
-      })
-        .bindTooltip(`POS // ±${Math.round(ownFix.accuracy)}M`)
-        .addTo(group);
+      const tooltipText = `POS // ±${Math.round(ownFix.accuracy)}M`;
+      if (!ownMarkerRef.current) {
+        ownMarkerRef.current = L.marker([ownFix.lat, ownFix.lng], {
+          icon: createOwnPositionIcon(isOwnSideHider),
+        })
+          .bindTooltip(tooltipText)
+          .addTo(group);
+      } else {
+        ownMarkerRef.current.setLatLng([ownFix.lat, ownFix.lng]);
+        ownMarkerRef.current.setTooltipContent(tooltipText);
+      }
+    } else if (ownMarkerRef.current) {
+      group.removeLayer(ownMarkerRef.current);
+      ownMarkerRef.current = null;
     }
 
     // 4. Notfall-Standorte (SOS-Pins) für alle aktiven Notfallnachrichten mit Koordinaten
+    const seenSosIds = new Set<string>();
     for (const msg of emergencyMessages) {
       if (
         typeof msg.lat === 'number' &&
@@ -321,14 +385,36 @@ export const GameMap: React.FC<GameMapProps> = ({
         typeof msg.lng === 'number' &&
         Number.isFinite(msg.lng)
       ) {
-        L.marker([msg.lat, msg.lng], {
-          icon: createEmergencyBeaconIcon(msg.senderName),
-          zIndexOffset: 1000,
-        })
-          .bindPopup(
-            `<strong>NOTFALL // ${msg.senderName.toUpperCase()}</strong><br/>${msg.text}<br/>POS: ${msg.lat.toFixed(5)}, ${msg.lng.toFixed(5)}${typeof msg.accuracy === 'number' ? ` (±${Math.round(msg.accuracy)}M)` : ''}`
-          )
-          .addTo(group);
+        const sosKey = msg.uid || msg.senderName;
+        seenSosIds.add(sosKey);
+        const popupHtml = `<strong>NOTFALL // ${msg.senderName.toUpperCase()}</strong><br/>${msg.text}<br/>POS: ${msg.lat.toFixed(5)}, ${msg.lng.toFixed(5)}${typeof msg.accuracy === 'number' ? ` (±${Math.round(msg.accuracy)}M)` : ''}`;
+        const existingSos = emergencyMarkersRef.current.get(sosKey);
+        if (!existingSos) {
+          const marker = L.marker([msg.lat, msg.lng], {
+            icon: createEmergencyBeaconIcon(msg.senderName),
+            zIndexOffset: 1000,
+          })
+            .bindPopup(popupHtml)
+            .addTo(group);
+          emergencyMarkersRef.current.set(sosKey, {
+            marker,
+            senderName: msg.senderName,
+          });
+        } else {
+          existingSos.marker.setLatLng([msg.lat, msg.lng]);
+          existingSos.marker.setPopupContent(popupHtml);
+          if (existingSos.senderName !== msg.senderName) {
+            existingSos.marker.setIcon(createEmergencyBeaconIcon(msg.senderName));
+            existingSos.senderName = msg.senderName;
+          }
+        }
+      }
+    }
+
+    for (const [sosKey, entry] of emergencyMarkersRef.current.entries()) {
+      if (!seenSosIds.has(sosKey)) {
+        group.removeLayer(entry.marker);
+        emergencyMarkersRef.current.delete(sosKey);
       }
     }
   }, [

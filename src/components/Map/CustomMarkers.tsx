@@ -51,7 +51,7 @@ export function createTeamBeaconIcon(teamName: string, color: string): L.DivIcon
     iconSize: [96, 36],
     iconAnchor: [48, 18],
     html: `
-      <div class="cmf-pop-in" style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
+      <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
         <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:9999px;background:#14171A;border:1px solid #9AA4AE;color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.05em;white-space:nowrap;box-shadow:0 4px 12px rgba(20,25,30,0.28);">
           <span style="width:6px;height:6px;border-radius:9999px;background:${color};display:inline-block;"></span>
           <span>${shortLabel}</span>
@@ -78,7 +78,7 @@ export function createSelectionPinIcon(
     iconSize: [30, 30],
     iconAnchor: [15, 15],
     html: `
-      <div class="cmf-pop-in" style="width:30px;height:30px;border-radius:9999px;background:${bg};border:${border};color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(20,25,30,0.32);">
+      <div style="width:30px;height:30px;border-radius:9999px;background:${bg};border:${border};color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(20,25,30,0.32);">
         ${safe}
       </div>
     `,
@@ -95,7 +95,7 @@ export function createEmergencyBeaconIcon(senderName: string): L.DivIcon {
     iconSize: [132, 52],
     iconAnchor: [66, 38],
     html: `
-      <div class="cmf-pop-in" style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
+      <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
         <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:9999px;background:#991B1B;border:2px solid #FCA5A5;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;letter-spacing:0.06em;white-space:nowrap;box-shadow:0 6px 18px rgba(220,38,38,0.55);">
           <span style="width:7px;height:7px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
           <span>SOS // ${safeName}</span>

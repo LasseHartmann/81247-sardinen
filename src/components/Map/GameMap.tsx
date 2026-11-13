@@ -191,28 +191,15 @@ const GameMapInner: React.FC<GameMapProps> = ({
       fadeAnimation: false,
     });
 
-    const positronUrl =
-      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-    const osmFallbackUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    let switchedToFallback = false;
-
-    const tileLayer = L.tileLayer(positronUrl, {
-      subdomains: 'abcd',
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      subdomains: ['a', 'b', 'c'],
       maxZoom: 19,
       keepBuffer: 2,
       updateWhenIdle: true,
       updateWhenZooming: false,
       attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OSM</a> &copy; CARTO // 81247',
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> // 81247',
     }).addTo(map);
-
-    tileLayer.on('tileerror', () => {
-      if (!switchedToFallback) {
-        switchedToFallback = true;
-        tileLayer.options.subdomains = ['a', 'b', 'c'];
-        tileLayer.setUrl(osmFallbackUrl);
-      }
-    });
 
     hidingZoneLayerRef.current = L.layerGroup().addTo(map);
     previewLayerRef.current = L.layerGroup().addTo(map);

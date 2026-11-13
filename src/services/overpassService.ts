@@ -7,7 +7,7 @@ import {
 import type { OsmEnvironmentData } from '../geo/clueGeometry';
 import type { LatLng } from '../types/game';
 
-const OSM_CACHE_KEY = 'sardinen_81247_osm_cache_v1';
+const OSM_CACHE_KEY = 'sardinen_81247_osm_cache_v2';
 const OSM_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 Stunden
 const OVERPASS_TIMEOUT_MS = 6_000; // 6 Sekunden Schutzlimit
 const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
@@ -112,8 +112,6 @@ export async function fetchOsmEnvironment81247(
   const query = `
 [out:json][timeout:5];
 (
-  node["highway"="bus_stop"](${bboxStr});
-  node["railway"~"^(station|tram_stop|subway_entrance)$"](${bboxStr});
   way["leisure"~"^(park|garden)$"](${bboxStr});
   way["landuse"~"^(forest|grass)$"](${bboxStr});
 );
@@ -140,26 +138,10 @@ out body geom;
     const json = (await response.json()) as { elements?: OverpassElement[] };
     const elements = json.elements ?? [];
 
-    const transitStops: LatLng[] = [];
     const greenPolygons: Feature<Polygon | MultiPolygon>[] = [];
 
     for (const el of elements) {
       const tags = el.tags ?? {};
-      const isTransit =
-        tags.highway === 'bus_stop' ||
-        tags.railway === 'station' ||
-        tags.railway === 'tram_stop' ||
-        tags.railway === 'subway_entrance';
-
-      if (isTransit) {
-        const lat = el.lat ?? el.center?.lat;
-        const lng = el.lon ?? el.center?.lon;
-        if (typeof lat === 'number' && typeof lng === 'number') {
-          transitStops.push({ lat, lng });
-        }
-        continue;
-      }
-
       const isGreen =
         tags.leisure === 'park' ||
         tags.leisure === 'garden' ||
@@ -187,13 +169,8 @@ out body geom;
       }
     }
 
-    if (transitStops.length === 0 && greenPolygons.length === 0) {
-      return getCuratedFallbackOsmData();
-    }
-
-    // Falls Overpass nur Teilmengen liefert, ergänze fehlende Kategorie aus 81247-Basisdaten
-    const finalTransit =
-      transitStops.length > 0 ? transitStops : getFallbackTransitLatLngs81247();
+    // Haltestellen nutzen stets den vollständigen, verifizierten 81247-Datensatz (45 Overpass-Haltepunkte)
+    const finalTransit = getFallbackTransitLatLngs81247();
     const finalGreen =
       greenPolygons.length > 0
         ? greenPolygons
@@ -203,7 +180,7 @@ out body geom;
     return {
       transitStops: finalTransit,
       greenPolygons: finalGreen,
-      usedOfflineFallback: false,
+      usedOfflineFallback: greenPolygons.length === 0,
     };
   } catch {
     return getCuratedFallbackOsmData();

@@ -1,4 +1,5 @@
-import type { Feature, Polygon } from 'geojson';
+import type { Feature, FeatureCollection, Point, Polygon } from 'geojson';
+import transitStopsGeoJson from './transitStops81247.geojson';
 import type { LatLng } from '../types/game';
 
 export interface CuratedTransitStop {
@@ -9,89 +10,37 @@ export interface CuratedTransitStop {
   lng: number;
 }
 
+interface TransitStopProperties {
+  '@id'?: string;
+  name?: string;
+  railway?: string;
+  highway?: string;
+}
+
+const rawTransitCollection =
+  transitStopsGeoJson as unknown as FeatureCollection<Point, TransitStopProperties>;
+
 /**
- * Echte, kuratierte ÖPNV-Haltestellen im Münchner Postleitzahlengebiet 81247
- * (Obermenzing / Schloss Blutenburg / Pipping) als zuverlässiger Offline-Fallback.
+ * Vollständiger Satz aller 45 Overpass-ÖPNV-Haltestellen in & direkt an 81247 München
+ * (Bussteige + S-Bahnhof Obermenzing aus export.geojson).
  */
-export const FALLBACK_TRANSIT_STOPS_81247: CuratedTransitStop[] = [
-  {
-    id: 'sbahn-obermenzing',
-    name: 'S-Bahnhof Obermenzing (S2)',
-    kind: 'S-Bahn',
-    lat: 48.1648,
-    lng: 11.4944,
-  },
-  {
-    id: 'bus-schloss-blutenburg',
-    name: 'Schloss Blutenburg (Bus 143/160)',
-    kind: 'Bus',
-    lat: 48.1642,
-    lng: 11.4589,
-  },
-  {
-    id: 'bus-verdistrasse',
-    name: 'Verdistraße / Am Durchblick',
-    kind: 'Bus',
-    lat: 48.1656,
-    lng: 11.4675,
-  },
-  {
-    id: 'bus-dorfstrasse',
-    name: 'Dorfstraße Obermenzing',
-    kind: 'Bus',
-    lat: 48.1684,
-    lng: 11.4662,
-  },
-  {
-    id: 'bus-passionistenstrasse',
-    name: 'Passionistenstraße',
-    kind: 'Bus',
-    lat: 48.1669,
-    lng: 11.4748,
-  },
-  {
-    id: 'bus-menzinger-strasse',
-    name: 'Menzinger Straße',
-    kind: 'Bus',
-    lat: 48.1659,
-    lng: 11.4872,
-  },
-  {
-    id: 'bus-pipping',
-    name: 'Pipping / Pippinger Straße',
-    kind: 'Bus',
-    lat: 48.1578,
-    lng: 11.4596,
-  },
-  {
-    id: 'bus-grandlstrasse',
-    name: 'Obermenzing Kirche / Grandlstraße',
-    kind: 'Bus',
-    lat: 48.1698,
-    lng: 11.4724,
-  },
-  {
-    id: 'bus-lustheimstrasse',
-    name: 'Lustheimstraße',
-    kind: 'Bus',
-    lat: 48.1636,
-    lng: 11.4795,
-  },
-  {
-    id: 'bus-marsopstrasse',
-    name: 'Marsopstraße',
-    kind: 'Bus',
-    lat: 48.1598,
-    lng: 11.4742,
-  },
-  {
-    id: 'bus-waldhornstrasse',
-    name: 'Waldhornstraße',
-    kind: 'Bus',
-    lat: 48.1741,
-    lng: 11.4658,
-  },
-];
+export const FALLBACK_TRANSIT_STOPS_81247: CuratedTransitStop[] = (
+  rawTransitCollection.features ?? []
+)
+  .filter((f) => f.geometry?.type === 'Point' && f.geometry.coordinates.length >= 2)
+  .map((f, idx) => {
+    const [lng, lat] = f.geometry.coordinates;
+    const props = f.properties ?? {};
+    const kind: 'S-Bahn' | 'Bus' = props.railway ? 'S-Bahn' : 'Bus';
+    const baseName = props.name?.trim() || `Haltestelle ${idx + 1}`;
+    return {
+      id: String(f.id ?? props['@id'] ?? `stop-${idx + 1}`),
+      name: baseName,
+      kind,
+      lat,
+      lng,
+    };
+  });
 
 /**
  * Echte, kuratierte Grünanlagen & Parks in 81247 München

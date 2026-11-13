@@ -6,6 +6,10 @@ import {
   DEFAULT_PLAY_AREA_FEATURE,
 } from '../src/config/gameConfig';
 import {
+  FALLBACK_TRANSIT_STOPS_81247,
+  getFallbackTransitLatLngs81247,
+} from '../src/config/fallbackOsm81247';
+import {
   buildPolygonFromVertices,
   extractPolygonVertices,
   isPointInPlayArea,
@@ -245,6 +249,18 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
     // Schloss Blutenburg liegt im offiziellen 81247-Gebiet
     expect(
       isPointInPlayArea({ lat: 48.1632, lng: 11.4572 }, DEFAULT_PLAY_AREA_FEATURE)
+    ).toBe(true);
+
+    // Prüfe den vollständigen 81247-ÖPNV-Haltestellen-Datensatz (45 Overpass-Haltepunkte)
+    expect(FALLBACK_TRANSIT_STOPS_81247).toHaveLength(45);
+    expect(getFallbackTransitLatLngs81247()).toHaveLength(45);
+    expect(
+      FALLBACK_TRANSIT_STOPS_81247.some(
+        (s) => s.name === 'Obermenzing' && s.kind === 'S-Bahn'
+      )
+    ).toBe(true);
+    expect(
+      FALLBACK_TRANSIT_STOPS_81247.some((s) => s.name === 'Goteboldstraße')
     ).toBe(true);
 
     // Prüfe Kartenvorschau (buildQuestionPreviewGeoJson) für alle möglichen Fragen

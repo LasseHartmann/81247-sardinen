@@ -275,15 +275,38 @@ export function evaluateOsmTransit(
     (stop) => distanceMeters(anchorPoint, stop) <= 150
   );
 
-  const bufferedStops: Feature[] = [];
+  const circles: Feature<Polygon | MultiPolygon>[] = [];
   for (const stop of transitStops) {
-    const circle = turf.circle([stop.lng, stop.lat], 150, {
-      units: 'meters',
-      steps: 28,
-    });
-    const clipped = safeClipWithPlayArea(circle, playArea);
-    if (clipped) {
-      bufferedStops.push(clipped);
+    circles.push(
+      turf.circle([stop.lng, stop.lat], 150, {
+        units: 'meters',
+        steps: 28,
+      })
+    );
+  }
+
+  let bufferedStops: Feature[] = [];
+  try {
+    const united =
+      circles.length > 1
+        ? turf.union(turf.featureCollection(circles))
+        : circles[0];
+    if (united) {
+      const clipped = safeClipWithPlayArea(united, playArea);
+      if (clipped) {
+        bufferedStops = [clipped];
+      }
+    }
+  } catch {
+    // Fallback auf Einzel-Clipping bei Bedarf
+  }
+
+  if (bufferedStops.length === 0 && circles.length > 0) {
+    for (const circle of circles) {
+      const clipped = safeClipWithPlayArea(circle, playArea);
+      if (clipped) {
+        bufferedStops.push(clipped);
+      }
     }
   }
 

@@ -1,0 +1,1506 @@
+{
+  "type": "FeatureCollection",
+  "generator": "overpass-turbo",
+  "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL.",
+  "timestamp": "2026-11-13T19:03:34Z",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "way/153916182",
+      "properties": {
+        "@id": "way/153916182",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2026-08-26",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.20",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Marsopstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1798:3:MSP 2",
+        "shelter": "yes",
+        "tactile_paving": "yes",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4669876,
+          48.1573103
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/153916183",
+      "properties": {
+        "@id": "way/153916183",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2026-08-26",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.20",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Marsopstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1798:3:MSP 1",
+        "shelter": "yes",
+        "tactile_paving": "yes",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4671291,
+          48.1572343
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/371630479",
+      "properties": {
+        "@id": "way/371630479",
+        "area": "yes",
+        "bench": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.20",
+        "mvv:zone": "M;1",
+        "name": "Blutenburg",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.4",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1807:3:3",
+        "shelter": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4572634,
+          48.1656638
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/371630481",
+      "properties": {
+        "@id": "way/371630481",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.21",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Blutenburg",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.4",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1807:4:4",
+        "shelter": "yes",
+        "tactile_paving": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4563528,
+          48.1645209
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/371630484",
+      "properties": {
+        "@id": "way/371630484",
+        "area": "yes",
+        "bench": "no",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2022-10-20",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.21",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Campingplatz Obermenzing",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3.3",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1815:1:1",
+        "shelter": "no",
+        "tactile_paving": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4466912,
+          48.174986
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/371630490",
+      "properties": {
+        "@id": "way/371630490",
+        "area": "yes",
+        "bench": "no",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2022-10-20",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.03",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Campingplatz Obermenzing",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "4.7",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1815:2:2",
+        "shelter": "no",
+        "tactile_paving": "yes",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4466032,
+          48.1751152
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/371630536",
+      "properties": {
+        "@id": "way/371630536",
+        "area": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.13",
+        "mvv:zone": "M;1",
+        "name": "Lochhausener Straße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.5",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1816:3:3",
+        "shelter": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4570567,
+          48.169075
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/371630537",
+      "properties": {
+        "@id": "way/371630537",
+        "area": "yes",
+        "bench": "no",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.13",
+        "lit": "no",
+        "mvv:zone": "M;1",
+        "name": "Lochhausener Straße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3.2",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1816:1:1",
+        "shelter": "yes",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4569713,
+          48.1696924
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/371630538",
+      "properties": {
+        "@id": "way/371630538",
+        "area": "yes",
+        "bench": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.13",
+        "mvv:zone": "M;1",
+        "name": "Lochhausener Straße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.4",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1816:2:2",
+        "shelter": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4571403,
+          48.1692809
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853290",
+      "properties": {
+        "@id": "way/375853290",
+        "area": "yes",
+        "bench": "no",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.20",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Blutenburg",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.7",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1807:6:6",
+        "shelter": "no",
+        "tactile_paving": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4556995,
+          48.1656616
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853291",
+      "properties": {
+        "@id": "way/375853291",
+        "area": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "name": "Blutenburg",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "note": "Ausstieg für Linie 160 mit Endhaltestelle Blutenburg",
+        "public_transport": "platform",
+        "shelter": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4593781,
+          48.1647792
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853292",
+      "properties": {
+        "@id": "way/375853292",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.21",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Blutenburg",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3.1",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1807:1:1",
+        "shelter": "yes",
+        "tactile_paving": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4572029,
+          48.1649084
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853298",
+      "properties": {
+        "@id": "way/375853298",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.10",
+        "lit": "no",
+        "mvv:zone": "M;1",
+        "name": "Dorfstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "1.5",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1809:2:2",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4681681,
+          48.1646936
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853299",
+      "properties": {
+        "@id": "way/375853299",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.14",
+        "mvv:zone": "M;1",
+        "name": "Dorfstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1809:1:1",
+        "shelter": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4659483,
+          48.1648474
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853300",
+      "properties": {
+        "@id": "way/375853300",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.09",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Dorfstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "4",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1809:3:3",
+        "shelter": "yes",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4671921,
+          48.1641044
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853845",
+      "properties": {
+        "@id": "way/375853845",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2026-09-02",
+        "check_date:tactile_paving": "2026-09-02",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.06",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Lustheimstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:235:1:1",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4868485,
+          48.1638742
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853846",
+      "properties": {
+        "@id": "way/375853846",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2026-09-02",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.13",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Lustheimstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3.5",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:235:2:2",
+        "shelter": "yes",
+        "tactile_paving": "no",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4860542,
+          48.163709
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853887",
+      "properties": {
+        "@id": "way/375853887",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.18",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Obermenzing Bahnhof",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3.8",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1900:2:2",
+        "shelter": "yes",
+        "tactile_paving": "yes",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4786859,
+          48.1640951
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853904",
+      "properties": {
+        "@id": "way/375853904",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.18",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Obermenzing Bahnhof",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3.8",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1900:1:1",
+        "shelter": "no",
+        "tactile_paving": "yes",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4784587,
+          48.1642853
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853949",
+      "properties": {
+        "@id": "way/375853949",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.05",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Sarasatestraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1811:1:1",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4735197,
+          48.164496
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375853956",
+      "properties": {
+        "@id": "way/375853956",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.09",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Sarasatestraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.5",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1811:2:2",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4733415,
+          48.1646642
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375854088",
+      "properties": {
+        "@id": "way/375854088",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.11",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Wöhlerstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1808:2:2",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4642467,
+          48.1646941
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/375854089",
+      "properties": {
+        "@id": "way/375854089",
+        "area": "yes",
+        "bench": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.15",
+        "mvv:zone": "M;1",
+        "name": "Wöhlerstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1808:1:1",
+        "shelter": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4626425,
+          48.1648502
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/379853704",
+      "properties": {
+        "@id": "way/379853704",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2026-09-02",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.11",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Am Durchblick",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "1.2",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1848:3:DUR 1",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4783164,
+          48.1610259
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/379853705",
+      "properties": {
+        "@id": "way/379853705",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2026-09-02",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.09",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Am Durchblick",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1848:3:DUR 2",
+        "shelter": "yes",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4781947,
+          48.1609263
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/379853735",
+      "properties": {
+        "@id": "way/379853735",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2026-09-02",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.19",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Frauendorferstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.7",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1901:2:2",
+        "shelter": "yes",
+        "tactile_paving": "no",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4762508,
+          48.1635635
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/379853736",
+      "properties": {
+        "@id": "way/379853736",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.20",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Frauendorferstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1901:1:1",
+        "shelter": "yes",
+        "tactile_paving": "yes",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4767962,
+          48.1637608
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/379853748",
+      "properties": {
+        "@id": "way/379853748",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:tactile_paving": "2021-01-22",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.06",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Heerstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3.2",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1908:1:1",
+        "shelter": "yes",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4816576,
+          48.1709194
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/379853768",
+      "properties": {
+        "@id": "way/379853768",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2023-08-08",
+        "highway": "bus_stop",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Kunstmannstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "public_transport": "platform",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4770287,
+          48.1739584
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/435534505",
+      "properties": {
+        "@id": "way/435534505",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.1",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Menterstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1799:3:MTS 1",
+        "shelter": "yes",
+        "tactile_paving": "no",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4671316,
+          48.1612278
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/435534506",
+      "properties": {
+        "@id": "way/435534506",
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.12",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Menterstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1799:3:MTS 2",
+        "shelter": "yes",
+        "tactile_paving": "no",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4669976,
+          48.1612332
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/444978242",
+      "properties": {
+        "@id": "way/444978242",
+        "area": "yes",
+        "bench": "no",
+        "bin": "yes",
+        "bus": "yes",
+        "description": "Bussteig, 158 Ri.Amalienburgstraße",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.10",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Bauseweinallee",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.8",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1770:1:1",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "wheelchair": "yes",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4727578,
+          48.1748541
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/444978244",
+      "properties": {
+        "@id": "way/444978244",
+        "area": "yes",
+        "bench": "no",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.12",
+        "mvv:zone": "M;1",
+        "name": "Benderstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.7",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1767:1:1",
+        "shelter": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4645579,
+          48.1723838
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/444978245",
+      "properties": {
+        "@id": "way/444978245",
+        "area": "yes",
+        "bench": "no",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.10",
+        "mvv:zone": "M;1",
+        "name": "Dorfstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1809:4:4",
+        "shelter": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4669644,
+          48.1649468
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/444978249",
+      "properties": {
+        "@id": "way/444978249",
+        "area": "yes",
+        "bench": "no",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.13",
+        "mvv:zone": "M;1",
+        "name": "Heerstraße West",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.5",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1772:1:1",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4745322,
+          48.1695076
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/444978250",
+      "properties": {
+        "@id": "way/444978250",
+        "area": "yes",
+        "bench": "no",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.10",
+        "mvv:zone": "M;1",
+        "name": "Im Wismat",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "1.5",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1768:1:1",
+        "shelter": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4664218,
+          48.1736378
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/444978252",
+      "properties": {
+        "@id": "way/444978252",
+        "area": "yes",
+        "bench": "no",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.18",
+        "mvv:zone": "M;1",
+        "name": "Karwinskistraße Ost",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1773:1:1",
+        "shelter": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4754855,
+          48.1680705
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/444978253",
+      "properties": {
+        "@id": "way/444978253",
+        "area": "yes",
+        "bench": "no",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.03",
+        "mvv:zone": "M;1",
+        "name": "Karwinskistraße West",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "4.7",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1766:1:1",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4646654,
+          48.1686257
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/444978255",
+      "properties": {
+        "@id": "way/444978255",
+        "area": "yes",
+        "bench": "no",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.08",
+        "mvv:zone": "M;1",
+        "name": "Stücklenstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.5",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1771:1:1",
+        "shelter": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4740882,
+          48.1717108
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "way/444978258",
+      "properties": {
+        "@id": "way/444978258",
+        "area": "yes",
+        "bench": "no",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.08",
+        "mvv:zone": "M;1",
+        "name": "Thuillestraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "3",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1769:1:1",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "@geometry": "center"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4694924,
+          48.1736934
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/452618737",
+      "properties": {
+        "@id": "node/452618737",
+        "bench": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.12",
+        "mvv:zone": "M;1",
+        "name": "Steirerstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "network:wikipedia": "de:Münchner Verkehrs- und Tarifverbund",
+        "platform:width": "3.7",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1817:2:2",
+        "route_ref": "160;N78",
+        "shelter": "yes"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4599983,
+          48.1726223
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/452618738",
+      "properties": {
+        "@id": "node/452618738",
+        "bench": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.08",
+        "mvv:zone": "M;1",
+        "name": "Steirerstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "network:wikipedia": "de:Münchner Verkehrs- und Tarifverbund",
+        "platform:width": "2.8",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1817:1:1",
+        "route_ref": "160",
+        "shelter": "yes",
+        "wheelchair": "no"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4603698,
+          48.1728853
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/2699799616",
+      "properties": {
+        "@id": "node/2699799616",
+        "name": "Obermenzing",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "official_name": "München-Obermenzing",
+        "operator": "DB InfraGO AG",
+        "public_transport": "station",
+        "railway": "halt",
+        "railway:ref": "MOZ",
+        "railway:station_category": "4",
+        "ref:IFOPT": "de:09162:1900",
+        "train": "yes",
+        "uic_name": "München-Obermenzing",
+        "uic_ref": "8004157",
+        "wheelchair": "yes",
+        "wikidata": "Q16263161"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4780215,
+          48.1642173
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/2758073646",
+      "properties": {
+        "@id": "node/2758073646",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "bus_route": "164",
+        "check_date:shelter": "2022-10-20",
+        "departures_board": "timetable",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.26",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Goteboldstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "2.1",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1851:1:1",
+        "shelter": "yes",
+        "tactile_paving": "yes",
+        "wheelchair": "yes"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4434814,
+          48.1765912
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/2758073690",
+      "properties": {
+        "@id": "node/2758073690",
+        "bench": "no",
+        "bin": "no",
+        "bus": "yes",
+        "check_date:shelter": "2022-10-20",
+        "departures_board": "timetable",
+        "highway": "bus_stop",
+        "kerb": "raised",
+        "kerb:height": "0.23",
+        "lit": "yes",
+        "mvv:zone": "M;1",
+        "name": "Goteboldstraße",
+        "network": "Münchner Verkehrs- und Tarifverbund",
+        "network:guid": "DE-BY-MVV",
+        "network:short": "MVV",
+        "network:wikidata": "Q259000",
+        "platform:width": "1.5",
+        "public_transport": "platform",
+        "ref:IFOPT": "de:09162:1851:2:2",
+        "route_ref": "164",
+        "shelter": "no",
+        "tactile_paving": "yes",
+        "wheelchair": "yes"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.4433037,
+          48.177034
+        ]
+      }
+    }
+  ]
+}

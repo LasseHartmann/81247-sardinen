@@ -393,6 +393,8 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
     <PhysicsBottomSheet
       collapsed={sheetCollapsed}
       onCollapsedChange={setSheetCollapsed}
+      allowBodyDrag
+      scrollableBody
       maxWidthClass="max-w-lg"
       sheetClassName="max-h-[68dvh] sm:max-h-[calc(100dvh-160px)] text-[var(--text-main)]"
       bodyClassName="cmf-scroll-area flex-1 p-3.5 sm:p-5"

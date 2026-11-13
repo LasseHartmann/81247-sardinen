@@ -10,6 +10,7 @@ export interface PhysicsBottomSheetProps {
   bodyClassName?: string;
   handleTestId?: string;
   allowBodyDrag?: boolean;
+  scrollableBody?: boolean;
 }
 
 interface VelocitySample {
@@ -25,9 +26,7 @@ const DRAG_SLOP_PX = 5;
 function rubberBand(distance: number, maxStretch: number): number {
   if (distance <= 0 || maxStretch <= 0) return 0;
   const c = 0.55;
-  return (
-    (1 - 1 / ((distance * c) / maxStretch + 1)) * maxStretch
-  );
+  return (1 - 1 / ((distance * c) / maxStretch + 1)) * maxStretch;
 }
 
 /**
@@ -47,6 +46,7 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
   bodyClassName = '',
   handleTestId,
   allowBodyDrag = false,
+  scrollableBody = false,
 }) => {
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -62,10 +62,12 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
   const velRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
+  const skipNextEffectAnimRef = useRef<boolean>(false);
 
   const dragStateRef = useRef<{
     active: boolean;
     captured: boolean;
+    fromBody: boolean;
     pointerId: number;
     startClientY: number;
     startPos: number;
@@ -74,6 +76,7 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
   } | null>(null);
 
   const applyTransform = useCallback((yPx: number) => {
+    if (!Number.isFinite(yPx)) return;
     posRef.current = yPx;
     const el = sheetRef.current;
     if (!el) return;
@@ -158,13 +161,17 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
     return undefined;
   }, [applyTransform]);
 
-  // Reagiere auf externe Änderungen von `collapsed` (z.B. Tap oder State-Wechsel) mit Feder-Physik
+  // Reagiere auf externe Änderungen von `collapsed` (z.B. State-Wechsel) mit Feder-Physik
   const isFirstRenderRef = useRef(true);
   useEffect(() => {
     const targetY = collapsed ? maxCollapseRef.current : 0;
     if (isFirstRenderRef.current) {
       isFirstRenderRef.current = false;
       applyTransform(targetY);
+      return;
+    }
+    if (skipNextEffectAnimRef.current) {
+      skipNextEffectAnimRef.current = false;
       return;
     }
     if (!dragStateRef.current?.active) {
@@ -175,6 +182,12 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
   useEffect(() => {
     return () => stopSpring();
   }, [stopSpring]);
+
+  const refreshMaxCollapse = useCallback(() => {
+    const h = bodyRef.current?.offsetHeight ?? maxCollapseRef.current;
+    maxCollapseRef.current = h;
+    return h;
+  }, []);
 
   const computeMappedDragY = (rawY: number): number => {
     const maxCollapse = maxCollapseRef.current;
@@ -187,7 +200,10 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
     return rawY;
   };
 
-  const computeReleaseVelocity = (samples: VelocitySample[], now: number): number => {
+  const computeReleaseVelocity = (
+    samples: VelocitySample[],
+    now: number
+  ): number => {
     const recent = samples.filter((s) => now - s.t <= 100);
     if (recent.length < 2) return 0;
     const first = recent[0];
@@ -203,27 +219,33 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
     fromBody: boolean
   ) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (!Number.isFinite(e.clientY)) return;
 
     const targetEl = e.target as HTMLElement | null;
     const interactiveAncestor = targetEl?.closest(
       'button, a, input, select, textarea, label, [role="button"]'
     );
 
-    // Im Body keine Scroll-Container blockieren, die gerade gescrollt sind
     if (fromBody) {
-      const scrollAncestor = targetEl?.closest('.cmf-scroll-area') as HTMLElement | null;
-      if (scrollAncestor && scrollAncestor.scrollTop > 2) {
+      // Interaktive Controls im Body niemals abfangen (Klicks & Texteingaben bleiben frei)
+      if (interactiveAncestor) {
         return;
       }
-      if (targetEl?.closest('input, select, textarea')) {
+      // Im scrollbaren Body erst abgeben, wenn nicht gescrollt wird
+      const scrollAncestor = targetEl?.closest(
+        '.cmf-scroll-area'
+      ) as HTMLElement | null;
+      if (scrollAncestor && scrollAncestor.scrollTop > 2) {
         return;
       }
     }
 
+    refreshMaxCollapse();
     const now = performance.now();
     dragStateRef.current = {
       active: true,
       captured: false,
+      fromBody,
       pointerId: e.pointerId,
       startClientY: e.clientY,
       startPos: posRef.current,
@@ -235,10 +257,18 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const st = dragStateRef.current;
     if (!st || !st.active || e.pointerId !== st.pointerId) return;
+    if (!Number.isFinite(e.clientY)) return;
 
     const dy = e.clientY - st.startClientY;
     if (!st.captured) {
       if (Math.abs(dy) < DRAG_SLOP_PX) return;
+      // Im scrollbaren Body beim Hochwischen nicht den nativen Scroll stören
+      if (st.fromBody && scrollableBody && dy < 0 && bodyRef.current) {
+        if (bodyRef.current.scrollHeight > bodyRef.current.clientHeight + 2) {
+          dragStateRef.current = null;
+          return;
+        }
+      }
       st.captured = true;
       stopSpring();
       try {
@@ -278,12 +308,13 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
       }
     }
 
-    const maxCollapse = maxCollapseRef.current;
+    const maxCollapse = refreshMaxCollapse();
 
     if (!st.captured) {
       // Kurzer Tap auf die Handle-Leiste (außerhalb innerer Buttons) -> sanft umschalten!
-      if (!cancelled && !st.startedOnInteractive) {
+      if (!st.fromBody && !cancelled && !st.startedOnInteractive) {
         const nextCollapsed = !collapsedRef.current;
+        skipNextEffectAnimRef.current = true;
         onCollapsedChangeRef.current(nextCollapsed);
         animateToTarget(nextCollapsed ? maxCollapse : 0, 0);
       }
@@ -307,6 +338,7 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
 
     const targetY = nextCollapsed ? maxCollapse : 0;
     if (nextCollapsed !== collapsedRef.current) {
+      skipNextEffectAnimRef.current = true;
       onCollapsedChangeRef.current(nextCollapsed);
     }
     animateToTarget(targetY, velocity);
@@ -314,11 +346,13 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
 
   return (
     <div
-      className={`pointer-events-none mx-auto w-full ${maxWidthClass} -mt-12 overflow-hidden rounded-b-[1.75rem] pt-12`}
+      className={`cmf-sheet-up pointer-events-none mx-auto w-full ${maxWidthClass} -mt-12 overflow-hidden rounded-b-[1.75rem] pt-12`}
     >
+      {/* WICHTIG: Kein CSS-Animation-Mixin auf sheetRef, da animation fill-mode inline transform blockiert! */}
       <div
         ref={sheetRef}
-        className={`cmf-chassis cmf-sheet-up pointer-events-auto flex w-full flex-col overflow-hidden will-change-transform ${sheetClassName}`}
+        data-testid="physics-sheet-surface"
+        className={`cmf-chassis pointer-events-auto flex w-full flex-col overflow-hidden will-change-transform ${sheetClassName}`}
       >
         {/* Taktile Drag-Handle-Kopfzeile */}
         <div
@@ -351,8 +385,8 @@ export const PhysicsBottomSheet: React.FC<PhysicsBottomSheetProps> = ({
             allowBodyDrag ? (e) => finishPointerTracking(e, true) : undefined
           }
           className={`border-t border-[var(--shell-border)]/70 ${
-            collapsed ? 'pointer-events-none' : ''
-          } ${bodyClassName}`}
+            allowBodyDrag && !scrollableBody ? 'touch-none' : ''
+          } ${collapsed ? 'pointer-events-none' : ''} ${bodyClassName}`}
         >
           {children}
         </div>

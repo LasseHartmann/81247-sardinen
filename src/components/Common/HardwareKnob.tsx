@@ -1,5 +1,4 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Minus, Plus } from 'lucide-react';
 
 export interface HardwareKnobProps {
   label: string;
@@ -329,10 +328,6 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
       ? `${options[options.length - 1]}${cleanUnit}`
       : `${max}${cleanUnit}`;
 
-  const showCompassPresets = wrapAround && min === 0 && max === 355;
-  const showHidingTimePresets =
-    !wrapAround && !options && min === 5 && (max === 55 || max === 60);
-
   const stepBtnLabel = options
     ? 'STUFE'
     : `${step}${cleanUnit || '°'}`;
@@ -375,23 +370,8 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
         </span>
       </div>
 
-      {/* Haupt-Instrumentenfeld: Links [-] Taster, Mitte Nothing Smart Dial, Rechts [+] Taster */}
-      <div className="my-2 flex items-center justify-between gap-2 sm:justify-center sm:gap-5">
-        {/* Linker mechanischer Nothing-Taster [-] */}
-        <button
-          type="button"
-          onClick={() => stepByDelta(-1)}
-          aria-label={`${ariaLabel ?? label} verringern`}
-          title={`-${step}${unit}`}
-          className="group relative flex h-[64px] w-[54px] sm:w-[62px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--shell-border)] bg-[var(--module-bg)] text-[var(--text-main)] shadow-[0_4px_10px_rgba(20,25,30,0.07),inset_0_1px_0_rgba(255,255,255,0.9)] transition-all duration-150 hover:border-[var(--hardware-border)] active:translate-y-0.5 active:scale-95"
-        >
-          <span className="absolute top-1.5 left-2 h-1 w-1 rounded-full bg-[#9AA4AE] group-hover:bg-[var(--cmf-orange)]" />
-          <Minus className="h-4 w-4 stroke-[2.2]" />
-          <span className="font-tech text-[8px] font-bold tracking-widest text-[var(--text-muted)] uppercase">
-            -{stepBtnLabel}
-          </span>
-        </button>
-
+      {/* Haupt-Instrumentenfeld: Nur das Nothing Smart Dial */}
+      <div className="mt-2.5 mb-1 flex items-center justify-center">
         {/* NOTHING × CMF ROTARY SMART DIAL */}
         <div
           ref={dialRef}
@@ -421,7 +401,7 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
           }}
           style={{ touchAction: 'none' }}
           title="Im Kreis drehen oder antippen wie beim Nothing / CMF Smart Dial"
-          className={`relative flex h-[160px] w-[160px] sm:h-[168px] sm:w-[168px] shrink-0 cursor-grab touch-none items-center justify-center rounded-full select-none active:cursor-grabbing transition-transform duration-200 ${
+          className={`relative flex h-[168px] w-[168px] sm:h-[176px] sm:w-[176px] shrink-0 cursor-grab touch-none items-center justify-center rounded-full select-none active:cursor-grabbing transition-transform duration-200 ${
             isDragging ? 'scale-[1.025]' : ''
           }`}
         >
@@ -497,17 +477,6 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
               stroke="#22272E"
               strokeWidth="1"
               strokeDasharray="1.5 3.5"
-            />
-
-            {/* Top-Mitte (12-Uhr) Kalibrierungsmarkierung */}
-            <line
-              x1="82"
-              y1="11.5"
-              x2="82"
-              y2="15.5"
-              stroke="#FF4D00"
-              strokeWidth="1.5"
-              strokeLinecap="round"
             />
 
             {/* 3. Nothing Dot-Matrix LED-Skalenring */}
@@ -690,95 +659,7 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
             )}
           </div>
         </div>
-
-        {/* Rechter mechanischer Nothing-Taster [+] */}
-        <button
-          type="button"
-          onClick={() => stepByDelta(1)}
-          aria-label={`${ariaLabel ?? label} erhöhen`}
-          title={`+${step}${unit}`}
-          className="group relative flex h-[64px] w-[54px] sm:w-[62px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--shell-border)] bg-[var(--module-bg)] text-[var(--text-main)] shadow-[0_4px_10px_rgba(20,25,30,0.07),inset_0_1px_0_rgba(255,255,255,0.9)] transition-all duration-150 hover:border-[var(--hardware-border)] active:translate-y-0.5 active:scale-95"
-        >
-          <span className="absolute top-1.5 right-2 h-1 w-1 rounded-full bg-[var(--cmf-orange)]" />
-          <Plus className="h-4 w-4 stroke-[2.2]" />
-          <span className="font-tech text-[8px] font-bold tracking-widest text-[var(--text-muted)] uppercase">
-            +{stepBtnLabel}
-          </span>
-        </button>
       </div>
-
-      {/* Untere Nothing-Schnellrast-Tasten (Detent Presets) */}
-      {options && options.length > 0 && (
-        <div className="grid grid-cols-5 gap-1 border-t border-dashed border-[var(--shell-border)] pt-2">
-          {options.map((opt) => {
-            const active = value === opt;
-            return (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => onChange(opt)}
-                className={`min-h-[34px] rounded-lg px-1 py-1 font-tech text-[10px] font-bold tracking-wider uppercase transition-all ${
-                  active
-                    ? 'bg-[#0B0D10] text-[#F8FAFC] shadow-sm ring-1 ring-[var(--cmf-orange)]'
-                    : 'border border-[var(--shell-border)] bg-white/65 text-[var(--text-main)] hover:bg-white'
-                }`}
-              >
-                {opt}
-                {cleanUnit}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {showHidingTimePresets && (
-        <div className="grid grid-cols-5 gap-1 border-t border-dashed border-[var(--shell-border)] pt-2">
-          {[10, 15, 20, 30, 45].map((presetMin) => {
-            const active = value === presetMin;
-            return (
-              <button
-                key={presetMin}
-                type="button"
-                onClick={() => onChange(presetMin)}
-                className={`min-h-[34px] rounded-lg px-1 py-1 font-tech text-[10px] font-bold tracking-wider uppercase transition-all ${
-                  active
-                    ? 'bg-[#0B0D10] text-[#F8FAFC] shadow-sm ring-1 ring-[var(--cmf-orange)]'
-                    : 'border border-[var(--shell-border)] bg-white/65 text-[var(--text-main)] hover:bg-white'
-                }`}
-              >
-                {presetMin}m
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {showCompassPresets && (
-        <div className="grid grid-cols-4 gap-1.5 border-t border-dashed border-[var(--shell-border)] pt-2">
-          {[
-            { lbl: 'N // 000°', deg: 0 },
-            { lbl: 'O // 090°', deg: 90 },
-            { lbl: 'S // 180°', deg: 180 },
-            { lbl: 'W // 270°', deg: 270 },
-          ].map((preset) => {
-            const active = value === preset.deg;
-            return (
-              <button
-                key={preset.deg}
-                type="button"
-                onClick={() => onChange(preset.deg)}
-                className={`min-h-[34px] rounded-lg px-2 py-1 font-tech text-[10px] font-bold tracking-wider uppercase transition-all ${
-                  active
-                    ? 'bg-[#0B0D10] text-[#F8FAFC] shadow-sm ring-1 ring-[var(--cmf-orange)]'
-                    : 'border border-[var(--shell-border)] bg-white/65 text-[var(--text-main)] hover:bg-white'
-                }`}
-              >
-                {preset.lbl}
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 };

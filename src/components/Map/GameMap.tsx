@@ -2,7 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import { LocateFixed, Maximize2 } from 'lucide-react';
 import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson';
-import { MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM } from '../../config/gameConfig';
+import {
+  ANCHOR_MANUAL_ADJUST_MAX_METERS,
+  MAP_DEFAULT_CENTER,
+  MAP_DEFAULT_ZOOM,
+} from '../../config/gameConfig';
 import {
   buildExcludedOrangeMask,
   computePossibleHidingArea,
@@ -39,6 +43,7 @@ export interface GameMapProps {
   playArea: Feature<Polygon>;
   playAreaConfirmed: boolean;
   ownFix: GeoFix | null;
+  anchorGpsOrigin?: LatLng | null;
   isOwnSideHider: boolean;
   anchorPoint: AnchorPoint | null;
   showAnchorAndLeash: boolean;
@@ -62,6 +67,7 @@ export interface GameMapProps {
 export const GameMap: React.FC<GameMapProps> = ({
   playArea,
   ownFix,
+  anchorGpsOrigin = null,
   isOwnSideHider,
   anchorPoint,
   showAnchorAndLeash,
@@ -244,7 +250,19 @@ export const GameMap: React.FC<GameMapProps> = ({
         .bindTooltip('THERMOMETER ENDE [B]')
         .addTo(group);
     }
-  }, [liveConePreview, thermoPointA, thermoPointB]);
+
+    if (clickMode.kind === 'PICK_ANCHOR_POINT' && anchorGpsOrigin) {
+      L.circle([anchorGpsOrigin.lat, anchorGpsOrigin.lng], {
+        radius: ANCHOR_MANUAL_ADJUST_MAX_METERS,
+        color: '#00A896',
+        weight: 2,
+        dashArray: '6 5',
+        fillColor: '#00A896',
+        fillOpacity: 0.1,
+        interactive: false,
+      }).addTo(group);
+    }
+  }, [liveConePreview, thermoPointA, thermoPointB, clickMode.kind, anchorGpsOrigin]);
 
   // 3. Eigene Position, autorisierte Team-Beacons sowie Hider-Anchor (ohne störende Kreislinien)
   useEffect(() => {

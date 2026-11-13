@@ -1,12 +1,16 @@
 import * as turf from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PLAY_AREA_FEATURE } from '../src/config/gameConfig';
+import {
+  ANCHOR_MANUAL_ADJUST_MAX_METERS,
+  DEFAULT_PLAY_AREA_FEATURE,
+} from '../src/config/gameConfig';
 import {
   buildPolygonFromVertices,
   extractPolygonVertices,
   isPointInPlayArea,
   isValidPlayAreaPolygon,
+  validateManualAnchorSelection,
 } from '../src/geo/boundary';
 import {
   buildQuestionPreviewGeoJson,
@@ -372,5 +376,45 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
     expect(
       isInsideFeatureCollectionPolygons(farSeeker.lat, farSeeker.lng, orangeMask)
     ).toBe(true);
+  });
+
+  it('erlaubt manuelle Versteck-Korrekturen der Verstecker ausschließlich innerhalb von 50 m um deren GPS-Position', () => {
+    expect(ANCHOR_MANUAL_ADJUST_MAX_METERS).toBe(50);
+
+    const gpsPos = { lat: 48.1632, lng: 11.4572 };
+    const within45m = destinationPoint(gpsPos, 45, 70);
+    const farOutside75m = destinationPoint(gpsPos, 75, 70);
+
+    const ok = validateManualAnchorSelection({
+      candidate: within45m,
+      gpsPosition: gpsPos,
+      playArea: PLAY_AREA_81247,
+      maxDistanceMeters: ANCHOR_MANUAL_ADJUST_MAX_METERS,
+    });
+    expect(ok.valid).toBe(true);
+
+    const tooFar = validateManualAnchorSelection({
+      candidate: farOutside75m,
+      gpsPosition: gpsPos,
+      playArea: PLAY_AREA_81247,
+      maxDistanceMeters: ANCHOR_MANUAL_ADJUST_MAX_METERS,
+    });
+    expect(tooFar.valid).toBe(false);
+
+    const noGps = validateManualAnchorSelection({
+      candidate: within45m,
+      gpsPosition: null,
+      playArea: PLAY_AREA_81247,
+      maxDistanceMeters: ANCHOR_MANUAL_ADJUST_MAX_METERS,
+    });
+    expect(noGps.valid).toBe(false);
+
+    const outsideZone = validateManualAnchorSelection({
+      candidate: { lat: 48.1, lng: 11.4 },
+      gpsPosition: gpsPos,
+      playArea: PLAY_AREA_81247,
+      maxDistanceMeters: ANCHOR_MANUAL_ADJUST_MAX_METERS,
+    });
+    expect(outsideZone.valid).toBe(false);
   });
 });

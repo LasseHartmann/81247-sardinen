@@ -1,6 +1,7 @@
 import * as turf from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
 import type { LatLng } from '../types/game';
+import { distanceMeters } from './distance';
 
 /**
  * Prüft, ob ein Punkt innerhalb oder auf dem Rand des bestätigten Spielpolygons liegt.
@@ -135,4 +136,44 @@ export function snapPointIntoPlayArea(
     lat: center.geometry.coordinates[1],
     lng: center.geometry.coordinates[0],
   };
+}
+
+/**
+ * Validiert eine manuell gewählte Versteck-Position der Verstecker:
+ * 1. Muss innerhalb des 81247-Spielgebiets liegen.
+ * 2. Ein aktuelles GPS-Signal der Person muss vorliegen.
+ * 3. Muss innerhalb von `maxDistanceMeters` (Standard: 50 m) um die aktuelle GPS-Position liegen.
+ */
+export function validateManualAnchorSelection(params: {
+  candidate: LatLng;
+  gpsPosition: LatLng | null;
+  playArea: Feature<Polygon>;
+  maxDistanceMeters: number;
+}): { valid: true; distanceMeters: number } | { valid: false; reason: string; distanceMeters?: number } {
+  const { candidate, gpsPosition, playArea, maxDistanceMeters } = params;
+
+  if (!isPointInPlayArea(candidate, playArea)) {
+    return {
+      valid: false,
+      reason: 'Bitte tippe auf einen Punkt innerhalb der markierten 81247-Zone!',
+    };
+  }
+
+  if (!gpsPosition) {
+    return {
+      valid: false,
+      reason: `Kein eigener GPS-Standort verfügbar. Die genauere Position darf nur innerhalb von ${maxDistanceMeters} m um dein GPS gewählt werden.`,
+    };
+  }
+
+  const dist = distanceMeters(gpsPosition, candidate);
+  if (dist > maxDistanceMeters) {
+    return {
+      valid: false,
+      distanceMeters: dist,
+      reason: `Zu weit entfernt (${Math.round(dist)} m): Die genauere Versteck-Position darf maximal ${maxDistanceMeters} m von deinem aktuellen GPS-Standort entfernt liegen.`,
+    };
+  }
+
+  return { valid: true, distanceMeters: dist };
 }

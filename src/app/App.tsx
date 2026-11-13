@@ -19,10 +19,14 @@ import {
 } from 'lucide-react';
 import {
   ANCHOR_ACCURACY_WARNING_METERS,
+  ANCHOR_MANUAL_ADJUST_MAX_METERS,
   TEAM_PALETTE,
 } from '../config/gameConfig';
 import { computeHiderPasswordHash, findPresetPlayerById } from '../config/players';
-import { isPointInPlayArea } from '../geo/boundary';
+import {
+  isPointInPlayArea,
+  validateManualAnchorSelection,
+} from '../geo/boundary';
 import { buildQuestionPreviewGeoJson } from '../geo/clueGeometry';
 import { computePossibleHidingArea } from '../geo/hidingArea';
 import { useAuth } from '../hooks/useAuth';
@@ -501,10 +505,14 @@ export const App: React.FC = () => {
 
   const handleMapCoordinateClick = (pt: LatLng) => {
     if (mapClickMode.kind === 'PICK_ANCHOR_POINT') {
-      if (!isPointInPlayArea(pt, publicState.playArea.polygon)) {
-        setAnchorFeedbackError(
-          'Bitte tippe auf einen Punkt innerhalb der markierten 81247-Zone!'
-        );
+      const check = validateManualAnchorSelection({
+        candidate: pt,
+        gpsPosition: geo.currentFix,
+        playArea: publicState.playArea.polygon,
+        maxDistanceMeters: ANCHOR_MANUAL_ADJUST_MAX_METERS,
+      });
+      if (!check.valid) {
+        setAnchorFeedbackError(check.reason);
         return;
       }
       setAnchorFeedbackError(null);
@@ -535,11 +543,22 @@ export const App: React.FC = () => {
     const target = fineAdjustAnchorPt ?? geo.currentFix;
     if (!target) {
       setAnchorFeedbackError(
-        'Noch kein GPS-Standort verfügbar. Nutze „Position auf Karte exakt antippen“ oder warte auf ein GPS-Signal.'
+        'Noch kein GPS-Standort verfügbar. Bitte warte kurz auf ein GPS-Signal.'
       );
       return;
     }
-    if (!isPointInPlayArea(target, publicState.playArea.polygon)) {
+    if (fineAdjustAnchorPt) {
+      const check = validateManualAnchorSelection({
+        candidate: fineAdjustAnchorPt,
+        gpsPosition: geo.currentFix,
+        playArea: publicState.playArea.polygon,
+        maxDistanceMeters: ANCHOR_MANUAL_ADJUST_MAX_METERS,
+      });
+      if (!check.valid) {
+        setAnchorFeedbackError(check.reason);
+        return;
+      }
+    } else if (!isPointInPlayArea(target, publicState.playArea.polygon)) {
       setAnchorFeedbackError(
         'Ungültige Position: Das Versteck muss vollständig innerhalb des 81247-Spielgebiets liegen!'
       );
@@ -751,6 +770,7 @@ export const App: React.FC = () => {
                   }
                 : geo.currentFix
             }
+            anchorGpsOrigin={geo.currentFix}
             isOwnSideHider={isSardineDashboardView}
             anchorPoint={hiderPrivate?.anchorPoint ?? null}
             showAnchorAndLeash={Boolean(
@@ -1070,19 +1090,27 @@ export const App: React.FC = () => {
             {/* 4. Verstecker-Panel zum Fixieren / Neu-Wählen des Anchor Points (mit Zieh-Physik!) */}
             {showHiderAnchorPanel && (
               mapClickMode.kind === 'PICK_ANCHOR_POINT' ? (
-                <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg p-3.5 sm:p-4">
+                <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg space-y-2 p-3.5 sm:p-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-tech text-xs font-bold text-[var(--text-main)] uppercase">
-                      Tippe jetzt auf euer exaktes Versteck auf der Karte ...
+                      Tippe jetzt auf euer Versteck (max. {ANCHOR_MANUAL_ADJUST_MAX_METERS} m um dein GPS) ...
                     </span>
                     <button
                       type="button"
-                      onClick={() => setMapClickMode({ kind: 'NONE' })}
+                      onClick={() => {
+                        setAnchorFeedbackError(null);
+                        setMapClickMode({ kind: 'NONE' });
+                      }}
                       className="cmf-btn-active font-tech min-h-[40px] shrink-0 px-3 py-1.5 text-[11px] font-bold uppercase"
                     >
                       Abbrechen
                     </button>
                   </div>
+                  {anchorFeedbackError && (
+                    <div className="cmf-badge-orange cmf-shake rounded-xl p-2.5 text-xs font-semibold">
+                      {anchorFeedbackError}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <PhysicsBottomSheet
@@ -1133,23 +1161,29 @@ export const App: React.FC = () => {
                     <span className="block font-medium text-[var(--text-muted)]">
                       {fineAdjustAnchorPt
                         ? `Exakte Position gewählt: [${fineAdjustAnchorPt.lat.toFixed(5)}, ${fineAdjustAnchorPt.lng.toFixed(5)}]`
-                        : 'Weicht das GPS ab? Tippe eure exakte Versteck-Position direkt auf der Karte an:'}
+                        : `Weicht das GPS ab? Tippe eure exakte Versteck-Position innerhalb von ${ANCHOR_MANUAL_ADJUST_MAX_METERS} m um dein GPS auf der Karte an:`}
                     </span>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         data-testid="pinpoint-anchor-on-map-btn"
-                        onClick={() =>
+                        disabled={!geo.currentFix}
+                        onClick={() => {
+                          setAnchorFeedbackError(null);
                           setMapClickMode({
                             kind: 'PICK_ANCHOR_POINT',
                             label:
-                              'Tippe auf eure exakte Versteck-Position innerhalb des 81247-Polygons',
-                          })
-                        }
+                              `Tippe innerhalb des ${ANCHOR_MANUAL_ADJUST_MAX_METERS}m-Kreises um deine GPS-Position`,
+                          });
+                        }}
                         className="cmf-btn-secondary font-tech inline-flex min-h-[42px] flex-1 items-center justify-center gap-1.5 bg-white/75 px-3 py-2 text-[11px] font-bold text-[var(--text-main)] uppercase"
                       >
                         <Crosshair className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
-                        <span>Position auf Karte antippen</span>
+                        <span>
+                          {geo.currentFix
+                            ? `Position auf Karte antippen (max. ${ANCHOR_MANUAL_ADJUST_MAX_METERS} m)`
+                            : 'Warte auf GPS-Signal ...'}
+                        </span>
                       </button>
 
                       {fineAdjustAnchorPt && (

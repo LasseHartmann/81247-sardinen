@@ -168,6 +168,7 @@ export interface DatabaseAdapter {
     deltaClueCount: number
   ): Promise<TeamPublic | null>;
   saveClue(teamId: string, clue: ClueRecord): Promise<void>;
+  undoClueByHost(teamId: string, clue: ClueRecord): Promise<void>;
   subscribeTeamClues(
     teamId: string,
     cb: (clues: Record<string, ClueRecord>) => void
@@ -1176,6 +1177,46 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         ref(db, `${ROOT_PATH}/clues/${teamId}/${clue.id}`),
         stripUndefinedDeep(clue)
       );
+    },
+
+    async undoClueByHost(teamId, clue): Promise<void> {
+      const appliedNetPenaltyMs =
+        clue.refundedMs && clue.refundedMs > 0
+          ? 5 * 60_000 - clue.refundedMs
+          : clue.penaltyMs || 0;
+
+      await remove(ref(db, `${ROOT_PATH}/clues/${teamId}/${clue.id}`));
+      if (clue.requestId) {
+        await remove(
+          ref(db, `${ROOT_PATH}/requests/${teamId}/${clue.requestId}`)
+        ).catch(() => {});
+      }
+
+      await runTransaction(
+        ref(db, `${ROOT_PATH}/teams/${teamId}/public`),
+        (cur: TeamPublic | null) => {
+          if (!cur) return cur;
+          return {
+            ...cur,
+            penaltyMs: (cur.penaltyMs || 0) - appliedNetPenaltyMs,
+            clueCount: Math.max(0, (cur.clueCount || 0) - 1),
+          };
+        }
+      );
+
+      await runTransaction(
+        ref(db, `${ROOT_PATH}/leaderboard/${teamId}`),
+        (cur: LeaderboardEntry | null) => {
+          if (!cur) return cur;
+          const nextPenaltyMs = (cur.penaltyMs || 0) - appliedNetPenaltyMs;
+          return {
+            ...cur,
+            penaltyMs: nextPenaltyMs,
+            totalTimeMs: (cur.searchTimeMs || 0) + nextPenaltyMs,
+            clueCount: Math.max(0, (cur.clueCount || 0) - 1),
+          };
+        }
+      ).catch(() => {});
     },
 
     subscribeTeamClues(teamId, cb): UnsubscribeFn {

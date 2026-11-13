@@ -882,6 +882,33 @@ export function createDemoStore(options?: {
       });
     },
 
+    async undoClueByHost(teamId, clue): Promise<void> {
+      const appliedNetPenaltyMs =
+        clue.refundedMs && clue.refundedMs > 0
+          ? 5 * 60_000 - clue.refundedMs
+          : clue.penaltyMs || 0;
+
+      writeTree((t) => {
+        if (t.clues[teamId]) {
+          delete t.clues[teamId][clue.id];
+        }
+        if (clue.requestId && t.requests[teamId]) {
+          delete t.requests[teamId][clue.requestId];
+        }
+        const pub = t.teams[teamId]?.public;
+        if (pub) {
+          pub.penaltyMs = (pub.penaltyMs || 0) - appliedNetPenaltyMs;
+          pub.clueCount = Math.max(0, (pub.clueCount || 0) - 1);
+        }
+        const lb = t.leaderboard?.[teamId];
+        if (lb) {
+          lb.penaltyMs = (lb.penaltyMs || 0) - appliedNetPenaltyMs;
+          lb.totalTimeMs = (lb.searchTimeMs || 0) + lb.penaltyMs;
+          lb.clueCount = Math.max(0, (lb.clueCount || 0) - 1);
+        }
+      });
+    },
+
     subscribeTeamClues(teamId, cb): UnsubscribeFn {
       return subscribeSlice((t) => t.clues[teamId] ?? {}, cb);
     },

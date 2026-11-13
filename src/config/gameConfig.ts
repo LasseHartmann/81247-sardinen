@@ -76,6 +76,7 @@ export const QUESTION_CATEGORY_MAP: Record<QuestionType, 1 | 2 | 3 | 4> = {
   THERMOMETER: 1,
   CONE_45: 1,
   OSM_TRANSIT: 2,
+  OSM_RECYCLING: 2,
   OSM_GREEN: 2,
   RADIUS_RADAR: 3,
   DONUT_RING: 3,

@@ -1343,6 +1343,7 @@ export const App: React.FC = () => {
             joinRequests={gameState.joinRequests}
             presence={gameState.presence}
             teamsPublic={gameState.teamsPublic}
+            cluesByTeam={gameState.cluesByTeam}
             onNavigateToMap={() => setActiveTab('MAP')}
             onLeaveAndLockConsole={() => {
               setActiveTab('MAP');

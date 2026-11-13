@@ -4,6 +4,8 @@ import {
   Thermometer,
   Radar,
   Train,
+  Recycle,
+  Trees,
   CircleDot,
   Disc,
   Camera,
@@ -364,6 +366,11 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             gameStartTimestamp={publicState.gameStartTimestamp}
             onToggleClueOverlay={onToggleClueOverlay}
             getServerNow={() => adapter.getServerNow()}
+            onUndoClue={
+              ownMember.isHost
+                ? (clue) => adapter.undoClueByHost(clue.teamId, clue)
+                : undefined
+            }
             teamsPublic={teamsPublic}
             showTeamBadge={effectiveLogTeamFilter === 'ALL'}
             emptyMessage={
@@ -427,7 +434,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           <div className="cmf-no-scrollbar flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[var(--shell-border)] bg-[var(--shell-bg)] p-1.5 shadow-sm">
             {[
               { id: 'q-cat-1', label: 'Richtung & Thermo' },
-              { id: 'q-cat-2', label: 'Haltestelle' },
+              { id: 'q-cat-2', label: 'Umgebung' },
               { id: 'q-cat-3', label: 'Radar' },
               { id: 'q-cat-4', label: 'Fotos' },
               {
@@ -677,11 +684,11 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           </div>
         </section>
 
-        {/* KATEGORIE 2: Haltestelle */}
+        {/* KATEGORIE 2: Umgebung (Haltestelle, Wertstoffinsel, Grünfläche) */}
         <section id="q-cat-2" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
-              Haltestellen
+              Umgebung
             </h3>
             <span className="cmf-badge-amber rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
               +3 Min.
@@ -703,6 +710,44 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               >
                 <Train className="h-4 w-4 shrink-0" />
                 <span>Haltestelle prüfen (+3 Min.)</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="cmf-well p-3.5 space-y-3">
+            <div className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
+              <Recycle className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+              <span>Wertstoffinsel im Umkreis (150 m)?</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {renderPreviewButton('OSM_RECYCLING')}
+              <button
+                type="button"
+                disabled={!canPurchase || busyType !== null}
+                onClick={() => void purchaseClue('OSM_RECYCLING')}
+                className="cmf-btn-primary font-dot flex min-h-[42px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold"
+              >
+                <Recycle className="h-4 w-4 shrink-0" />
+                <span>Wertstoffinsel prüfen (+3 Min.)</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="cmf-well p-3.5 space-y-3">
+            <div className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
+              <Trees className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+              <span>Innerhalb einer Grünfläche?</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {renderPreviewButton('OSM_GREEN')}
+              <button
+                type="button"
+                disabled={!canPurchase || busyType !== null}
+                onClick={() => void purchaseClue('OSM_GREEN')}
+                className="cmf-btn-primary font-dot flex min-h-[42px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold"
+              >
+                <Trees className="h-4 w-4 shrink-0" />
+                <span>Grünfläche prüfen (+3 Min.)</span>
               </button>
             </div>
           </div>
@@ -846,6 +891,11 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             gameStartTimestamp={publicState.gameStartTimestamp}
             onToggleClueOverlay={onToggleClueOverlay}
             getServerNow={() => adapter.getServerNow()}
+            onUndoClue={
+              ownMember.isHost
+                ? (clue) => adapter.undoClueByHost(clue.teamId, clue)
+                : undefined
+            }
             onDownloadMedia={(tId, rId) =>
               adapter.markMediaDownloadedAndShortenExpiry(
                 tId,

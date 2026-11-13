@@ -5,6 +5,7 @@ import {
   Eye,
   EyeOff,
   Image as ImageIcon,
+  RotateCcw,
   Users,
 } from 'lucide-react';
 import { MEDIA_AUTO_EXPIRE_MS } from '../../config/gameConfig';
@@ -20,6 +21,7 @@ export interface ClueHistoryListProps {
   getServerNow?: () => number;
   onDownloadMedia?: (teamId: string, requestId: string) => Promise<void>;
   onAcknowledgeMedia?: (teamId: string, requestId: string) => Promise<void>;
+  onUndoClue?: (clue: ClueRecord) => Promise<void> | void;
   teamsPublic?: Record<string, TeamPublic>;
   showTeamBadge?: boolean;
   emptyMessage?: string;
@@ -45,6 +47,7 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
   getServerNow,
   onDownloadMedia,
   onAcknowledgeMedia,
+  onUndoClue,
   teamsPublic,
   showTeamBadge = false,
   emptyMessage,
@@ -188,6 +191,17 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
                         <Eye className="h-3.5 w-3.5 text-[var(--cmf-teal)]" /> Auf Karte
                       </>
                     )}
+                  </button>
+                )}
+
+                {onUndoClue && (
+                  <button
+                    type="button"
+                    data-testid={`undo-clue-btn-${clue.id}`}
+                    onClick={() => void onUndoClue(clue)}
+                    className="cmf-btn-secondary font-tech inline-flex min-h-[34px] items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-[var(--cmf-orange)] uppercase"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Rückgängig
                   </button>
                 )}
               </div>

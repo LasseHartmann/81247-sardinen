@@ -7,7 +7,10 @@ import {
   LEASH_RADIUS_METERS,
 } from '../src/config/gameConfig';
 import {
+  FALLBACK_GREEN_POLYGONS_81247,
+  FALLBACK_RECYCLING_STATIONS_81247,
   FALLBACK_TRANSIT_STOPS_81247,
+  getFallbackRecyclingLatLngs81247,
   getFallbackTransitLatLngs81247,
 } from '../src/config/fallbackOsm81247';
 import {
@@ -22,6 +25,7 @@ import {
   evaluateCone45,
   evaluateDonutRing,
   evaluateOsmGreen,
+  evaluateOsmRecycling,
   evaluateOsmTransit,
   evaluateRadiusRadar,
   evaluateSplitEastWest,
@@ -264,6 +268,19 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
       FALLBACK_TRANSIT_STOPS_81247.some((s) => s.name === 'Goteboldstraße')
     ).toBe(true);
 
+    // Prüfe den 81247-Wertstoffinseln-Datensatz (14 Standorte) & 150m-Auswertung
+    expect(FALLBACK_RECYCLING_STATIONS_81247).toHaveLength(14);
+    expect(getFallbackRecyclingLatLngs81247()).toHaveLength(14);
+    expect(
+      evaluateOsmRecycling(nearAnchor, [stop], PLAY_AREA_81247).answerText
+    ).toBe('JA (Innerhalb 150 m)');
+    expect(
+      evaluateOsmRecycling(farAnchor, [stop], PLAY_AREA_81247).answerText
+    ).toBe('NEIN (Weiter als 150 m)');
+
+    // Prüfe den 81247-Grünflächen-Datensatz
+    expect(FALLBACK_GREEN_POLYGONS_81247.length).toBeGreaterThanOrEqual(1);
+
     // Prüfe Kartenvorschau (buildQuestionPreviewGeoJson) für alle räumlichen Fragen
     const origin = { lat: 48.165, lng: 11.466 };
     for (const qType of [
@@ -272,6 +289,8 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
       'THERMOMETER',
       'CONE_45',
       'OSM_TRANSIT',
+      'OSM_RECYCLING',
+      'OSM_GREEN',
       'RADIUS_RADAR',
       'DONUT_RING',
     ] as const) {

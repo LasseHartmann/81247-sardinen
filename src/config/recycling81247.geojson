@@ -1,0 +1,229 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "node/288920933",
+      "properties": {
+        "@id": "node/288920933",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 1"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.472675,
+          48.176051
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/366586921",
+      "properties": {
+        "@id": "node/366586921",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 2"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.464318,
+          48.173499
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/414624587",
+      "properties": {
+        "@id": "node/414624587",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 3"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.467767,
+          48.168198
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/428744649",
+      "properties": {
+        "@id": "node/428744649",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 4"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.469854,
+          48.170471
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/618648255",
+      "properties": {
+        "@id": "node/618648255",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 5"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.457053,
+          48.173113
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/697298494",
+      "properties": {
+        "@id": "node/697298494",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 6"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.477609,
+          48.159582
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/836369069",
+      "properties": {
+        "@id": "node/836369069",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 7"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.46919,
+          48.160944
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/1023993996",
+      "properties": {
+        "@id": "node/1023993996",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 8"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.467264,
+          48.161586
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/1512963663",
+      "properties": {
+        "@id": "node/1512963663",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 9"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.477902,
+          48.167772
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/1665295591",
+      "properties": {
+        "@id": "node/1665295591",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 10"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.472433,
+          48.157625
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/2280006209",
+      "properties": {
+        "@id": "node/2280006209",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 11"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.47558,
+          48.162302
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/2478055500",
+      "properties": {
+        "@id": "node/2478055500",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 12"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.475413,
+          48.173632
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/12961562703",
+      "properties": {
+        "@id": "node/12961562703",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 13"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.460164,
+          48.176525
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node/13236296780",
+      "properties": {
+        "@id": "node/13236296780",
+        "amenity": "recycling",
+        "name": "Wertstoffinsel 14"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.467883,
+          48.168191
+        ]
+      }
+    }
+  ]
+}

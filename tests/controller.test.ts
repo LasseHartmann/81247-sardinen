@@ -83,6 +83,14 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
     expect(after.teams['team-1'].public.clueCount).toBe(1);
     expect(after.requests['team-1']['req_ns_1'].status).toBe('ANSWERED');
     expect(after.clues['team-1']['clue_req_ns_1'].answerText).toBe('NORDEN');
+
+    // Admin kann einen gekauften Tipp rückgängig machen (löscht Tipp + Request und zieht Strafzeit ab)
+    await adapter.undoClueByHost('team-1', after.clues['team-1']['clue_req_ns_1']);
+    const afterUndo = demo.getSnapshot();
+    expect(afterUndo.teams['team-1'].public.penaltyMs).toBe(0);
+    expect(afterUndo.teams['team-1'].public.clueCount).toBe(0);
+    expect(afterUndo.clues['team-1']['clue_req_ns_1']).toBeUndefined();
+    expect(afterUndo.requests['team-1']['req_ns_1']).toBeUndefined();
   });
 
   it('friert das 5-Min.-Foto-Timeout während einer Spielpause exakt ein und zieht nach 5 Min. Netto -10 Min. ab (+ Gratis-Donut-Ring)', async () => {

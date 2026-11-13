@@ -204,6 +204,7 @@ export type QuestionType =
   | 'THERMOMETER'
   | 'CONE_45'
   | 'OSM_TRANSIT'
+  | 'OSM_RECYCLING'
   | 'OSM_GREEN'
   | 'RADIUS_RADAR'
   | 'DONUT_RING'

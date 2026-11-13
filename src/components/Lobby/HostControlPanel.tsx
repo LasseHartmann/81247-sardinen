@@ -27,6 +27,7 @@ import {
 } from '../../services/databaseAdapter';
 import { generateRandomId, generateSessionSecrets } from '../../services/qrService';
 import type {
+  ClueRecord,
   HiderLoginLock,
   HiderPrivateState,
   JoinRequest,
@@ -36,6 +37,7 @@ import type {
   PublicGameState,
   TeamPublic,
 } from '../../types/game';
+import { formatDurationClock, formatPenaltyMinutes } from '../../utils/formatting';
 
 export interface HostControlPanelProps {
   adapter: DatabaseAdapter;
@@ -48,6 +50,7 @@ export interface HostControlPanelProps {
   joinRequests: Record<string, JoinRequest>;
   presence: Record<string, Record<string, PresenceSession>>;
   teamsPublic: Record<string, TeamPublic>;
+  cluesByTeam?: Record<string, Record<string, ClueRecord>>;
   onNavigateToMap: () => void;
   onLeaveAndLockConsole?: () => void;
 }
@@ -63,6 +66,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   joinRequests,
   presence,
   teamsPublic,
+  cluesByTeam = {},
   onNavigateToMap,
   onLeaveAndLockConsole,
 }) => {
@@ -666,6 +670,94 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             )}
           </div>
         </section>
+
+        {/* 4b. Gekaufte Tipps verwalten / Rückgängig machen */}
+        {(() => {
+          const allRoundClues = Object.values(cluesByTeam)
+            .flatMap((teamMap) => Object.values(teamMap ?? {}))
+            .filter((c) => c.sessionId === publicState.sessionId)
+            .sort((a, b) => b.createdAt - a.createdAt);
+
+          return (
+            <section className="cmf-module p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between border-b cmf-divider pb-3">
+                <div>
+                  <h3 className="font-industrial text-base text-[var(--text-main)]">
+                    Gekaufte Tipps ({allRoundClues.length})
+                  </h3>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Tipps einzelner Teams rückgängig machen (löscht Tipp + Karten-Overlay und zieht die Strafzeit wieder ab).
+                  </p>
+                </div>
+              </div>
+
+              {allRoundClues.length === 0 ? (
+                <p className="cmf-well p-3 text-xs text-[var(--text-muted)]">
+                  In dieser Runde wurden noch keine Tipps gekauft.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {allRoundClues.map((clue) => {
+                    const team = teamsPublic[clue.teamId];
+                    const relTimeMs =
+                      publicState.gameStartTimestamp !== null
+                        ? Math.max(
+                            0,
+                            clue.createdAt - publicState.gameStartTimestamp
+                          )
+                        : 0;
+                    return (
+                      <div
+                        key={clue.id}
+                        className="cmf-well flex flex-wrap items-center justify-between gap-2 p-3 text-xs"
+                      >
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--shell-border)] bg-white/85 px-2 py-0.5 font-tech text-[10px] font-bold text-[var(--text-main)] uppercase">
+                              <span
+                                className="h-2 w-2 rounded-full"
+                                style={{
+                                  backgroundColor: team?.color ?? '#FF4D00',
+                                }}
+                              />
+                              {team?.name ?? clue.teamId}
+                            </span>
+                            <span className="font-industrial text-sm text-[var(--text-main)]">
+                              {clue.title}
+                            </span>
+                            <span className="cmf-badge-orange rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
+                              {clue.refundedMs && clue.refundedMs > 0
+                                ? `-${Math.round(clue.refundedMs / 60000)} Min.`
+                                : formatPenaltyMinutes(clue.penaltyMs)}
+                            </span>
+                            <span className="font-tech text-[10px] text-[var(--text-muted)]">
+                              @{formatDurationClock(relTimeMs)}
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold text-[var(--cmf-teal)]">
+                            {clue.answerText}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          data-testid={`host-undo-clue-${clue.id}`}
+                          onClick={() =>
+                            void adapter.undoClueByHost(clue.teamId, clue)
+                          }
+                          className="cmf-btn-secondary font-tech inline-flex min-h-[38px] shrink-0 items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-[var(--cmf-orange)] uppercase"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          <span>Rückgängig</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          );
+        })()}
 
         {/* 5. Admin-Bereich explizit sperren (ganz unten im Admin-Bereich) */}
         {onLeaveAndLockConsole && (

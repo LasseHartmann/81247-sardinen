@@ -151,6 +151,8 @@ export function getQuestionLabelDe(type: QuestionType): string {
       return '45°-Kegel';
     case 'OSM_TRANSIT':
       return 'Haltestelle (150 m)';
+    case 'OSM_RECYCLING':
+      return 'Wertstoffinsel (150 m)';
     case 'OSM_GREEN':
       return 'Grünfläche';
     case 'RADIUS_RADAR':

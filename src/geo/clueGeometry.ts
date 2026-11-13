@@ -5,7 +5,13 @@ import type {
   MultiPolygon,
   Polygon,
 } from 'geojson';
-import { FALLBACK_TRANSIT_STOPS_81247 } from '../config/fallbackOsm81247';
+import {
+  FALLBACK_GREEN_POLYGONS_81247,
+  FALLBACK_RECYCLING_STATIONS_81247,
+  FALLBACK_TRANSIT_STOPS_81247,
+  getFallbackRecyclingLatLngs81247,
+  getFallbackTransitLatLngs81247,
+} from '../config/fallbackOsm81247';
 import type {
   ClueOverlayStyle,
   DonutBandLabel,
@@ -32,6 +38,7 @@ export interface EvaluatedClueResult {
 
 export interface OsmEnvironmentData {
   transitStops: LatLng[];
+  recyclingPoints?: LatLng[];
   greenPolygons: Feature<Polygon | MultiPolygon>[];
   usedOfflineFallback: boolean;
 }
@@ -325,6 +332,67 @@ export function evaluateOsmTransit(
 }
 
 /**
+ * 2B: Wertstoffinsel-Nähe 150 m (+3 Min.)
+ */
+export function evaluateOsmRecycling(
+  anchorPoint: LatLng,
+  recyclingPoints: LatLng[],
+  playArea: Feature<Polygon>
+): EvaluatedClueResult {
+  const isWithin150m = recyclingPoints.some(
+    (pt) => distanceMeters(anchorPoint, pt) <= 150
+  );
+
+  const circles: Feature<Polygon | MultiPolygon>[] = [];
+  for (const pt of recyclingPoints) {
+    circles.push(
+      turf.circle([pt.lng, pt.lat], 150, {
+        units: 'meters',
+        steps: 28,
+      })
+    );
+  }
+
+  let bufferedPoints: Feature[] = [];
+  try {
+    const united =
+      circles.length > 1
+        ? turf.union(turf.featureCollection(circles))
+        : circles[0];
+    if (united) {
+      const clipped = safeClipWithPlayArea(united, playArea);
+      if (clipped) {
+        bufferedPoints = [clipped];
+      }
+    }
+  } catch {
+    // Fallback auf Einzel-Clipping bei Bedarf
+  }
+
+  if (bufferedPoints.length === 0 && circles.length > 0) {
+    for (const circle of circles) {
+      const clipped = safeClipWithPlayArea(circle, playArea);
+      if (clipped) {
+        bufferedPoints.push(clipped);
+      }
+    }
+  }
+
+  return {
+    title: 'Wertstoffinsel (150 m)',
+    answerText: isWithin150m
+      ? 'JA (Innerhalb 150 m)'
+      : 'NEIN (Weiter als 150 m)',
+    detailText: isWithin150m
+      ? 'Wertstoffinsel ist maximal 150 m vom Versteck entfernt.'
+      : 'Keine Wertstoffinsel im Umkreis von 150 m.',
+    isPositiveHit: isWithin150m,
+    overlayGeoJson: turf.featureCollection(bufferedPoints),
+    overlayStyle: 'TRANSIT_BUFFERS',
+  };
+}
+
+/**
  * Hilfsfunktion: Prüft ob ein Punkt in einer Grünfläche oder maximal 20 m von ihrem Rand liegt.
  */
 export function isPointInOrNearGreenPolygon(
@@ -350,7 +418,7 @@ export function isPointInOrNearGreenPolygon(
 }
 
 /**
- * 2B: Park- & Grünflächen-Check (+3 Min.)
+ * 2C: Park- & Grünflächen-Check (+3 Min.)
  */
 export function evaluateOsmGreen(
   anchorPoint: LatLng,
@@ -370,11 +438,11 @@ export function evaluateOsmGreen(
   }
 
   return {
-    title: 'Grünflächen-Check',
+    title: 'Grünfläche',
     answerText: inGreen ? 'JA (In Grünfläche)' : 'NEIN (Außerhalb)',
     detailText: inGreen
-      ? 'Das Versteck liegt in einem Park / Wald / Grünzug (inkl. 20 m Randtoleranz).'
-      : 'Das Versteck liegt nicht in einer kartierten Grünfläche.',
+      ? 'Versteck liegt in einer Grünfläche.'
+      : 'Versteck liegt nicht in einer Grünfläche.',
     isPositiveHit: inGreen,
     overlayGeoJson: turf.featureCollection(visibleGreen),
     overlayStyle: 'GREEN_AREAS',
@@ -541,13 +609,19 @@ export function evaluateDeterministicQuestion(
     case 'OSM_TRANSIT':
       return evaluateOsmTransit(
         anchorPoint,
-        osmData?.transitStops ?? [],
+        osmData?.transitStops ?? getFallbackTransitLatLngs81247(),
+        playArea
+      );
+    case 'OSM_RECYCLING':
+      return evaluateOsmRecycling(
+        anchorPoint,
+        osmData?.recyclingPoints ?? getFallbackRecyclingLatLngs81247(),
         playArea
       );
     case 'OSM_GREEN':
       return evaluateOsmGreen(
         anchorPoint,
-        osmData?.greenPolygons ?? [],
+        osmData?.greenPolygons ?? FALLBACK_GREEN_POLYGONS_81247,
         playArea
       );
     case 'RADIUS_RADAR':
@@ -680,6 +754,47 @@ export function buildQuestionPreviewGeoJson(
         if (clipped) features.push(clipped);
       }
       return turf.featureCollection(features);
+    }
+
+    case 'OSM_RECYCLING': {
+      const circles: Feature<Polygon | MultiPolygon>[] = [];
+      for (const pt of FALLBACK_RECYCLING_STATIONS_81247) {
+        circles.push(
+          turf.circle([pt.lng, pt.lat], 150, {
+            units: 'meters',
+            steps: 28,
+          })
+        );
+      }
+      try {
+        const united =
+          circles.length > 1
+            ? turf.union(turf.featureCollection(circles))
+            : circles[0];
+        if (united) {
+          const clipped = safeClipWithPlayArea(united, playArea);
+          return clipped ? turf.featureCollection([clipped]) : null;
+        }
+      } catch {
+        // Fallback
+      }
+      const features: Feature[] = [];
+      for (const c of circles) {
+        const clipped = safeClipWithPlayArea(c, playArea);
+        if (clipped) features.push(clipped);
+      }
+      return turf.featureCollection(features);
+    }
+
+    case 'OSM_GREEN': {
+      const features: Feature[] = [];
+      for (const poly of FALLBACK_GREEN_POLYGONS_81247) {
+        const clipped = safeClipWithPlayArea(poly, playArea);
+        if (clipped) {
+          features.push(clipped);
+        }
+      }
+      return features.length > 0 ? turf.featureCollection(features) : null;
     }
 
     case 'RADIUS_RADAR': {

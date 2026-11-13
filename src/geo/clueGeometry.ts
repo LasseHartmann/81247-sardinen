@@ -82,11 +82,11 @@ export function evaluateSplitNorthSouth(
   }
 
   return {
-    title: 'Nord/Süd-Teilung',
+    title: 'Nord / Süd',
     answerText,
     detailText: isNorth
-      ? 'Das Versteck liegt nördlich der gewählten Trennlinie (Südhälfte ausgeschlossen).'
-      : 'Das Versteck liegt südlich der gewählten Trennlinie (Nordhälfte ausgeschlossen).',
+      ? 'Versteck liegt im Norden.'
+      : 'Versteck liegt im Süden.',
     isPositiveHit: true,
     overlayGeoJson: turf.featureCollection(features),
     overlayStyle: 'EXCLUDED_AREA',
@@ -118,11 +118,11 @@ export function evaluateSplitEastWest(
   }
 
   return {
-    title: 'Ost/West-Teilung',
+    title: 'Ost / West',
     answerText,
     detailText: isEast
-      ? 'Das Versteck liegt östlich der gewählten Trennlinie (Westhälfte ausgeschlossen).'
-      : 'Das Versteck liegt westlich der gewählten Trennlinie (Osthälfte ausgeschlossen).',
+      ? 'Versteck liegt im Osten.'
+      : 'Versteck liegt im Westen.',
     isPositiveHit: true,
     overlayGeoJson: turf.featureCollection(features),
     overlayStyle: 'EXCLUDED_AREA',
@@ -196,8 +196,8 @@ export function evaluateThermometer(
     title: 'Thermometer (250 m)',
     answerText,
     detailText: isWarmer
-      ? 'Endpunkt B liegt näher am Versteck als Startpunkt A.'
-      : 'Startpunkt A lag näher am Versteck als Endpunkt B.',
+      ? 'Punkt B ist näher am Versteck als Punkt A.'
+      : 'Punkt A war näher am Versteck als Punkt B.',
     isPositiveHit: isWarmer,
     overlayGeoJson: turf.featureCollection(features),
     overlayStyle: 'EXCLUDED_AREA',
@@ -252,11 +252,11 @@ export function evaluateCone45(
   );
 
   return {
-    title: `45°-Radarkegel (${Math.round(normalizedTargetBearing)}°)`,
+    title: `45°-Kegel (${Math.round(normalizedTargetBearing)}°)`,
     answerText: isHit ? 'TREFFER (Im Kegel)' : 'FEHLVERSUCH (Außerhalb)',
     detailText: isHit
-      ? `Das Versteck liegt innerhalb des 45°-Sektors um ${Math.round(normalizedTargetBearing)}°.`
-      : `Das Versteck liegt außerhalb des gescannten 45°-Sektors um ${Math.round(normalizedTargetBearing)}°.`,
+      ? `Versteck liegt im 45°-Kegel (${Math.round(normalizedTargetBearing)}°).`
+      : `Versteck liegt nicht im 45°-Kegel (${Math.round(normalizedTargetBearing)}°).`,
     isPositiveHit: isHit,
     overlayGeoJson: clippedCone ? turf.featureCollection([clippedCone]) : null,
     overlayStyle: isHit ? 'HIT_AREA' : 'EXCLUDED_AREA',
@@ -311,13 +311,13 @@ export function evaluateOsmTransit(
   }
 
   return {
-    title: 'ÖPNV-Check (150 m)',
+    title: 'Haltestelle (150 m)',
     answerText: isWithin150m
       ? 'JA (Innerhalb 150 m)'
       : 'NEIN (Weiter als 150 m)',
     detailText: isWithin150m
-      ? 'Mindestens eine Haltestelle / S-Bahn-Station liegt höchstens 150 m vom Versteck entfernt.'
-      : 'Keine ÖPNV-Haltestelle liegt im Umkreis von 150 m um das Versteck.',
+      ? 'Haltestelle ist maximal 150 m vom Versteck entfernt.'
+      : 'Keine Haltestelle im Umkreis von 150 m.',
     isPositiveHit: isWithin150m,
     overlayGeoJson: turf.featureCollection(bufferedStops),
     overlayStyle: 'TRANSIT_BUFFERS',
@@ -402,8 +402,8 @@ export function evaluateRadiusRadar(
     title: `Radius-Radar (${radiusMeters} m)`,
     answerText: isInside ? 'TREFFER (Innerhalb)' : 'AUSSERHALB',
     detailText: isInside
-      ? `Die Sardinen befinden sich innerhalb von ${radiusMeters} m um euren Anfrage-Standort.`
-      : `Die Sardinen sind weiter als ${radiusMeters} m von eurem Anfrage-Standort entfernt.`,
+      ? `Versteck liegt innerhalb von ${radiusMeters} m.`
+      : `Versteck ist weiter als ${radiusMeters} m entfernt.`,
     isPositiveHit: isInside,
     overlayGeoJson: clipped ? turf.featureCollection([clipped]) : turf.featureCollection([circle]),
     overlayStyle: isInside ? 'HIT_AREA' : 'EXCLUDED_AREA',
@@ -488,12 +488,12 @@ export function evaluateDonutRing(
 
   return {
     title: isCompensation
-      ? 'Gratis-Donut-Ring (Ersatzhinweis)'
-      : 'Donut-Ring-Scanner',
+      ? 'Gratis-Donut-Ring'
+      : 'Donut-Ring',
     answerText: `Distanzband: ${band.label}`,
     detailText: isCompensation
-      ? `Kostenloser Ersatzhinweis wegen abgelaufener/abgelehnter Medienanfrage: Versteck liegt im Band ${band.label}.`
-      : `Das Versteck liegt im Distanzring ${band.label} um euren Standort.`,
+      ? `Gratis-Ersatz: Versteck liegt in ${band.label} Abstand.`
+      : `Versteck liegt in ${band.label} Abstand.`,
     isPositiveHit: true,
     overlayGeoJson: bandGeometry ? turf.featureCollection([bandGeometry]) : null,
     overlayStyle: 'RING_BAND',

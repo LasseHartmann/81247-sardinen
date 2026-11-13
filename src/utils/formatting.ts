@@ -142,26 +142,26 @@ export function getPhaseLabelDe(phase: GamePhase): string {
 export function getQuestionLabelDe(type: QuestionType): string {
   switch (type) {
     case 'SPLIT_NS':
-      return 'Nord/Süd-Teilung';
+      return 'Nord / Süd';
     case 'SPLIT_EW':
-      return 'Ost/West-Teilung';
+      return 'Ost / West';
     case 'THERMOMETER':
       return 'Thermometer (250 m)';
     case 'CONE_45':
-      return '45°-Radarkegel';
+      return '45°-Kegel';
     case 'OSM_TRANSIT':
-      return 'ÖPNV im Umkreis (150 m)';
+      return 'Haltestelle (150 m)';
     case 'OSM_GREEN':
-      return 'Grünflächen-Check';
+      return 'Grünfläche';
     case 'RADIUS_RADAR':
       return 'Radius-Radar';
     case 'DONUT_RING':
-      return 'Donut-Ring-Scanner';
+      return 'Donut-Ring';
     case 'MEDIA_SKY':
-      return 'Foto: Himmel / Blätterdach';
+      return 'Foto nach oben';
     case 'MEDIA_GROUND':
-      return 'Foto: Bodenstruktur';
+      return 'Foto nach unten';
     case 'MEDIA_SELFIE':
-      return 'Foto: Gruppen-Selfie (alle Köpfe)';
+      return 'Gruppen-Selfie';
   }
 }

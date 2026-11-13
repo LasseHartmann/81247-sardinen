@@ -92,8 +92,7 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
   if (sorted.length === 0) {
     return (
       <div className="cmf-module p-5 text-center text-xs text-[var(--text-muted)]">
-        {emptyMessage ??
-          'Noch keine ausgewerteten Hinweise vorhanden. Gekaufte Hinweise und deren Karten-Overlays erscheinen sofort hier.'}
+        {emptyMessage ?? 'Noch keine Tipps gekauft.'}
       </div>
     );
   }

@@ -267,15 +267,13 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             <div>
               <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
                 <Filter className="h-3 w-3" />
-                VERSTECKER-RADAR // TEAM-HINWEISE FILTERN
+                TEAM-TIPPS
               </span>
               <h2 className="font-dot mt-1.5 text-lg sm:text-xl text-[var(--text-main)]">
-                Freigeschaltete Hinweise pro Team
+                Tipps der Teams
               </h2>
               <p className="mt-1 text-xs text-[var(--text-muted)]">
-                {ownTeam?.status === 'JOINED_SARDINES'
-                  ? 'Euer gesamtes Team gehört jetzt zu den Versteckern (Sardinen)! Wählt ein Sucher-Team, um dessen freigeschaltete Hinweise und Karten-Eingrenzung zu prüfen.'
-                  : 'Wählt ein Sucher-Team aus, um exakt zu sehen, welche Hinweise dieses Team bereits freigeschaltet hat.'}
+                Wähle ein Team, um dessen gekaufte Tipps zu sehen.
               </p>
             </div>
 
@@ -400,10 +398,10 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <span className="cmf-badge-amber inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
-                HINWEIS-INSTRUMENTE // {ownTeam?.name}
+                TIPPS // {ownTeam?.name}
               </span>
               <h2 className="font-dot mt-1 text-lg sm:text-xl text-[var(--text-main)]">
-                Hinweise gegen Zeitstrafe kaufen
+                Tipps kaufen
               </h2>
             </div>
 
@@ -415,12 +413,12 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 className="cmf-btn-active font-tech inline-flex min-h-[40px] items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase"
               >
                 <X className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                Kartenvorschau beenden
+                Vorschau aus
               </button>
             )}
           </div>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
-            Alle Ergebnisse & Karten-Overlays sind ausschließlich für euer eigenes Team sichtbar.
+            Nur für euer Team sichtbar.
           </p>
         </div>
 
@@ -428,10 +426,10 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         <div className="sticky top-0 z-10 -mx-1 px-1 py-1 backdrop-blur-md">
           <div className="cmf-no-scrollbar flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[var(--shell-border)] bg-[var(--shell-bg)] p-1.5 shadow-sm">
             {[
-              { id: 'q-cat-1', label: 'Richtung/Thermo +10/15m' },
-              { id: 'q-cat-2', label: 'ÖPNV +3m' },
-              { id: 'q-cat-3', label: 'Radar +15m' },
-              { id: 'q-cat-4', label: 'Fotos +5m' },
+              { id: 'q-cat-1', label: 'Richtung & Thermo' },
+              { id: 'q-cat-2', label: 'Haltestelle' },
+              { id: 'q-cat-3', label: 'Radar' },
+              { id: 'q-cat-4', label: 'Fotos' },
               {
                 id: 'q-history',
                 label: `Verlauf (${Object.keys(teamClues).length})`,
@@ -456,31 +454,31 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             </div>
             <span>
               {isPaused
-                ? 'Hinweis-Käufe sind während einer Spielpause gesperrt.'
+                ? 'Spiel ist pausiert.'
                 : isHidingPhase
-                  ? `Hinweis-Käufe starten ab ${formatDurationClock(publicState.radarSchedule.hidingDurationMs)} (sobald die Versteckphase beendet ist).`
-                  : 'Warte auf gültige GPS-Position für deinen Anfrage-Snapshot ...'}
+                  ? `Tipps erst ab ${formatDurationClock(publicState.radarSchedule.hidingDurationMs)} verfügbar.`
+                  : 'Warte auf GPS-Signal ...'}
             </span>
           </div>
         )}
 
-        {/* KATEGORIE 1: Himmelsrichtung (+15 Min.), Thermometer (+10 Min.) & Radarkegel (+15 Min.) */}
+        {/* KATEGORIE 1: Richtung & Thermometer */}
         <section id="q-cat-1" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
-              Kategorie 1: Himmelsrichtung & Thermometer
+              Richtung & Thermometer
             </h3>
             <span className="cmf-badge-teal rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
               +10 / +15 Min.
             </span>
           </div>
 
-          {/* 1A/1B: Nord/Süd oder Ost/West (teilt am aktuellen GPS-Standort, ohne freien Kartenpunkt) */}
+          {/* 1A/1B: Nord/Süd oder Ost/West */}
           <div className="cmf-well p-3.5 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
                 <Compass className="h-4 w-4 text-[var(--cmf-teal)]" />
-                Himmelsrichtung: Nord/Süd- oder Ost/West-Teilung
+                Himmelsrichtung
               </span>
               <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
                 +15 Min.
@@ -499,7 +497,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                   splitAxis === 'SPLIT_NS' ? 'cmf-btn-active' : 'cmf-btn-secondary'
                 }`}
               >
-                Nord/Süd-Teilung
+                Nord / Süd
               </button>
               <button
                 type="button"
@@ -513,7 +511,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                   splitAxis === 'SPLIT_EW' ? 'cmf-btn-active' : 'cmf-btn-secondary'
                 }`}
               >
-                Ost/West-Teilung
+                Ost / West
               </button>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -531,17 +529,17 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 }
                 className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
               >
-                Himmelsrichtung prüfen (+15 Min.)
+                Richtung prüfen (+15 Min.)
               </button>
             </div>
           </div>
 
-          {/* 1C: Thermometer (250m Laufweg) */}
+          {/* 1C: Thermometer (250m) */}
           <div className="cmf-well p-3.5 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
                 <Thermometer className="h-4 w-4 text-[var(--cmf-teal)]" />
-                Thermometer ({THERMOMETER_MIN_DISTANCE_METERS} m Laufweg)
+                Thermometer ({THERMOMETER_MIN_DISTANCE_METERS} m)
               </span>
               <div className="flex items-center gap-1.5">
                 <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
@@ -555,7 +553,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                         : 'text-[var(--cmf-amber)]'
                     }`}
                   >
-                    DISTANZ: {thermoDistanceMeters} / {THERMOMETER_MIN_DISTANCE_METERS} M
+                    {thermoDistanceMeters} / {THERMOMETER_MIN_DISTANCE_METERS} M
                   </span>
                 )}
               </div>
@@ -573,8 +571,8 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 }`}
               >
                 {thermoPointA
-                  ? 'Startpunkt A neu setzen (GPS)'
-                  : 'Startpunkt setzen (Punkt A)'}
+                  ? 'Startpunkt neu setzen'
+                  : 'Startpunkt hier setzen'}
               </button>
 
               {canUseMapClicks && (
@@ -584,13 +582,13 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                     onClick={() => {
                       onRequestMapPointPick({
                         kind: 'PICK_THERMO_A',
-                        label: 'Tippe auf die Karte für Thermometer-Punkt A',
+                        label: 'Tippe auf die Karte für Punkt A',
                       });
                       onNavigateToMap();
                     }}
                     className="cmf-btn-secondary font-tech min-h-[40px] bg-white/60 px-2.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
                   >
-                    A per Klick
+                    A wählen
                   </button>
                   <button
                     type="button"
@@ -598,13 +596,13 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                     onClick={() => {
                       onRequestMapPointPick({
                         kind: 'PICK_THERMO_B',
-                        label: `Tippe mindestens ${THERMOMETER_MIN_DISTANCE_METERS} m entfernt für Punkt B`,
+                        label: `Mindestens ${THERMOMETER_MIN_DISTANCE_METERS} m entfernt für Punkt B tippen`,
                       });
                       onNavigateToMap();
                     }}
                     className="cmf-btn-secondary font-tech min-h-[40px] bg-white/60 px-2.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
                   >
-                    B per Klick
+                    B wählen
                   </button>
                 </>
               )}
@@ -631,17 +629,17 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 }
                 className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
               >
-                Endpunkt prüfen (Punkt B, +10 Min.)
+                Wärmer oder kälter? (+10 Min.)
               </button>
             </div>
           </div>
 
-          {/* 1D: 45-Grad-Radarkegel mit CMF-Drehknopf */}
+          {/* 1D: 45-Grad-Kegel */}
           <div className="cmf-well p-3.5 space-y-3">
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
                 <Radar className="h-4 w-4 text-[var(--cmf-teal)]" />
-                45-Grad-Radarkegel
+                45°-Kegel
               </span>
               <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
                 +15 Min.
@@ -649,7 +647,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             </div>
 
             <HardwareKnob
-              label="KEGEL-PEILUNG (AZIMUT)"
+              label="RICHTUNG (GRAD)"
               ariaLabel="Kegel-Richtung in Grad"
               dataTestId="cone-bearing-knob"
               value={coneBearingDeg}
@@ -673,27 +671,27 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 }
                 className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
               >
-                Kegel scannen (+15 Min.)
+                Kegel prüfen (+15 Min.)
               </button>
             </div>
           </div>
         </section>
 
-        {/* KATEGORIE 2: Umgebungs-Check mit OSM/Overpass (+3 Min.) — Grünflächen-Check entfernt */}
+        {/* KATEGORIE 2: Haltestelle */}
         <section id="q-cat-2" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
-              Kategorie 2: 81247-Umgebungs-Check (OSM)
+              Haltestellen
             </h3>
             <span className="cmf-badge-amber rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
-              +3 Min. Strafzeit
+              +3 Min.
             </span>
           </div>
 
           <div className="cmf-well p-3.5 space-y-3">
             <div className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
               <Train className="h-4 w-4 shrink-0 text-[var(--cmf-amber)]" />
-              <span>ÖPNV-Haltestelle im Umkreis von 150 m?</span>
+              <span>Haltestelle im Umkreis (150 m)?</span>
             </div>
             <div className="flex flex-wrap gap-2">
               {renderPreviewButton('OSM_TRANSIT')}
@@ -704,20 +702,20 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 className="cmf-btn-primary font-dot flex min-h-[42px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold"
               >
                 <Train className="h-4 w-4 shrink-0" />
-                <span>ÖPNV im Umkreis von 150 m prüfen (+3 Min.)</span>
+                <span>Haltestelle prüfen (+3 Min.)</span>
               </button>
             </div>
           </div>
         </section>
 
-        {/* KATEGORIE 3: Distanz-Scanner (Radius-Radar +15 Min. per Drehknopf / Donut-Ring +4 Min.) */}
+        {/* KATEGORIE 3: Radar & Abstand */}
         <section id="q-cat-3" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
-              Kategorie 3: Radar & Distanz-Scanner
+              Radar & Abstand
             </h3>
             <span className="cmf-badge-amber rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
-              +15 / +4 Min. Strafzeit
+              +15 / +4 Min.
             </span>
           </div>
 
@@ -725,7 +723,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
                 <CircleDot className="h-4 w-4 text-[var(--cmf-teal)]" />
-                Radius-Radar um euren Standort
+                Radius-Radar
               </span>
               <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
                 +15 Min.
@@ -733,7 +731,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             </div>
 
             <HardwareKnob
-              label="SCAN-RADIUS (METER)"
+              label="RADIUS (METER)"
               ariaLabel="Radius-Radar Distanz in Metern"
               dataTestId="radius-radar-knob"
               value={selectedRadius}
@@ -766,7 +764,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
                 <Disc className="h-4 w-4 text-[var(--cmf-teal)]" />
-                Donut-Ring • 200m-Distanzband
+                Donut-Ring (200 m Schritte)
               </span>
               <span className="cmf-badge-amber rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
                 +4 Min.
@@ -782,31 +780,31 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 className="cmf-btn-active font-dot flex min-h-[42px] flex-1 items-center justify-center gap-2 px-4 py-2 text-xs font-bold"
               >
                 <Disc className="h-4 w-4 text-[var(--cmf-teal)]" />
-                Donut-Ring kaufen (+4 Min.)
+                Donut-Ring (+4 Min.)
               </button>
             </div>
           </div>
         </section>
 
-        {/* KATEGORIE 4: Manuelle Live-Foto-Hinweise (+5 Min., ohne Gruppen-Selfie & ohne Kartenvorschau) */}
+        {/* KATEGORIE 4: Fotos (+5 Min., ohne Kartenvorschau) */}
         <section id="q-cat-4" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
-              Kategorie 4: Live-Fotos der Sardinen
+              Fotos
             </h3>
             <span className="cmf-badge-orange rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
-              +5 Min. Strafzeit
+              +5 Min.
             </span>
           </div>
           <p className="text-xs text-[var(--text-muted)]">
-            Antwortfrist für die Verstecker: <strong className="text-[var(--text-main)]">5 Min.</strong> Netto-Spielzeit. Schicken sie kein Foto (oder lehnen ab), bekommt euer Team <strong className="text-[var(--cmf-teal)]">-10 Min. von der Zeit abgezogen</strong> + einen kostenlosen Donut-Ring! Empfangene Fotos verschwinden automatisch nach <strong className="text-[var(--text-main)]">10 Min.</strong> (bzw. <strong className="text-[var(--text-main)]">1 Min.</strong> nach Klick auf Download).
+            Die Verstecker haben <strong className="text-[var(--text-main)]">5 Min.</strong> Zeit. Kommt kein Foto, kriegt ihr <strong className="text-[var(--cmf-teal)]">-10 Min.</strong> Zeitgutschrift + einen Gratis-Donut-Ring.
           </p>
 
           {openManualRequest ? (
             <div className="cmf-oled flex items-center justify-between p-3.5 text-xs">
               <span className="flex items-center gap-2 font-tech font-bold text-[#F8FAFC] uppercase">
                 <Clock className="h-4 w-4 animate-spin text-[var(--cmf-amber)]" />
-                Warte auf Verstecker-Foto ...
+                Warte auf Foto ...
               </span>
               <span className="font-dot text-base text-[var(--cmf-amber)]">
                 {formatDurationClock(manualRemainingMs)}
@@ -821,7 +819,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 className="cmf-btn-secondary flex min-h-[44px] w-full items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
               >
                 <Camera className="h-4 w-4 text-[var(--cmf-teal)]" />
-                Foto vom Himmel / Blätterdach (+5 Min.)
+                Foto nach oben (+5 Min.)
               </button>
               <button
                 type="button"
@@ -830,16 +828,16 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 className="cmf-btn-secondary flex min-h-[44px] w-full items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
               >
                 <Camera className="h-4 w-4 text-[var(--cmf-amber)]" />
-                Foto vom Boden (+5 Min.)
+                Foto nach unten (+5 Min.)
               </button>
             </div>
           )}
         </section>
 
-        {/* Bisherige Hinweise & Overlay-Schalter */}
+        {/* Bisherige Tipps & Overlay-Schalter */}
         <section id="q-history" className="scroll-mt-14 space-y-2.5">
           <h3 className="font-industrial px-1 text-base text-[var(--text-main)]">
-            Eure ausgewerteten Hinweise ({Object.keys(teamClues).length})
+            Eure Tipps ({Object.keys(teamClues).length})
           </h3>
           <ClueHistoryList
             clues={Object.values(teamClues)}

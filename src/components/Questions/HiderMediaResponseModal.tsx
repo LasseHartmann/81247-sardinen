@@ -156,13 +156,13 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
         ) : (
           <p className="text-xs text-[var(--text-muted)]">
             {req.questionType === 'MEDIA_SKY'
-              ? 'Fotografiere senkrecht nach oben in den Himmel / das Blätterdach (EXIF-GPS wird automatisch entfernt, <= 60 KB).'
-              : 'Fotografiere senkrecht nach unten auf den Bodenbelag (EXIF-GPS wird automatisch entfernt, <= 60 KB).'}
+              ? 'Mach ein Foto gerade nach oben.'
+              : 'Mach ein Foto gerade nach unten auf den Boden.'}
           </p>
         )}
 
         <p className="mt-2 font-tech text-[10px] text-[var(--text-muted)] uppercase">
-          5 Min. Antwortfrist — ohne Foto erhält das anfragende Team -10 Min. Zeitabzug + Gratis-Donut-Ring.
+          5 Min. Zeit — sonst kriegt das Team -10 Min. + Gratis-Donut-Ring.
         </p>
 
         {errorMsg && (
@@ -175,10 +175,10 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
           <label className="cmf-btn-primary font-dot flex min-h-[46px] w-full cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold">
             <Camera className="h-4 w-4" />
             {busy
-              ? 'Komprimiere & sende ...'
+              ? 'Sende Foto ...'
               : isSelfie
-                ? 'Gruppen-Selfie aufnehmen / auswählen'
-                : 'Kamera öffnen / Foto auswählen'}
+                ? 'Gruppen-Selfie machen'
+                : 'Foto machen / auswählen'}
             <input
               type="file"
               accept="image/*"
@@ -196,7 +196,7 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
             className="cmf-btn-secondary font-tech inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase"
           >
             <XCircle className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-            Anfrage ablehnen (-10 Min. Zeitabzug + Gratis-Donut-Ring)
+            Ablehnen (-10 Min. für Sucher)
           </button>
         </div>
       </PhysicsBottomSheet>

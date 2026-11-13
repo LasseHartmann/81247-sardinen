@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertOctagon } from 'lucide-react';
+import { LEASH_RADIUS_METERS } from '../../config/gameConfig';
 import type { LeashMonitorState } from '../../hooks/useGeolocation';
 
 export interface LeashWarningBannerProps {
@@ -13,7 +14,7 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
   leashState,
   publicLeashAlertActive,
 }) => {
-  // 1. Signal-Orange Vollbreiten-Warnbanner für Verstecker beim Verlassen des 20m-Radius
+  // 1. Signal-Orange Vollbreiten-Warnbanner für Verstecker beim Verlassen des Versteck-Radius
   if (isOwnSideHider && leashState.warningActive) {
     return (
       <div
@@ -25,10 +26,10 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
             <AlertOctagon className="h-5 w-5 shrink-0 animate-pulse" />
             <div>
               <p className="font-dot text-sm font-bold tracking-wider uppercase">
-                ACHTUNG: Zurück ins 20m-Versteck!
+                ACHTUNG: Zurück ins {LEASH_RADIUS_METERS}m-Versteck!
               </p>
               <p className="font-tech text-[11px] text-white/90">
-                ABWEICHUNG: ~{leashState.distanceFromAnchorMeters ?? '>20'}M
+                ABWEICHUNG: ~{leashState.distanceFromAnchorMeters ?? `>${LEASH_RADIUS_METERS}`}M
                 {leashState.publicAlertTriggered
                   ? ' // ALLE TEAMS WURDEN INFORMIERT'
                   : ' // SOFORT IN DEN RADIUS ZURÜCKKEHREN'}
@@ -53,7 +54,7 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
         role="status"
         className="cmf-alert-slide z-20 w-full border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-4 py-2 text-center font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase backdrop-blur-md"
       >
-        WARNUNG // Die Verstecker haben ihren 20m-Versteckradius vorübergehend verlassen!
+        WARNUNG // Die Verstecker haben ihren {LEASH_RADIUS_METERS}m-Versteckradius vorübergehend verlassen!
       </div>
     );
   }

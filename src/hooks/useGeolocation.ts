@@ -40,7 +40,7 @@ export interface UseGeolocationParams {
 
 /**
  * Verwaltet Live-GPS (`watchPosition`), `visibilitychange`-Resilienz, manuelle Kartenklick-Testpositionen,
- * das gedrosselte Seeker-Beacon-Senden sowie die lokale 20-Meter-Versteck-Leash der Sardinen.
+ * das gedrosselte Seeker-Beacon-Senden sowie die lokale 50-Meter-Versteck-Leash der Sardinen.
  */
 export function useGeolocation(params: UseGeolocationParams): {
   currentFix: GeoFix | null;
@@ -65,7 +65,7 @@ export function useGeolocation(params: UseGeolocationParams): {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [watcherGeneration, setWatcherGeneration] = useState(0);
 
-  // 20-Meter-Leash State
+  // 50-Meter-Leash State
   const consecutiveViolationsRef = useRef(0);
   const violationStartedAtMsRef = useRef<number | null>(null);
   const [leashState, setLeashState] = useState<LeashMonitorState>({
@@ -195,7 +195,7 @@ export function useGeolocation(params: UseGeolocationParams): {
     });
   }, [adapter, ownMember, ownTeam, publicState, currentFix]);
 
-  // Lokale 20-Meter-Versteck-Leash (ab OPEN_SEARCH für Verstecker — NIEMALS Koordinaten senden!)
+  // Lokale 50-Meter-Versteck-Leash (ab OPEN_SEARCH für Verstecker — NIEMALS Koordinaten senden!)
   useEffect(() => {
     const isActiveHiderAfterLock = Boolean(
       ownMember?.enabled &&
@@ -236,7 +236,7 @@ export function useGeolocation(params: UseGeolocationParams): {
         violationStartedAtMsRef.current = adapter.getServerNow();
       }
     } else if (dist <= LEASH_RADIUS_METERS) {
-      // Rückkehr innerhalb des 20m-Kreises beendet Countdown lautlos
+      // Rückkehr innerhalb des 50m-Kreises beendet Countdown lautlos
       consecutiveViolationsRef.current = 0;
       violationStartedAtMsRef.current = null;
       if (publicState?.leashAlertActive) {

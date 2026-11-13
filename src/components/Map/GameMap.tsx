@@ -4,6 +4,7 @@ import { LocateFixed, Maximize2 } from 'lucide-react';
 import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
+  LEASH_RADIUS_METERS,
   MAP_DEFAULT_CENTER,
   MAP_DEFAULT_ZOOM,
 } from '../../config/gameConfig';
@@ -275,7 +276,7 @@ export const GameMap: React.FC<GameMapProps> = ({
         icon: createAnchorPointIcon(),
       })
         .bindPopup(
-          `<strong>SARDINEN-VERSTECK // HQ</strong><br/>RADIUS: 20M (±${anchorPoint.accuracy}M)`
+          `<strong>SARDINEN-VERSTECK // HQ</strong><br/>RADIUS: ${LEASH_RADIUS_METERS}M (±${anchorPoint.accuracy}M)`
         )
         .addTo(group);
     }

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
   DEFAULT_PLAY_AREA_FEATURE,
+  LEASH_RADIUS_METERS,
 } from '../src/config/gameConfig';
 import {
   FALLBACK_TRANSIT_STOPS_81247,
@@ -394,8 +395,9 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
     ).toBe(true);
   });
 
-  it('erlaubt manuelle Versteck-Korrekturen der Verstecker ausschließlich innerhalb von 50 m um deren GPS-Position', () => {
+  it('erlaubt manuelle Versteck-Korrekturen der Verstecker ausschließlich innerhalb von 50 m um deren GPS-Position und setzt das Leash-Limit auf 50 m', () => {
     expect(ANCHOR_MANUAL_ADJUST_MAX_METERS).toBe(50);
+    expect(LEASH_RADIUS_METERS).toBe(50);
 
     const gpsPos = { lat: 48.1632, lng: 11.4572 };
     const within45m = destinationPoint(gpsPos, 45, 70);

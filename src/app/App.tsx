@@ -743,7 +743,7 @@ export const App: React.FC = () => {
         onUnlockAdmin={handleUnlockAndEnterConsole}
       />
 
-      {/* 20-Meter-Versteck-Leash Warnbanner */}
+      {/* 50-Meter-Versteck-Leash Warnbanner */}
       <LeashWarningBanner
         isOwnSideHider={ownMember.side === 'HIDER'}
         leashState={geo.leashState}

@@ -103,7 +103,7 @@ export const MEDIA_REFUND_MS = 10 * 60_000; // -10 Min. Zeitabzug bei Nicht-Send
 export const MEDIA_AUTO_EXPIRE_MS = 10 * 60_000; // Empfangene Fotos verschwinden automatisch nach 10 Min.
 export const MEDIA_POST_DOWNLOAD_EXPIRE_MS = 60_000; // Nach Klick auf Download verkürzt sich die Restzeit auf max. 1 Min.
 
-export const LEASH_RADIUS_METERS = 20;
+export const LEASH_RADIUS_METERS = 50;
 export const LEASH_REQUIRED_ACCURACY_METERS = 25;
 export const LEASH_CONSECUTIVE_VIOLATIONS = 3;
 export const LEASH_RETURN_COUNTDOWN_MS = 60_000;

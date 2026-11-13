@@ -59,6 +59,7 @@ export interface GameMapProps {
   thermoPointB?: LatLng | null;
   clickMode: MapClickInteractionMode;
   onMapCoordinateClick?: (pt: LatLng) => void;
+  onRequestGpsPermission?: () => Promise<GeoFix | null> | void;
   layoutInvalidationKey?: string | number;
   hasBottomDock?: boolean;
   emergencyMessages?: EmergencyMessage[];
@@ -83,6 +84,7 @@ export const GameMap: React.FC<GameMapProps> = ({
   thermoPointB,
   clickMode,
   onMapCoordinateClick,
+  onRequestGpsPermission,
   layoutInvalidationKey,
   hasBottomDock = false,
   emergencyMessages = [],
@@ -350,11 +352,26 @@ export const GameMap: React.FC<GameMapProps> = ({
 
   const handleCenterOnOwnFix = useCallback(() => {
     const map = mapRef.current;
-    if (!map || !ownFix) return;
-    map.flyTo([ownFix.lat, ownFix.lng], Math.max(map.getZoom(), 16), {
-      duration: 0.45,
-    });
-  }, [ownFix]);
+    if (map && ownFix) {
+      map.flyTo([ownFix.lat, ownFix.lng], Math.max(map.getZoom(), 16), {
+        duration: 0.45,
+      });
+    }
+
+    const maybePromise = onRequestGpsPermission?.();
+    if (!ownFix && maybePromise && typeof maybePromise.then === 'function') {
+      void maybePromise.then((freshFix) => {
+        const currentMap = mapRef.current;
+        if (freshFix && currentMap) {
+          currentMap.flyTo(
+            [freshFix.lat, freshFix.lng],
+            Math.max(currentMap.getZoom(), 16),
+            { duration: 0.45 }
+          );
+        }
+      });
+    }
+  }, [ownFix, onRequestGpsPermission]);
 
   const handleFitPlayArea = useCallback(() => {
     const map = mapRef.current;
@@ -383,10 +400,10 @@ export const GameMap: React.FC<GameMapProps> = ({
         <button
           type="button"
           data-testid="map-locate-me-btn"
-          disabled={!ownFix}
+          disabled={!ownFix && !onRequestGpsPermission}
           onClick={handleCenterOnOwnFix}
           aria-label="Auf eigenen Standort zentrieren"
-          title="Auf eigenen Standort zentrieren"
+          title="Auf eigenen Standort zentrieren (GPS-Freigabe anfordern)"
           className="cmf-chassis flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--text-main)] shadow-lg disabled:opacity-40 active:scale-95"
         >
           <LocateFixed

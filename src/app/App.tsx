@@ -787,6 +787,7 @@ export const App: React.FC = () => {
             thermoPointB={thermoPointB}
             clickMode={mapClickMode}
             onMapCoordinateClick={handleMapCoordinateClick}
+            onRequestGpsPermission={geo.retryGpsPermission}
             layoutInvalidationKey={`${activeTab}_${publicState.status}`}
             hasBottomDock={hasMapBottomDock}
             emergencyMessages={gameState.emergencyMessages}

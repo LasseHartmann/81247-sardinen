@@ -48,7 +48,7 @@ export function useGeolocation(params: UseGeolocationParams): {
   gpsError: string | null;
   leashState: LeashMonitorState;
   setManualTestLocation: (pt: LatLng) => void;
-  retryGpsPermission: () => void;
+  retryGpsPermission: () => Promise<GeoFix | null>;
 } {
   const {
     adapter,
@@ -175,8 +175,48 @@ export function useGeolocation(params: UseGeolocationParams): {
     [adapter, canUseManualClicks]
   );
 
-  const retryGpsPermission = useCallback(() => {
+  const retryGpsPermission = useCallback((): Promise<GeoFix | null> => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGpsStatus('UNSUPPORTED');
+      setGpsError('GPS wird von diesem Browser nicht unterstützt.');
+      return Promise.resolve(null);
+    }
+
+    setGpsError(null);
     setWatcherGeneration((g) => g + 1);
+
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const fix: GeoFix = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            timestamp: pos.timestamp || Date.now(),
+          };
+          setHardwareFix(fix);
+          setGpsStatus('TRACKING');
+          setGpsError(null);
+          resolve(fix);
+        },
+        (err) => {
+          if (err.code === err.PERMISSION_DENIED) {
+            setGpsStatus('DENIED');
+            setGpsError(
+              'Standortfreigabe verweigert. Bitte erlaube GPS im Browser oder nutze im Testmodus den Kartenklick.'
+            );
+          } else {
+            setGpsError('GPS-Signal wird gesucht (im Freien bessere Genauigkeit) ...');
+          }
+          resolve(null);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 12000,
+        }
+      );
+    });
   }, []);
 
   // Gedrosseltes Senden für Sucher-Beacon (6s / 5m)

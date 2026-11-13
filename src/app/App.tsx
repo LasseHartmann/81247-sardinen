@@ -159,8 +159,8 @@ export const App: React.FC = () => {
   const [anchorFeedbackError, setAnchorFeedbackError] = useState<string | null>(
     null
   );
-  const [seekerHidingMinimized, setSeekerHidingMinimized] = useState(false);
-  const [hiderAnchorCollapsed, setHiderAnchorCollapsed] = useState(false);
+  const [seekerHidingMinimized, setSeekerHidingMinimized] = useState(true);
+  const [hiderAnchorCollapsed, setHiderAnchorCollapsed] = useState(true);
   const [hiderFilterTeamId, setHiderFilterTeamId] = useState<string>('NONE');
 
   useEffect(() => {
@@ -1257,6 +1257,7 @@ export const App: React.FC = () => {
                     onClick={() => {
                       setAnchorFeedbackError(null);
                       setIsRehidingAnchor(true);
+                      setHiderAnchorCollapsed(false);
                     }}
                     className="cmf-btn-active font-tech inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-bold uppercase shadow-lg"
                   >

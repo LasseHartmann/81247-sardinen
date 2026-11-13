@@ -349,7 +349,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   const [pwSaving, setPwSaving] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [togglingReady, setTogglingReady] = useState(false);
-  const [sheetCollapsed, setSheetCollapsed] = useState(false);
+  const [sheetCollapsed, setSheetCollapsed] = useState(true);
 
   const hasPasswordSet = Boolean(activeHiderLock?.passwordHash);
   const ownRoleAssigned =

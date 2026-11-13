@@ -13,7 +13,7 @@ export interface ThrottleDecision {
 }
 
 /**
- * Reine Entscheidungsfunktion für das 6s- / 5m-Standort-Throttling.
+ * Reine Entscheidungsfunktion für das 6s- / 25m-Standort-Throttling.
  */
 export function evaluateLocationThrottle(params: {
   nextFix: GeoFix;

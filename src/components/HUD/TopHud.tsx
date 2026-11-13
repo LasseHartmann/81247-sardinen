@@ -23,7 +23,6 @@ import type {
 import {
   formatDurationClock,
   formatPenaltyMinutes,
-  getPhaseLabelDe,
 } from '../../utils/formatting';
 
 export interface TopHudProps {
@@ -124,17 +123,14 @@ export const TopHud: React.FC<TopHudProps> = ({
 
           <div className="h-5 shrink-0 border-l border-dashed border-[#27272A] sm:h-6" />
 
-          <div className="flex min-w-0 flex-1 flex-col leading-tight">
-            <span className="truncate font-tech text-[9px] font-bold tracking-wider text-[#F8FAFC] uppercase sm:text-[10px]">
-              {getPhaseLabelDe(activePhase)}
-            </span>
-            <span className="flex min-w-0 items-center gap-1 font-tech text-[9px] text-[var(--cmf-amber)] sm:text-[10px]">
-              <Radar className="h-2.5 w-2.5 shrink-0 text-[var(--cmf-teal)] sm:h-3 sm:w-3" />
-              <span className="truncate">
-                {timer.nextStageRemainingMs !== null
-                  ? `${timer.nextStageLabel} (${formatDurationClock(timer.nextStageRemainingMs)})`
-                  : timer.nextStageLabel}
-              </span>
+          <div className="flex min-w-0 items-center gap-1 font-tech text-[10px] font-bold tracking-wide text-[var(--cmf-amber)] sm:text-xs">
+            <Radar className="h-3 w-3 shrink-0 text-[var(--cmf-teal)] sm:h-3.5 sm:w-3.5" />
+            <span className="truncate whitespace-nowrap">
+              {activePhase === 'LOBBY'
+                ? 'Lobby'
+                : timer.nextStageRemainingMs !== null
+                  ? `Tipp in ${formatDurationClock(timer.nextStageRemainingMs)}`
+                  : '25m Radar'}
             </span>
           </div>
         </div>

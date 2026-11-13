@@ -48,38 +48,38 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(first.roundedLat).toBe(48.16623);
     expect(first.roundedLng).toBe(11.46739);
 
-    const moved20m = destinationPoint(
+    const moved30m = destinationPoint(
       { lat: first.roundedLat, lng: first.roundedLng },
-      20,
+      30,
       90
     );
 
-    // Nach nur 4 Sekunden (< 6s) blockieren, selbst bei 20m Bewegung
+    // Nach nur 4 Sekunden (< 6s) blockieren, selbst bei 30m Bewegung
     const blockedByTime = evaluateLocationThrottle({
-      nextFix: { ...moved20m, accuracy: 8, timestamp: 5000 },
+      nextFix: { ...moved30m, accuracy: 8, timestamp: 5000 },
       lastSentPoint: { lat: first.roundedLat, lng: first.roundedLng },
       lastSentAtMs: 1000,
       nowMs: 5000,
     });
     expect(blockedByTime.shouldSend).toBe(false);
 
-    // Nach 7 Sekunden, aber nur 3m Bewegung (<= 5m) blockieren
-    const moved3m = destinationPoint(
+    // Nach 7 Sekunden, aber nur 20m Bewegung (<= 25m) blockieren
+    const moved20m = destinationPoint(
       { lat: first.roundedLat, lng: first.roundedLng },
-      3,
+      20,
       90
     );
     const blockedByDist = evaluateLocationThrottle({
-      nextFix: { ...moved3m, accuracy: 8, timestamp: 8000 },
+      nextFix: { ...moved20m, accuracy: 8, timestamp: 8000 },
       lastSentPoint: { lat: first.roundedLat, lng: first.roundedLng },
       lastSentAtMs: 1000,
       nowMs: 8000,
     });
     expect(blockedByDist.shouldSend).toBe(false);
 
-    // Nach 7 Sekunden UND 20m Bewegung (> 5m) senden!
+    // Nach 7 Sekunden UND 30m Bewegung (> 25m) senden!
     const allowed = evaluateLocationThrottle({
-      nextFix: { ...moved20m, accuracy: 8, timestamp: 8000 },
+      nextFix: { ...moved30m, accuracy: 8, timestamp: 8000 },
       lastSentPoint: { lat: first.roundedLat, lng: first.roundedLng },
       lastSentAtMs: 1000,
       nowMs: 8000,

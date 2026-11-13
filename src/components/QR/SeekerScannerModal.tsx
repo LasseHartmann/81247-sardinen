@@ -4,7 +4,6 @@ import {
   Camera,
   CameraOff,
   CheckCircle2,
-  ImageUp,
   KeyRound,
   AlertCircle,
 } from 'lucide-react';
@@ -43,7 +42,6 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
   const [cameraStarting, setCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanPreviewNotice, setScanPreviewNotice] = useState<string | null>(null);
-  const [photoDecoding, setPhotoDecoding] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [watchedCatch, setWatchedCatch] = useState<CatchRequest | null>(null);
@@ -359,49 +357,6 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
     }
   };
 
-  const handlePhotoFileScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-
-    setPhotoDecoding(true);
-    setCameraError(null);
-    setScanPreviewNotice(null);
-
-    try {
-      const DetectorCtor = (window as unknown as WindowWithBarcodeDetector)
-        .BarcodeDetector;
-      if (DetectorCtor && typeof createImageBitmap === 'function') {
-        try {
-          const bitmap = await createImageBitmap(file);
-          const detector = new DetectorCtor({ formats: ['qr_code'] });
-          const hits = await detector.detect(bitmap);
-          bitmap.close?.();
-          const hitText = hits.find((h) => h.rawValue?.trim())?.rawValue;
-          if (hitText) {
-            handleDecodedPayload(hitText);
-            return;
-          }
-        } catch {
-          // Weiter zu Html5Qrcode.scanFile
-        }
-      }
-
-      const decoder = getOrCreateFileDecoder();
-      if (!decoder) {
-        throw new Error('Decoder nicht bereit');
-      }
-      const decodedText = await decoder.scanFile(file, false);
-      handleDecodedPayload(decodedText);
-    } catch {
-      setCameraError(
-        'Auf dem Foto wurde kein gültiger QR-Code erkannt. Halte die Kamera näher an den QR-Code oder gib den Fang-Code unten manuell ein.'
-      );
-    } finally {
-      setPhotoDecoding(false);
-    }
-  };
-
   if (!ownTeam) {
     return (
       <div className="cmf-drafting-bg flex h-full items-center justify-center p-6 text-center">
@@ -442,40 +397,25 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
             1. Per Smartphone-Kamera scannen
           </span>
 
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              type="button"
-              data-testid="start-qr-camera-btn"
-              onClick={() => void handleToggleCamera()}
-              className={`font-dot inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold ${
-                cameraActive ? 'cmf-btn-active' : 'cmf-btn-primary'
-              }`}
-            >
-              {cameraActive ? (
-                <>
-                  <CameraOff className="h-4 w-4 text-[var(--nothing-red)]" /> Kamera stoppen
-                </>
-              ) : (
-                <>
-                  <Camera className="h-4 w-4" />
-                  {cameraStarting ? 'Kamera startet ...' : 'QR-Code scannen'}
-                </>
-              )}
-            </button>
-
-            <label className="cmf-btn-secondary font-tech inline-flex min-h-[48px] cursor-pointer items-center justify-center gap-1.5 px-3.5 py-2.5 text-[11px] font-bold uppercase">
-              <ImageUp className="h-4 w-4 text-[var(--cmf-orange)]" />
-              <span>{photoDecoding ? 'Prüfe Foto ...' : 'QR-Foto aufnehmen'}</span>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                disabled={photoDecoding}
-                onChange={(e) => void handlePhotoFileScan(e)}
-                className="hidden"
-              />
-            </label>
-          </div>
+          <button
+            type="button"
+            data-testid="start-qr-camera-btn"
+            onClick={() => void handleToggleCamera()}
+            className={`font-dot inline-flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold ${
+              cameraActive ? 'cmf-btn-active' : 'cmf-btn-primary'
+            }`}
+          >
+            {cameraActive ? (
+              <>
+                <CameraOff className="h-4 w-4 text-[var(--nothing-red)]" /> Kamera stoppen
+              </>
+            ) : (
+              <>
+                <Camera className="h-4 w-4" />
+                {cameraStarting ? 'Kamera startet ...' : 'QR-Code scannen'}
+              </>
+            )}
+          </button>
 
           {/* Video-Element bleibt im DOM gemountet, damit iOS Safari den Stream ohne Render-Verzögerung abspielt */}
           <div

@@ -238,7 +238,18 @@ export const GameMap: React.FC<GameMapProps> = ({
         interactive: false,
       }).addTo(group);
     }
-  }, [possibleHidingArea, excludedOrangeMask]);
+
+    // Dauerhafter roter Außenrand des gesamten Spielbereichs (81247)
+    L.geoJSON(playArea, {
+      style: {
+        color: '#DC2626',
+        weight: 3.5,
+        opacity: 0.95,
+        fillOpacity: 0,
+      },
+      interactive: false,
+    }).addTo(group);
+  }, [playArea, possibleHidingArea, excludedOrangeMask]);
 
   // 2. Optionale Live-Vorschau (nur wenn aktiv im Hinweis-Menü eingeschaltet) + Thermometer-Pins A/B
   useEffect(() => {

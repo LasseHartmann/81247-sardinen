@@ -146,7 +146,7 @@ export function getQuestionLabelDe(type: QuestionType): string {
     case 'SPLIT_EW':
       return 'Ost/West-Teilung';
     case 'THERMOMETER':
-      return 'Thermometer (100 m)';
+      return 'Thermometer (250 m)';
     case 'CONE_45':
       return '45°-Radarkegel';
     case 'OSM_TRANSIT':

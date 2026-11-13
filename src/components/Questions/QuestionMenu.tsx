@@ -7,7 +7,6 @@ import {
   CircleDot,
   Disc,
   Camera,
-  Users,
   Clock,
   Lock,
   Eye,
@@ -20,6 +19,7 @@ import {
   MEDIA_RESPONSE_TIMEOUT_NET_MS,
   QUESTION_CATEGORY_MAP,
   TEAM_PALETTE,
+  THERMOMETER_MIN_DISTANCE_METERS,
 } from '../../config/gameConfig';
 import { distanceMeters } from '../../geo/distance';
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
@@ -428,10 +428,10 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         <div className="sticky top-0 z-10 -mx-1 px-1 py-1 backdrop-blur-md">
           <div className="cmf-no-scrollbar flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[var(--shell-border)] bg-[var(--shell-bg)] p-1.5 shadow-sm">
             {[
-              { id: 'q-cat-1', label: 'Teiler +2m' },
+              { id: 'q-cat-1', label: 'Richtung/Thermo +10/15m' },
               { id: 'q-cat-2', label: 'ÖPNV +3m' },
-              { id: 'q-cat-3', label: 'Distanz +3/4m' },
-              { id: 'q-cat-4', label: 'Medien +5m' },
+              { id: 'q-cat-3', label: 'Radar +15m' },
+              { id: 'q-cat-4', label: 'Fotos +5m' },
               {
                 id: 'q-history',
                 label: `Verlauf (${Object.keys(teamClues).length})`,
@@ -464,14 +464,14 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           </div>
         )}
 
-        {/* KATEGORIE 1: Richtungs- & Kartenteiler (+2 Min.) */}
+        {/* KATEGORIE 1: Himmelsrichtung (+15 Min.), Thermometer (+10 Min.) & Radarkegel (+15 Min.) */}
         <section id="q-cat-1" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
-              Kategorie 1: Richtungs- & Kartenteiler
+              Kategorie 1: Himmelsrichtung & Thermometer
             </h3>
             <span className="cmf-badge-teal rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
-              +2 Min. Strafzeit
+              +10 / +15 Min.
             </span>
           </div>
 
@@ -480,7 +480,10 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
                 <Compass className="h-4 w-4 text-[var(--cmf-teal)]" />
-                Nord/Süd- oder Ost/West-Teilung (an eurem GPS-Standort)
+                Himmelsrichtung: Nord/Süd- oder Ost/West-Teilung
+              </span>
+              <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
+                +15 Min.
               </span>
             </div>
             <div className="flex gap-2">
@@ -528,29 +531,34 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 }
                 className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
               >
-                Hinweis kaufen (+2 Min.)
+                Himmelsrichtung prüfen (+15 Min.)
               </button>
             </div>
           </div>
 
-          {/* 1C: Thermometer (100m Laufweg) */}
+          {/* 1C: Thermometer (250m Laufweg) */}
           <div className="cmf-well p-3.5 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
                 <Thermometer className="h-4 w-4 text-[var(--cmf-teal)]" />
-                Thermometer (100 m Laufweg)
+                Thermometer ({THERMOMETER_MIN_DISTANCE_METERS} m Laufweg)
               </span>
-              {thermoPointA && (
-                <span
-                  className={`cmf-oled px-2.5 py-1 font-tech text-[11px] font-bold ${
-                    thermoDistanceMeters >= 100
-                      ? 'text-[var(--cmf-teal)]'
-                      : 'text-[var(--cmf-amber)]'
-                  }`}
-                >
-                  DISTANZ: {thermoDistanceMeters} / 100 M
+              <div className="flex items-center gap-1.5">
+                <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
+                  +10 Min.
                 </span>
-              )}
+                {thermoPointA && (
+                  <span
+                    className={`cmf-oled px-2.5 py-1 font-tech text-[11px] font-bold ${
+                      thermoDistanceMeters >= THERMOMETER_MIN_DISTANCE_METERS
+                        ? 'text-[var(--cmf-teal)]'
+                        : 'text-[var(--cmf-amber)]'
+                    }`}
+                  >
+                    DISTANZ: {thermoDistanceMeters} / {THERMOMETER_MIN_DISTANCE_METERS} M
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -590,7 +598,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                     onClick={() => {
                       onRequestMapPointPick({
                         kind: 'PICK_THERMO_B',
-                        label: 'Tippe mindestens 100 m entfernt für Punkt B',
+                        label: `Tippe mindestens ${THERMOMETER_MIN_DISTANCE_METERS} m entfernt für Punkt B`,
                       });
                       onNavigateToMap();
                     }}
@@ -610,7 +618,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                   !canPurchase ||
                   !thermoPointA ||
                   !effectiveEndpointB ||
-                  thermoDistanceMeters < 100 ||
+                  thermoDistanceMeters < THERMOMETER_MIN_DISTANCE_METERS ||
                   busyType !== null
                 }
                 onClick={() =>
@@ -623,7 +631,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 }
                 className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
               >
-                Endpunkt prüfen (Punkt B, +2 Min.)
+                Endpunkt prüfen (Punkt B, +10 Min.)
               </button>
             </div>
           </div>
@@ -634,6 +642,9 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               <span className="flex items-center gap-2 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
                 <Radar className="h-4 w-4 text-[var(--cmf-teal)]" />
                 45-Grad-Radarkegel
+              </span>
+              <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
+                +15 Min.
               </span>
             </div>
 
@@ -662,7 +673,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 }
                 className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
               >
-                Kegel scannen (+2 Min.)
+                Kegel scannen (+15 Min.)
               </button>
             </div>
           </div>
@@ -699,14 +710,14 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           </div>
         </section>
 
-        {/* KATEGORIE 3: Distanz-Scanner (Radius-Radar +3 Min. per Drehknopf / Donut-Ring +4 Min.) */}
+        {/* KATEGORIE 3: Distanz-Scanner (Radius-Radar +15 Min. per Drehknopf / Donut-Ring +4 Min.) */}
         <section id="q-cat-3" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
-              Kategorie 3: Distanz-Scanner
+              Kategorie 3: Radar & Distanz-Scanner
             </h3>
             <span className="cmf-badge-amber rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase">
-              +3 / +4 Min. Strafzeit
+              +15 / +4 Min. Strafzeit
             </span>
           </div>
 
@@ -717,7 +728,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 Radius-Radar um euren Standort
               </span>
               <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
-                +3 Min.
+                +15 Min.
               </span>
             </div>
 
@@ -746,7 +757,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 }
                 className="cmf-btn-primary font-dot min-h-[42px] flex-1 px-4 py-2 text-xs font-bold"
               >
-                Radius prüfen (+3 Min.)
+                Radius prüfen (+15 Min.)
               </button>
             </div>
           </div>
@@ -777,7 +788,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           </div>
         </section>
 
-        {/* KATEGORIE 4: Manuelle Live-Foto-Hinweise inkl. Gruppen-Selfie (+5 Min.) */}
+        {/* KATEGORIE 4: Manuelle Live-Foto-Hinweise (+5 Min., ohne Gruppen-Selfie & ohne Kartenvorschau) */}
         <section id="q-cat-4" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
@@ -803,48 +814,24 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             </div>
           ) : (
             <div className="space-y-2.5">
-              <div className="flex flex-wrap gap-2">
-                {renderPreviewButton('MEDIA_SKY')}
-                <button
-                  type="button"
-                  disabled={!canPurchase || busyType !== null}
-                  onClick={() => void purchaseClue('MEDIA_SKY')}
-                  className="cmf-btn-secondary flex min-h-[44px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
-                >
-                  <Camera className="h-4 w-4 text-[var(--cmf-teal)]" />
-                  Foto vom Himmel / Blätterdach (+5 Min.)
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {renderPreviewButton('MEDIA_GROUND')}
-                <button
-                  type="button"
-                  disabled={!canPurchase || busyType !== null}
-                  onClick={() => void purchaseClue('MEDIA_GROUND')}
-                  className="cmf-btn-secondary flex min-h-[44px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
-                >
-                  <Camera className="h-4 w-4 text-[var(--cmf-amber)]" />
-                  Foto vom Boden (+5 Min.)
-                </button>
-              </div>
-              <div className="cmf-well space-y-2 p-3">
-                <div className="flex flex-wrap gap-2">
-                  {renderPreviewButton('MEDIA_SELFIE')}
-                  <button
-                    type="button"
-                    data-testid="buy-group-selfie-btn"
-                    disabled={!canPurchase || busyType !== null}
-                    onClick={() => void purchaseClue('MEDIA_SELFIE')}
-                    className="cmf-btn-secondary flex min-h-[44px] flex-1 items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
-                  >
-                    <Users className="h-4 w-4 text-[var(--cmf-orange)]" />
-                    Gruppen-Selfie anfordern (+5 Min.)
-                  </button>
-                </div>
-                <p className="font-tech text-[10px] font-semibold text-[var(--text-muted)] uppercase">
-                  Regel: Der komplette Kopf jedes Mitglieds der aktuellen Verstecker-Gruppe muss vollständig im Bild sein!
-                </p>
-              </div>
+              <button
+                type="button"
+                disabled={!canPurchase || busyType !== null}
+                onClick={() => void purchaseClue('MEDIA_SKY')}
+                className="cmf-btn-secondary flex min-h-[44px] w-full items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
+              >
+                <Camera className="h-4 w-4 text-[var(--cmf-teal)]" />
+                Foto vom Himmel / Blätterdach (+5 Min.)
+              </button>
+              <button
+                type="button"
+                disabled={!canPurchase || busyType !== null}
+                onClick={() => void purchaseClue('MEDIA_GROUND')}
+                className="cmf-btn-secondary flex min-h-[44px] w-full items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold text-[var(--text-main)]"
+              >
+                <Camera className="h-4 w-4 text-[var(--cmf-amber)]" />
+                Foto vom Boden (+5 Min.)
+              </button>
             </div>
           )}
         </section>

@@ -264,7 +264,7 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
       FALLBACK_TRANSIT_STOPS_81247.some((s) => s.name === 'Goteboldstraße')
     ).toBe(true);
 
-    // Prüfe Kartenvorschau (buildQuestionPreviewGeoJson) für alle möglichen Fragen
+    // Prüfe Kartenvorschau (buildQuestionPreviewGeoJson) für alle räumlichen Fragen
     const origin = { lat: 48.165, lng: 11.466 };
     for (const qType of [
       'SPLIT_NS',
@@ -274,9 +274,6 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
       'OSM_TRANSIT',
       'RADIUS_RADAR',
       'DONUT_RING',
-      'MEDIA_SKY',
-      'MEDIA_GROUND',
-      'MEDIA_SELFIE',
     ] as const) {
       const preview = buildQuestionPreviewGeoJson(
         qType,
@@ -284,13 +281,21 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
           bearingDeg: 90,
           radiusMeters: 250,
           pointA: origin,
-          pointB: destinationPoint(origin, 150, 45),
+          pointB: destinationPoint(origin, 250, 45),
         },
         origin,
         PLAY_AREA_81247
       );
       expect(preview).not.toBeNull();
     }
+
+    // Bei Fotos ist keine Kartenvorschau möglich -> gibt null zurück
+    expect(
+      buildQuestionPreviewGeoJson('MEDIA_SKY', {}, origin, PLAY_AREA_81247)
+    ).toBeNull();
+    expect(
+      buildQuestionPreviewGeoJson('MEDIA_GROUND', {}, origin, PLAY_AREA_81247)
+    ).toBeNull();
   });
 
   it('kombiniert Spielgebiet, Schrumpf-Radar und mehrere Hinweise zu einem sauberen Versteckbereich ohne Linien-Artefakte und färbt den Rest als einheitliche Außenmaske', () => {

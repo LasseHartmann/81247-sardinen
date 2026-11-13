@@ -105,8 +105,12 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     }
   });
 
-  it('berechnet 5 Minuten Strafzeit für Gruppen-Selfie (MEDIA_SELFIE) und trennt Hinweise strikt nach Team', async () => {
-    expect(getQuestionPenaltyMs('MEDIA_SELFIE')).toBe(5 * 60_000);
+  it('berechnet die neuen Hinweis-Preise (Himmelsrichtung 15m, Thermometer 10m, Radar 15m, Foto 5m)', async () => {
+    expect(getQuestionPenaltyMs('SPLIT_NS')).toBe(15 * 60_000);
+    expect(getQuestionPenaltyMs('SPLIT_EW')).toBe(15 * 60_000);
+    expect(getQuestionPenaltyMs('THERMOMETER')).toBe(10 * 60_000);
+    expect(getQuestionPenaltyMs('RADIUS_RADAR')).toBe(15 * 60_000);
+    expect(getQuestionPenaltyMs('CONE_45')).toBe(15 * 60_000);
     expect(getQuestionPenaltyMs('MEDIA_SKY')).toBe(5 * 60_000);
     expect(getQuestionPenaltyMs('MEDIA_GROUND')).toBe(5 * 60_000);
   });
@@ -144,12 +148,12 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(resolveAllowedPlayerByNameInput('  test 1 ')?.canUnlockAdmin).toBe(true);
     expect(resolveAllowedPlayerByNameInput('TEST 2')?.canUnlockAdmin).toBe(false);
 
-    // Standard-Versteckzeit beträgt 20 Minuten und Radius-Radar kostet 3 Minuten
+    // Standard-Versteckzeit beträgt 20 Minuten und Radius-Radar kostet 15 Minuten
     expect(DEFAULT_RADAR_SCHEDULE.hidingDurationMs).toBe(20 * 60_000);
     expect(buildRadarScheduleForHidingMinutes(25).hidingDurationMs).toBe(
       25 * 60_000
     );
-    expect(getQuestionPenaltyMs('RADIUS_RADAR')).toBe(3 * 60_000);
+    expect(getQuestionPenaltyMs('RADIUS_RADAR')).toBe(15 * 60_000);
     expect(getQuestionPenaltyMs('DONUT_RING')).toBe(4 * 60_000);
 
     // Admin-Code-Verifikation (2342 gültig, alles andere abgelehnt)

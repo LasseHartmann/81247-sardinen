@@ -130,7 +130,7 @@ export function evaluateSplitEastWest(
 }
 
 /**
- * 1C: Thermometer (100 m Laufweg, +2 Min.)
+ * 1C: Thermometer (250 m Laufweg, +10 Min.)
  * Berechnet die exakte metrische Mittelsenkrechte in der lokalen Tangentialebene
  * (korrigiert um cos(lat), damit Ost-West- und Nord-Süd-Maßstab verzerrungsfrei sind).
  */
@@ -193,7 +193,7 @@ export function evaluateThermometer(
   }
 
   return {
-    title: 'Thermometer (100 m)',
+    title: 'Thermometer (250 m)',
     answerText,
     detailText: isWarmer
       ? 'Endpunkt B liegt näher am Versteck als Startpunkt A.'
@@ -607,7 +607,7 @@ export function buildQuestionPreviewGeoJson(
       const ptB = params.pointB ?? origin;
       if (!ptA) return null;
       if (!ptB || distanceMeters(ptA, ptB) < 5) {
-        const minWalkCircle = turf.circle([ptA.lng, ptA.lat], 100, {
+        const minWalkCircle = turf.circle([ptA.lng, ptA.lat], 250, {
           units: 'meters',
           steps: 48,
         });
@@ -729,7 +729,7 @@ export function buildQuestionPreviewGeoJson(
     case 'MEDIA_SKY':
     case 'MEDIA_GROUND':
     case 'MEDIA_SELFIE': {
-      return turf.featureCollection([playArea]);
+      return null;
     }
 
     default:

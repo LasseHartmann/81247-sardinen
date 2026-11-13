@@ -85,17 +85,31 @@ export const QUESTION_CATEGORY_MAP: Record<QuestionType, 1 | 2 | 3 | 4> = {
 };
 
 export const QUESTION_PENALTY_MS: Record<1 | 2 | 3 | 4, number> = {
-  1: 2 * 60_000,
+  1: 15 * 60_000,
   2: 3 * 60_000,
   3: 4 * 60_000,
   4: 5 * 60_000,
 };
 
+export const THERMOMETER_MIN_DISTANCE_METERS = 250;
+
 export function getQuestionPenaltyMs(questionType: QuestionType): number {
-  if (questionType === 'RADIUS_RADAR') {
-    return 3 * 60_000; // +3 Min. Strafzeit für Radius-Radar
+  switch (questionType) {
+    case 'SPLIT_NS':
+    case 'SPLIT_EW':
+      return 15 * 60_000; // Himmelsrichtung: +15 Min.
+    case 'THERMOMETER':
+      return 10 * 60_000; // Thermometer (250 m): +10 Min.
+    case 'RADIUS_RADAR':
+    case 'CONE_45':
+      return 15 * 60_000; // Radar: +15 Min.
+    case 'MEDIA_SKY':
+    case 'MEDIA_GROUND':
+    case 'MEDIA_SELFIE':
+      return 5 * 60_000; // Foto: +5 Min.
+    default:
+      return QUESTION_PENALTY_MS[QUESTION_CATEGORY_MAP[questionType]];
   }
-  return QUESTION_PENALTY_MS[QUESTION_CATEGORY_MAP[questionType]];
 }
 
 export const MEDIA_RESPONSE_TIMEOUT_NET_MS = 5 * 60_000; // 5 Min. (300s) Netto-Spielzeit zum Senden eines Fotos

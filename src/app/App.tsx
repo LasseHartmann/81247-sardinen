@@ -49,6 +49,7 @@ import type {
 } from '../types/game';
 import { formatDurationClock, getQuestionLabelDe } from '../utils/formatting';
 import { EmergencyMessageBanner } from '../components/Common/EmergencyMessageBanner';
+import { PhysicsBottomSheet } from '../components/Common/PhysicsBottomSheet';
 import { StatusBanners } from '../components/Common/StatusBanners';
 import { LeashWarningBanner } from '../components/HUD/LeashWarningBanner';
 import { TopHud } from '../components/HUD/TopHud';
@@ -155,6 +156,7 @@ export const App: React.FC = () => {
     null
   );
   const [seekerHidingMinimized, setSeekerHidingMinimized] = useState(false);
+  const [hiderAnchorCollapsed, setHiderAnchorCollapsed] = useState(false);
   const [hiderFilterTeamId, setHiderFilterTeamId] = useState<string>('NONE');
 
   useEffect(() => {
@@ -597,12 +599,18 @@ export const App: React.FC = () => {
     )
       .filter((m) => m.side === 'HIDER')
       .map((m) => m.playerId);
+    const allAssignedHiders = deduplicateEnabledMembers(
+      gameState.members,
+      gameState.presence
+    )
+      .filter((m) => m.side === 'HIDER')
+      .map((m) => m.playerId);
     const hiderPlayerIds =
-      onlineHiders.length > 0
+      publicState.status === 'LOBBY' && onlineHiders.length > 0
         ? onlineHiders
-        : deduplicateEnabledMembers(gameState.members, gameState.presence)
-            .filter((m) => m.side === 'HIDER')
-            .map((m) => m.playerId);
+        : allAssignedHiders.length > 0
+          ? allAssignedHiders
+          : onlineHiders;
 
     const newLock = await adapter.setHiderPasswordAndTriggerLogout({
       uid: ownMember.uid,
@@ -1013,57 +1021,56 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* 3. Einklappbares Sucher-Bottom-Sheet während der Versteckphase (freie 81247-Kartenplanung!) */}
+            {/* 3. Einklappbares Sucher-Bottom-Sheet während der Versteckphase (mit Zieh-Physik!) */}
             {showSeekerHidingCard && !activePreviewQuestion && (
-              <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-md overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setSeekerHidingMinimized((m) => !m)}
-                  className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left active:bg-white/40"
-                >
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <div className="cmf-oled flex h-9 w-9 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
-                      <EyeOff className="h-4 w-4" />
+              <PhysicsBottomSheet
+                collapsed={seekerHidingMinimized}
+                onCollapsedChange={setSeekerHidingMinimized}
+                allowBodyDrag
+                maxWidthClass="max-w-md"
+                bodyClassName="px-4 pt-2.5 pb-3.5 text-center"
+                header={
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <div className="cmf-oled flex h-9 w-9 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
+                        <EyeOff className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 text-left">
+                        <span className="block truncate font-industrial text-sm text-[var(--text-main)]">
+                          Sardinen verstecken sich ...
+                        </span>
+                        <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
+                          Verteilt euch in 81247!
+                        </span>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <span className="block truncate font-industrial text-sm text-[var(--text-main)]">
-                        Sardinen verstecken sich ...
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="cmf-oled px-2.5 py-1 font-dot text-base text-[var(--cmf-amber)]">
+                        {formatDurationClock(timer.hidingRemainingMs)}
                       </span>
-                      <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
-                        Verteilt euch in 81247!
-                      </span>
+                      {seekerHidingMinimized ? (
+                        <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
+                      )}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="cmf-oled px-2.5 py-1 font-dot text-base text-[var(--cmf-amber)]">
-                      {formatDurationClock(timer.hidingRemainingMs)}
-                    </span>
-                    {seekerHidingMinimized ? (
-                      <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
-                    )}
-                  </div>
-                </button>
-
-                {!seekerHidingMinimized && (
-                  <div className="cmf-view-enter border-t cmf-divider px-4 pt-2.5 pb-3.5 text-center">
-                    <p className="text-xs text-[var(--text-muted)]">
-                      Keine Verstecker-Bewegungen sichtbar. Tippe oben auf diese Leiste, um sie einzuklappen und die Karte frei zu erkunden!
-                    </p>
-                    <p className="mt-2 font-tech text-[10px] tracking-wider text-[var(--text-muted)] uppercase">
-                      OFFENE SUCHE & HINWEISE STARTEN BEI{' '}
-                      {formatDurationClock(publicState.radarSchedule.hidingDurationMs)}
-                    </p>
-                  </div>
-                )}
-              </div>
+                }
+              >
+                <p className="text-xs text-[var(--text-muted)]">
+                  Keine Verstecker-Bewegungen sichtbar. Ziehe diese Karte nach unten, um das 81247-Gebiet frei zu erkunden!
+                </p>
+                <p className="mt-2 font-tech text-[10px] tracking-wider text-[var(--text-muted)] uppercase">
+                  OFFENE SUCHE & HINWEISE STARTEN BEI{' '}
+                  {formatDurationClock(publicState.radarSchedule.hidingDurationMs)}
+                </p>
+              </PhysicsBottomSheet>
             )}
 
-            {/* 4. Verstecker-Panel zum Fixieren / Neu-Wählen des Anchor Points (blendet beim Karten-Pinpoint automatisch klein!) */}
+            {/* 4. Verstecker-Panel zum Fixieren / Neu-Wählen des Anchor Points (mit Zieh-Physik!) */}
             {showHiderAnchorPanel && (
-              <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg p-3.5 sm:p-4">
-                {mapClickMode.kind === 'PICK_ANCHOR_POINT' ? (
+              mapClickMode.kind === 'PICK_ANCHOR_POINT' ? (
+                <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg p-3.5 sm:p-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-tech text-xs font-bold text-[var(--text-main)] uppercase">
                       Tippe jetzt auf euer exaktes Versteck auf der Karte ...
@@ -1076,9 +1083,16 @@ export const App: React.FC = () => {
                       Abbrechen
                     </button>
                   </div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-2.5">
+                </div>
+              ) : (
+                <PhysicsBottomSheet
+                  collapsed={hiderAnchorCollapsed}
+                  onCollapsedChange={setHiderAnchorCollapsed}
+                  allowBodyDrag
+                  maxWidthClass="max-w-lg"
+                  bodyClassName="p-3.5 pt-2.5 sm:p-4 sm:pt-3"
+                  header={
+                    <div className="flex items-center justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-2">
                         <Anchor className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
                         <h3 className="truncate font-industrial text-sm text-[var(--text-main)]">
@@ -1106,80 +1120,85 @@ export const App: React.FC = () => {
                             [Abbrechen]
                           </button>
                         )}
+                        {hiderAnchorCollapsed ? (
+                          <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
+                        )}
                       </div>
                     </div>
+                  }
+                >
+                  <div className="cmf-well space-y-2 p-2.5 sm:p-3 text-xs text-[var(--text-main)]">
+                    <span className="block font-medium text-[var(--text-muted)]">
+                      {fineAdjustAnchorPt
+                        ? `Exakte Position gewählt: [${fineAdjustAnchorPt.lat.toFixed(5)}, ${fineAdjustAnchorPt.lng.toFixed(5)}]`
+                        : 'Weicht das GPS ab? Tippe eure exakte Versteck-Position direkt auf der Karte an:'}
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        data-testid="pinpoint-anchor-on-map-btn"
+                        onClick={() =>
+                          setMapClickMode({
+                            kind: 'PICK_ANCHOR_POINT',
+                            label:
+                              'Tippe auf eure exakte Versteck-Position innerhalb des 81247-Polygons',
+                          })
+                        }
+                        className="cmf-btn-secondary font-tech inline-flex min-h-[42px] flex-1 items-center justify-center gap-1.5 bg-white/75 px-3 py-2 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                      >
+                        <Crosshair className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+                        <span>Position auf Karte antippen</span>
+                      </button>
 
-                    <div className="cmf-well mt-2.5 space-y-2 p-2.5 sm:p-3 text-xs text-[var(--text-main)]">
-                      <span className="block font-medium text-[var(--text-muted)]">
-                        {fineAdjustAnchorPt
-                          ? `Exakte Position gewählt: [${fineAdjustAnchorPt.lat.toFixed(5)}, ${fineAdjustAnchorPt.lng.toFixed(5)}]`
-                          : 'Weicht das GPS ab? Tippe eure exakte Versteck-Position direkt auf der Karte an:'}
-                      </span>
-                      <div className="flex flex-wrap gap-2">
+                      {fineAdjustAnchorPt && (
                         <button
                           type="button"
-                          data-testid="pinpoint-anchor-on-map-btn"
-                          onClick={() =>
-                            setMapClickMode({
-                              kind: 'PICK_ANCHOR_POINT',
-                              label:
-                                'Tippe auf eure exakte Versteck-Position innerhalb des 81247-Polygons',
-                            })
-                          }
-                          className="cmf-btn-secondary font-tech inline-flex min-h-[42px] flex-1 items-center justify-center gap-1.5 bg-white/75 px-3 py-2 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                          onClick={() => {
+                            setFineAdjustAnchorPt(null);
+                            setMapClickMode({ kind: 'NONE' });
+                          }}
+                          className="cmf-btn-secondary font-tech min-h-[42px] px-3 py-2 text-[11px] font-bold uppercase"
                         >
-                          <Crosshair className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
-                          <span>Position auf Karte antippen</span>
+                          GPS nutzen
                         </button>
+                      )}
 
-                        {fineAdjustAnchorPt && (
+                      {geo.currentFix &&
+                        geo.currentFix.accuracy >
+                          ANCHOR_ACCURACY_WARNING_METERS && (
                           <button
                             type="button"
-                            onClick={() => {
-                              setFineAdjustAnchorPt(null);
-                              setMapClickMode({ kind: 'NONE' });
-                            }}
-                            className="cmf-btn-secondary font-tech min-h-[42px] px-3 py-2 text-[11px] font-bold uppercase"
+                            onClick={geo.retryGpsPermission}
+                            className="cmf-btn-secondary font-tech inline-flex min-h-[42px] items-center gap-1 px-2.5 py-2 text-[11px] font-bold text-[var(--text-main)] uppercase"
                           >
-                            GPS nutzen
+                            <AlertTriangle className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
+                            GPS neu (±{Math.round(geo.currentFix.accuracy)}m)
                           </button>
                         )}
-
-                        {geo.currentFix &&
-                          geo.currentFix.accuracy >
-                            ANCHOR_ACCURACY_WARNING_METERS && (
-                            <button
-                              type="button"
-                              onClick={geo.retryGpsPermission}
-                              className="cmf-btn-secondary font-tech inline-flex min-h-[42px] items-center gap-1 px-2.5 py-2 text-[11px] font-bold text-[var(--text-main)] uppercase"
-                            >
-                              <AlertTriangle className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
-                              GPS neu (±{Math.round(geo.currentFix.accuracy)}m)
-                            </button>
-                          )}
-                      </div>
                     </div>
+                  </div>
 
-                    {anchorFeedbackError && (
-                      <div className="cmf-badge-orange cmf-shake mt-2.5 rounded-xl p-2.5 text-xs font-semibold">
-                        {anchorFeedbackError}
-                      </div>
-                    )}
+                  {anchorFeedbackError && (
+                    <div className="cmf-badge-orange cmf-shake mt-2.5 rounded-xl p-2.5 text-xs font-semibold">
+                      {anchorFeedbackError}
+                    </div>
+                  )}
 
-                    <button
-                      type="button"
-                      data-testid="lock-anchor-btn"
-                      onClick={() => void handleLockAnchorByHider()}
-                      className="cmf-btn-primary font-dot mt-2.5 flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      {hiderPrivate?.anchorPoint
-                        ? 'Neues Versteck jetzt hier fixieren'
-                        : 'Versteck jetzt hier fixieren'}
-                    </button>
-                  </>
-                )}
-              </div>
+                  <button
+                    type="button"
+                    data-testid="lock-anchor-btn"
+                    onClick={() => void handleLockAnchorByHider()}
+                    className="cmf-btn-primary font-dot mt-2.5 flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    {hiderPrivate?.anchorPoint
+                      ? 'Neues Versteck jetzt hier fixieren'
+                      : 'Versteck jetzt hier fixieren'}
+                  </button>
+                </PhysicsBottomSheet>
+              )
             )}
 
             {/* 5. Schnellzugriff „Versteck neu wählen“ & „Sardinen-QR-Code zeigen“ */}
@@ -1258,6 +1277,8 @@ export const App: React.FC = () => {
               teamsPublic={gameState.teamsPublic}
               activeTeamIds={activeRoundTeamIds}
               sardineGroupMemberNames={sardineGroupMemberNames}
+              canChangeHiderPassword={ownMember.side === 'HIDER'}
+              onSetHiderPassword={handleSetHiderPassword}
             />
           ) : (
             <SeekerScannerView

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   CONTROLLER_HEARTBEAT_INTERVAL_MS,
   CONTROLLER_LEASE_TTL_MS,
+  MEDIA_AUTO_EXPIRE_MS,
   MEDIA_REFUND_MS,
   MEDIA_RESPONSE_TIMEOUT_NET_MS,
 } from '../config/gameConfig';
@@ -245,7 +246,7 @@ export async function executeControllerTick(
           if (!claimed) continue;
 
           if (claimed.category === 4) {
-            // Manuelle Medienanfrage: Strafzeit einmalig buchen und 120s-Netto-Frist starten
+            // Manuelle Foto-Anfrage: +5 Min. Strafzeit einmalig buchen und 5-Min.-Netto-Frist starten
             await adapter.adjustTeamPenaltyAndClueCountAtomically(
               teamId,
               claimed.penaltyMs,
@@ -325,6 +326,21 @@ export async function executeControllerTick(
               serverNowMs,
             });
           }
+        }
+      }
+    }
+  }
+
+  // 2b. Abgelaufene Foto-Hinweise automatisch löschen (10 Min. ab Empfang bzw. 1 Min. nach Download)
+  for (const [teamId, teamReqs] of Object.entries(requestsByTeam)) {
+    for (const req of Object.values(teamReqs)) {
+      if (req.sessionId !== publicState.sessionId) continue;
+      if (req.status === 'ANSWERED' && req.mediaBase64) {
+        const expAt =
+          req.mediaExpiresAt ??
+          (req.processedAt ?? req.createdAt) + MEDIA_AUTO_EXPIRE_MS;
+        if (serverNowMs >= expAt) {
+          await adapter.acknowledgeAndStripMedia(teamId, req.id, serverNowMs);
         }
       }
     }
@@ -452,7 +468,7 @@ export async function refundAndCompensateMediaRequest(params: {
     return false;
   }
 
-  // Exakt einmal -5 Min. (300.000 ms) zurückerstatten
+  // Exakt einmal -10 Min. (600.000 ms) von der Zeit des anfragenden Sucher-Teams abziehen
   await adapter.adjustTeamPenaltyAndClueCountAtomically(
     claimed.teamId,
     -MEDIA_REFUND_MS,
@@ -481,8 +497,8 @@ export async function refundAndCompensateMediaRequest(params: {
     answerText: freeDonut.answerText,
     detailText:
       reasonStatus === 'EXPIRED'
-        ? `120s-Antwortfrist abgelaufen (-5 Min. erstattet). ${freeDonut.detailText}`
-        : `Medienanfrage abgelehnt (-5 Min. erstattet). ${freeDonut.detailText}`,
+        ? `5-Min.-Antwortfrist abgelaufen (-10 Min. Zeitabzug). ${freeDonut.detailText}`
+        : `Foto-Anfrage abgelehnt (-10 Min. Zeitabzug). ${freeDonut.detailText}`,
     isPositiveHit: true,
     penaltyMs: 0,
     refundedMs: MEDIA_REFUND_MS,
@@ -571,6 +587,7 @@ export async function submitHiderMediaResponse(params: {
     mediaBase64,
     mediaMimeType,
     mediaSynthetic,
+    mediaExpiresAt: serverNowMs + MEDIA_AUTO_EXPIRE_MS,
     processedAt: serverNowMs,
   });
 

@@ -365,6 +365,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             hiddenClueIds={hiddenClueIds}
             gameStartTimestamp={publicState.gameStartTimestamp}
             onToggleClueOverlay={onToggleClueOverlay}
+            getServerNow={() => adapter.getServerNow()}
             teamsPublic={teamsPublic}
             showTeamBadge={effectiveLogTeamFilter === 'ALL'}
             emptyMessage={
@@ -787,7 +788,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             </span>
           </div>
           <p className="text-xs text-[var(--text-muted)]">
-            Antwortfrist für die Verstecker: 120s Netto-Spielzeit. Bei Ablauf oder Ablehnung erhaltet ihr automatisch -5 Min. erstattet + einen kostenlosen Donut-Ring!
+            Antwortfrist für die Verstecker: <strong className="text-[var(--text-main)]">5 Min.</strong> Netto-Spielzeit. Schicken sie kein Foto (oder lehnen ab), bekommt euer Team <strong className="text-[var(--cmf-teal)]">-10 Min. von der Zeit abgezogen</strong> + einen kostenlosen Donut-Ring! Empfangene Fotos verschwinden automatisch nach <strong className="text-[var(--text-main)]">10 Min.</strong> (bzw. <strong className="text-[var(--text-main)]">1 Min.</strong> nach Klick auf Download).
           </p>
 
           {openManualRequest ? (
@@ -859,6 +860,14 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             hiddenClueIds={hiddenClueIds}
             gameStartTimestamp={publicState.gameStartTimestamp}
             onToggleClueOverlay={onToggleClueOverlay}
+            getServerNow={() => adapter.getServerNow()}
+            onDownloadMedia={(tId, rId) =>
+              adapter.markMediaDownloadedAndShortenExpiry(
+                tId,
+                rId,
+                adapter.getServerNow()
+              )
+            }
             onAcknowledgeMedia={(tId, rId) =>
               adapter.acknowledgeAndStripMedia(tId, rId, adapter.getServerNow())
             }

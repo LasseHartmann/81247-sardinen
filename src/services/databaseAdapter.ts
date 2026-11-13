@@ -20,6 +20,8 @@ import {
   DEFAULT_PLAY_AREA_FEATURE,
   GAME_ID,
   isLegacyPlaceholderPlayArea,
+  MEDIA_AUTO_EXPIRE_MS,
+  MEDIA_POST_DOWNLOAD_EXPIRE_MS,
   OFFICIAL_81247_AREA_NAME,
   TEAM_MEMBER_FIX_MAX_AGE_MS,
   TEAM_PALETTE,
@@ -145,6 +147,12 @@ export interface DatabaseAdapter {
     cb: (reqs: Record<string, ClueRequest>) => void
   ): UnsubscribeFn;
   createClueRequest(req: ClueRequest): Promise<void>;
+  markMediaDownloadedAndShortenExpiry(
+    teamId: string,
+    requestId: string,
+    nowMs: number,
+    postDownloadTtlMs?: number
+  ): Promise<void>;
   acknowledgeAndStripMedia(teamId: string, requestId: string, ackAt: number): Promise<void>;
   claimRequestForProcessing(
     teamId: string,
@@ -349,16 +357,16 @@ export function extractActiveHiderLock(
 
   if (!latest) return null;
 
-  const combinedHiderIds = new Set<string>(latest.hiderPlayerIds);
-  for (const m of deduplicateEnabledMembers(members, presence)) {
-    if (m.side === 'HIDER') {
-      combinedHiderIds.add(m.playerId);
-    }
-  }
+  const assignedHiders = deduplicateEnabledMembers(members, presence)
+    .filter((m) => m.side === 'HIDER')
+    .map((m) => m.playerId);
 
   return {
     ...latest,
-    hiderPlayerIds: Array.from(combinedHiderIds),
+    hiderPlayerIds:
+      assignedHiders.length > 0
+        ? Array.from(new Set(assignedHiders))
+        : Array.from(new Set(latest.hiderPlayerIds)),
   };
 }
 
@@ -368,16 +376,14 @@ export function extractReadyPlayerIds(
   presence: Record<string, Record<string, PresenceSession>>
 ): string[] {
   if (!publicState || !activeHiderLock) return [];
-  const expectedToken = buildReadyToken(
-    publicState.sessionId,
-    activeHiderLock.logoutGen
-  );
+  const sessionPrefix = `${publicState.sessionId}:`;
   const readySet = new Set<string>();
   for (const userSessions of Object.values(presence)) {
     const readyEntry = userSessions?.ready_state;
     if (
       readyEntry &&
-      readyEntry.readyToken === expectedToken &&
+      typeof readyEntry.readyToken === 'string' &&
+      readyEntry.readyToken.startsWith(sessionPrefix) &&
       readyEntry.playerId
     ) {
       readySet.add(readyEntry.playerId);
@@ -1078,6 +1084,30 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       );
     },
 
+    async markMediaDownloadedAndShortenExpiry(
+      teamId,
+      requestId,
+      nowMs,
+      postDownloadTtlMs = MEDIA_POST_DOWNLOAD_EXPIRE_MS
+    ): Promise<void> {
+      const reqRef = ref(db, `${ROOT_PATH}/requests/${teamId}/${requestId}`);
+      await runTransaction(reqRef, (cur: ClueRequest | null) => {
+        if (!cur || !cur.mediaBase64) return cur;
+        const baseProcessedAt = cur.processedAt ?? cur.createdAt;
+        const prevExpiresAt =
+          cur.mediaExpiresAt ?? baseProcessedAt + MEDIA_AUTO_EXPIRE_MS;
+        const shortenedExpiresAt = Math.min(
+          prevExpiresAt,
+          nowMs + postDownloadTtlMs
+        );
+        return stripUndefinedDeep({
+          ...cur,
+          mediaDownloadedAt: cur.mediaDownloadedAt ?? nowMs,
+          mediaExpiresAt: shortenedExpiresAt,
+        });
+      });
+    },
+
     async acknowledgeAndStripMedia(teamId, requestId, ackAt): Promise<void> {
       const reqRef = ref(db, `${ROOT_PATH}/requests/${teamId}/${requestId}`);
       await runTransaction(reqRef, (cur: ClueRequest | null) => {
@@ -1133,7 +1163,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           if (!cur) return cur;
           return {
             ...cur,
-            penaltyMs: Math.max(0, (cur.penaltyMs || 0) + deltaPenaltyMs),
+            penaltyMs: (cur.penaltyMs || 0) + deltaPenaltyMs,
             clueCount: Math.max(0, (cur.clueCount || 0) + deltaClueCount),
           };
         }
@@ -1293,11 +1323,18 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       };
 
       // 1. Speichere das Verstecker-Passwort als QR-Secret & Fang-Code in hiderPrivate
+      //    WICHTIG: Bei Änderung während einer laufenden Runde bleiben anchorPoint & radarStages vollständig erhalten!
+      const privRef = ref(db, `${ROOT_PATH}/state/hiderPrivate`);
+      const existingPrivSnap = await get(privRef).catch(() => null);
+      const existingPriv = existingPrivSnap?.exists()
+        ? (existingPrivSnap.val() as Partial<HiderPrivateState>)
+        : null;
+
       await set(
-        ref(db, `${ROOT_PATH}/state/hiderPrivate`),
+        privRef,
         stripUndefinedDeep({
-          anchorPoint: null,
-          radarStages: [],
+          anchorPoint: existingPriv?.anchorPoint ?? null,
+          radarStages: existingPriv?.radarStages ?? [],
           qrSecret: cleanPassword,
           shortCode: cleanPassword,
         })

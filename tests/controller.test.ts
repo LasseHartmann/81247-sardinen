@@ -85,7 +85,7 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
     expect(after.clues['team-1']['clue_req_ns_1'].answerText).toBe('NORDEN');
   });
 
-  it('friert das 120s-Medien-Timeout während einer Spielpause exakt ein und erstattet nach 120s Netto -5 Min. + Gratis-Donut-Ring', async () => {
+  it('friert das 5-Min.-Foto-Timeout während einer Spielpause exakt ein und zieht nach 5 Min. Netto -10 Min. ab (+ Gratis-Donut-Ring)', async () => {
     const t0 = 1_700_000_000_000;
     const demo = createDemoStore({ inMemoryOnly: true, initialNowMs: t0 });
     const { adapter } = demo;
@@ -112,7 +112,7 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
       currentHiderPrivate: snap0.state.hiderPrivate,
     });
 
-    // Medienanfrage bei Netto 12:00 (+5 Min. Strafzeit = 300.000 ms)
+    // Fotoanfrage bei Netto 12:00 (+5 Min. Strafzeit = 300.000 ms)
     const reqTime = t0 + 12 * 60_000;
     const mediaReq: ClueRequest = {
       id: 'req_media_sky',
@@ -150,7 +150,7 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
       });
     };
 
-    // Schritt 1: Controller nimmt Medienanfrage an -> AWAITING_HIDER_MEDIA, +5 Min. gebucht
+    // Schritt 1: Controller nimmt Fotoanfrage an -> AWAITING_HIDER_MEDIA, +5 Min. gebucht
     await runAt(reqTime);
     let stateSnap = demo.getSnapshot();
     expect(stateSnap.requests['team-1']['req_media_sky'].status).toBe(
@@ -158,45 +158,46 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
     );
     expect(stateSnap.teams['team-1'].public.penaltyMs).toBe(5 * 60_000);
 
-    // Schritt 2: Nach 60s Netto pausiert der Host für 5 volle Minuten!
-    const pauseStart = reqTime + 60_000;
+    // Schritt 2: Nach 2 Min. Netto pausiert der Host für 6 volle Minuten!
+    const pauseStart = reqTime + 2 * 60_000;
     await adapter.savePublicStateByHost({
       ...stateSnap.state.public,
       status: 'PAUSED',
       pausedAt: pauseStart,
     });
 
-    // Während der 5-minütigen Pause (Wanduhr +240s > 120s!) darf die Anfrage NICHT ablaufen!
-    await runAt(pauseStart + 4 * 60_000);
+    // Während der 6-minütigen Pause (Wanduhr +8 Min. > 5 Min.!) darf die Anfrage NICHT ablaufen!
+    await runAt(pauseStart + 6 * 60_000);
     expect(
       demo.getSnapshot().requests['team-1']['req_media_sky'].status
     ).toBe('AWAITING_HIDER_MEDIA');
 
-    // Schritt 3: Fortsetzen nach 5 Min. Pause (Netto-Verstrichen seit Anfrage immer noch erst 60s!)
-    const resumeAt = pauseStart + 5 * 60_000;
+    // Schritt 3: Fortsetzen nach 6 Min. Pause (Netto-Verstrichen seit Anfrage immer noch erst 2 Min.!)
+    const resumeAt = pauseStart + 6 * 60_000;
     await adapter.savePublicStateByHost({
       ...stateSnap.state.public,
       status: 'RUNNING',
       pausedAt: null,
-      totalPausedMs: 5 * 60_000,
+      totalPausedMs: 6 * 60_000,
     });
 
-    // 50s nach Fortsetzen (= 110s Netto seit Anfrage) -> immer noch offen!
-    await runAt(resumeAt + 50_000);
+    // 2 Min. 50s nach Fortsetzen (= 4 Min. 50s Netto seit Anfrage < 5 Min.) -> immer noch offen!
+    await runAt(resumeAt + 170_000);
     expect(
       demo.getSnapshot().requests['team-1']['req_media_sky'].status
     ).toBe('AWAITING_HIDER_MEDIA');
 
-    // 61s nach Fortsetzen (= 121s Netto >= 120s!) -> EXPIRED, -5 Min. Rückerstattung + Gratis-Donut-Ring!
-    await runAt(resumeAt + 61_000);
+    // 3 Min. 01s nach Fortsetzen (= 5 Min. 01s Netto >= 5 Min.!) -> EXPIRED, -10 Min. Abzug (effektiv -5 Min. Bonus) + Gratis-Donut-Ring!
+    await runAt(resumeAt + 181_000);
     stateSnap = demo.getSnapshot();
     expect(stateSnap.requests['team-1']['req_media_sky'].status).toBe('EXPIRED');
-    expect(stateSnap.teams['team-1'].public.penaltyMs).toBe(0);
+    expect(stateSnap.teams['team-1'].public.penaltyMs).toBe(-5 * 60_000);
 
     const teamClues = Object.values(stateSnap.clues['team-1'] ?? {});
     expect(teamClues.length).toBe(1);
     expect(teamClues[0].isFallbackCompensation).toBe(true);
     expect(teamClues[0].penaltyMs).toBe(0);
+    expect(teamClues[0].refundedMs).toBe(10 * 60_000);
     expect(teamClues[0].answerText).toContain('Distanzband:');
   });
 
@@ -235,6 +236,23 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
     expect(demo.getSnapshot().clues['team-2']['clue_req_selfie_2'].answerText).toContain(
       'Gruppen-Selfie'
     );
+    // Standard-Ablaufzeit für empfangene Fotos beträgt exakt 10 Minuten ab Antwort
+    const answeredAt = t0 + 15_000;
+    expect(
+      demo.getSnapshot().requests['team-2']['req_selfie_2'].mediaExpiresAt
+    ).toBe(answeredAt + 10 * 60_000);
+
+    // Nach Klick auf Download verkürzt sich die Restlebensdauer auf 1 Minute!
+    const downloadAt = answeredAt + 2 * 60_000;
+    await adapter.markMediaDownloadedAndShortenExpiry(
+      'team-2',
+      'req_selfie_2',
+      downloadAt
+    );
+    expect(
+      demo.getSnapshot().requests['team-2']['req_selfie_2'].mediaExpiresAt
+    ).toBe(downloadAt + 60_000);
+
     // Team 1 hat diesen Hinweis NICHT (strikt gruppen-individuell!)
     expect(demo.getSnapshot().clues['team-1']?.['clue_req_selfie_2']).toBeUndefined();
 
@@ -251,11 +269,34 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
     expect(lateRefund).toBe(false);
     expect(demo.getSnapshot().teams['team-2'].public.penaltyMs).toBe(5 * 60_000);
 
-    // Bestätigung durch Sucher bereinigt schweres Base64-Feld, erhält aber Hinweisverlauf
-    await adapter.acknowledgeAndStripMedia('team-2', 'req_selfie_2', t0 + 30_000);
+    // Nach Ablauf der 1-Minuten-Frist bereinigt der Controller-Tick das Foto automatisch aus der Datenbank
+    await adapter.savePublicStateByHost({
+      ...s0.state.public,
+      status: 'RUNNING',
+      currentPhase: 'OPEN_SEARCH',
+      gameStartTimestamp: t0,
+      searchStartTimestamp: t0,
+    });
+    const snapBeforeAutoStrip = demo.getSnapshot();
+    await executeControllerTick({
+      adapter,
+      controllerUid: 'demo_uid_lasse',
+      serverNowMs: downloadAt + 61_000,
+      publicState: snapBeforeAutoStrip.state.public,
+      hiderPrivate: snapBeforeAutoStrip.state.hiderPrivate,
+      teamsPublic: Object.fromEntries(
+        Object.entries(snapBeforeAutoStrip.teams).map(([k, v]) => [k, v.public])
+      ),
+      teamLocations: Object.fromEntries(
+        Object.entries(snapBeforeAutoStrip.teams).map(([k, v]) => [k, v.location])
+      ),
+      requestsByTeam: snapBeforeAutoStrip.requests,
+      catchRequests: snapBeforeAutoStrip.catchRequests,
+    });
+
     const stripped = demo.getSnapshot().requests['team-2']['req_selfie_2'];
     expect(stripped.mediaBase64).toBeUndefined();
-    expect(stripped.mediaAcknowledgedAt).toBe(t0 + 30_000);
+    expect(stripped.mediaAcknowledgedAt).toBe(downloadAt + 61_000);
   });
 
   it('validiert Catch-Codes (ShortCode & QR-Payload), setzt Team auf JOINED_SARDINES, löscht Team-Location und berechnet Rangliste phasenrein', async () => {

@@ -61,16 +61,28 @@ describe('Offizielle Wertungsformel & Phasenreine Pausenberechnung', () => {
     expect(score.penaltyMs).toBe(3 * 60_000);
     expect(score.totalTimeMs).toBe(19 * 60_000);
 
-    // Unterlauf-Schutz: Strafzeit fällt niemals unter 0 ms
-    const clamped = computeOfficialTeamScore({
+    // Negativer Zeitbonus (-3 Min. Gutschrift reduziert Gesamtzeit; Gesamtzeit fällt nie unter 0 ms)
+    const bonusScore = computeOfficialTeamScore({
       catchTimestampMs,
       searchStartTimestamp,
       totalPausedMsAtCatch: pausedInHiding,
       pausedBeforeSearchMs: pausedInHiding,
-      validPenaltyMsSum: 2 * 60_000,
-      refundedPenaltyMsSum: 5 * 60_000,
+      validPenaltyMsSum: 5 * 60_000,
+      refundedPenaltyMsSum: 10 * 60_000,
     });
-    expect(clamped.penaltyMs).toBe(0);
+    expect(bonusScore.penaltyMs).toBe(-5 * 60_000);
+    expect(bonusScore.totalTimeMs).toBe(15 * 60_000); // 20m Netto-Suche - 5m Zeitbonus = 15m
+
+    const floorTotal = computeOfficialTeamScore({
+      catchTimestampMs: searchStartTimestamp + 2 * 60_000,
+      searchStartTimestamp,
+      totalPausedMsAtCatch: pausedInHiding,
+      pausedBeforeSearchMs: pausedInHiding,
+      validPenaltyMsSum: 5 * 60_000,
+      refundedPenaltyMsSum: 10 * 60_000,
+    });
+    expect(floorTotal.penaltyMs).toBe(-5 * 60_000);
+    expect(floorTotal.totalTimeMs).toBe(0);
   });
 
   it('Property-Test (200 Zufallsverläufe): Suchzeit ist invariant gegenüber beliebigen HIDING-Pausen', () => {

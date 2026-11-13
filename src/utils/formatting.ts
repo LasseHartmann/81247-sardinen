@@ -61,8 +61,8 @@ export function computeOfficialTeamScore(
     input.catchTimestampMs - input.searchStartTimestamp - pausedDuringSearchMs
   );
   const refunded = input.refundedPenaltyMsSum ?? 0;
-  const penaltyMs = Math.max(0, input.validPenaltyMsSum - refunded);
-  const totalTimeMs = searchTimeMs + penaltyMs;
+  const penaltyMs = input.validPenaltyMsSum - refunded;
+  const totalTimeMs = Math.max(0, searchTimeMs + penaltyMs);
 
   return {
     pausedDuringSearchMs,
@@ -109,11 +109,12 @@ export function formatDurationClock(ms: number): string {
 }
 
 /**
- * Formatiert Strafzeit kompakt in Minuten (z. B. "+4 Min." oder "0 Min.").
+ * Formatiert Strafzeit bzw. Zeitgutschrift kompakt in Minuten (z. B. "+4 Min.", "-5 Min." oder "0 Min.").
  */
 export function formatPenaltyMinutes(penaltyMs: number): string {
-  const mins = Math.round(Math.max(0, penaltyMs) / 60_000);
+  const mins = Math.round(penaltyMs / 60_000);
   if (mins === 0) return '0 Min.';
+  if (mins < 0) return `${mins} Min.`;
   return `+${mins} Min.`;
 }
 

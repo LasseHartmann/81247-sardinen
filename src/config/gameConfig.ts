@@ -98,8 +98,10 @@ export function getQuestionPenaltyMs(questionType: QuestionType): number {
   return QUESTION_PENALTY_MS[QUESTION_CATEGORY_MAP[questionType]];
 }
 
-export const MEDIA_RESPONSE_TIMEOUT_NET_MS = 120_000; // 120s Netto-Spielzeit
-export const MEDIA_REFUND_MS = 5 * 60_000; // -5 Min. Rückerstattung
+export const MEDIA_RESPONSE_TIMEOUT_NET_MS = 5 * 60_000; // 5 Min. (300s) Netto-Spielzeit zum Senden eines Fotos
+export const MEDIA_REFUND_MS = 10 * 60_000; // -10 Min. Zeitabzug bei Nicht-Senden innerhalb von 5 Min. (oder Ablehnung)
+export const MEDIA_AUTO_EXPIRE_MS = 10 * 60_000; // Empfangene Fotos verschwinden automatisch nach 10 Min.
+export const MEDIA_POST_DOWNLOAD_EXPIRE_MS = 60_000; // Nach Klick auf Download verkürzt sich die Restzeit auf max. 1 Min.
 
 export const LEASH_RADIUS_METERS = 20;
 export const LEASH_REQUIRED_ACCURACY_METERS = 25;

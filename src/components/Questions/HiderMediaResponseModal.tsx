@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Camera, Users, XCircle, Clock } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Camera, ChevronDown, ChevronUp, Users, XCircle, Clock } from 'lucide-react';
 import { MEDIA_RESPONSE_TIMEOUT_NET_MS } from '../../config/gameConfig';
 import {
   refundAndCompensateMediaRequest,
@@ -15,6 +15,7 @@ import type {
   TeamPublic,
 } from '../../types/game';
 import { formatDurationClock, getQuestionLabelDe } from '../../utils/formatting';
+import { PhysicsBottomSheet } from '../Common/PhysicsBottomSheet';
 
 export interface HiderMediaResponseModalProps {
   adapter: DatabaseAdapter;
@@ -39,6 +40,12 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
 }) => {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const activeRequestId = openRequests[0]?.id ?? null;
+  useEffect(() => {
+    setCollapsed(false);
+  }, [activeRequestId]);
 
   if (openRequests.length === 0 || !anchorPoint) {
     return null;
@@ -96,25 +103,40 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
   };
 
   return (
-    <div className="cmf-sheet-up fixed inset-x-0 bottom-[calc(4.15rem+env(safe-area-inset-bottom))] z-[600] mx-auto max-w-lg px-2.5 py-2 sm:p-3">
-      <div className="cmf-chassis p-4 sm:p-5 text-[var(--text-main)]">
-        <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
-          <div>
-            <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
-              FOTO-ANFRAGE // {team?.name ?? req.teamId}
-            </span>
-            <h3 className="font-industrial text-base text-[var(--text-main)]">
-              {getQuestionLabelDe(req.questionType)}
-            </h3>
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.15rem+env(safe-area-inset-bottom))] z-[600] mx-auto max-w-lg px-2.5 py-2 sm:p-3">
+      <PhysicsBottomSheet
+        collapsed={collapsed}
+        onCollapsedChange={setCollapsed}
+        allowBodyDrag
+        maxWidthClass="max-w-lg"
+        sheetClassName="text-[var(--text-main)]"
+        bodyClassName="p-4 pt-3 sm:p-5 sm:pt-3.5"
+        header={
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <span className="font-tech block truncate text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
+                FOTO-ANFRAGE // {team?.name ?? req.teamId}
+              </span>
+              <h3 className="font-industrial truncate text-base text-[var(--text-main)]">
+                {getQuestionLabelDe(req.questionType)}
+              </h3>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <div className="cmf-oled flex items-center gap-1.5 px-3 py-1.5 font-dot text-sm text-[var(--cmf-amber)]">
+                <Clock className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                {formatDurationClock(remainingMs)}
+              </div>
+              {collapsed ? (
+                <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
+              )}
+            </div>
           </div>
-          <div className="cmf-oled flex items-center gap-1.5 px-3 py-1.5 font-dot text-sm text-[var(--cmf-amber)]">
-            <Clock className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-            {formatDurationClock(remainingMs)}
-          </div>
-        </div>
-
+        }
+      >
         {isSelfie ? (
-          <div className="cmf-well mt-2.5 space-y-1.5 border border-[var(--cmf-orange)]/45 p-3 text-xs">
+          <div className="cmf-well space-y-1.5 border border-[var(--cmf-orange)]/45 p-3 text-xs">
             <p className="flex items-center gap-1.5 font-tech text-[11px] font-bold text-[var(--cmf-orange)] uppercase">
               <Users className="h-4 w-4 shrink-0" />
               Pflichtregel Gruppen-Selfie:
@@ -132,12 +154,16 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
             )}
           </div>
         ) : (
-          <p className="mt-2.5 text-xs text-[var(--text-muted)]">
+          <p className="text-xs text-[var(--text-muted)]">
             {req.questionType === 'MEDIA_SKY'
               ? 'Fotografiere senkrecht nach oben in den Himmel / das Blätterdach (EXIF-GPS wird automatisch entfernt, <= 60 KB).'
               : 'Fotografiere senkrecht nach unten auf den Bodenbelag (EXIF-GPS wird automatisch entfernt, <= 60 KB).'}
           </p>
         )}
+
+        <p className="mt-2 font-tech text-[10px] text-[var(--text-muted)] uppercase">
+          5 Min. Antwortfrist — ohne Foto erhält das anfragende Team -10 Min. Zeitabzug + Gratis-Donut-Ring.
+        </p>
 
         {errorMsg && (
           <div className="cmf-badge-orange mt-2.5 rounded-lg p-2.5 text-xs font-semibold">
@@ -170,10 +196,10 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
             className="cmf-btn-secondary font-tech inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase"
           >
             <XCircle className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-            Anfrage ablehnen (-5 Min. Erstattung + Gratis-Donut-Ring)
+            Anfrage ablehnen (-10 Min. Zeitabzug + Gratis-Donut-Ring)
           </button>
         </div>
-      </div>
+      </PhysicsBottomSheet>
     </div>
   );
 };

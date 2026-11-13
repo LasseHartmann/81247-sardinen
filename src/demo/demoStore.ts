@@ -1,6 +1,8 @@
 import {
   createDefaultPublicState,
   createDefaultTeams,
+  MEDIA_AUTO_EXPIRE_MS,
+  MEDIA_POST_DOWNLOAD_EXPIRE_MS,
 } from '../config/gameConfig';
 import { PRESET_PLAYERS } from '../config/players';
 import { snapPointIntoPlayArea } from '../geo/boundary';
@@ -809,6 +811,24 @@ export function createDemoStore(options?: {
       });
     },
 
+    async markMediaDownloadedAndShortenExpiry(
+      teamId,
+      requestId,
+      nowMs,
+      postDownloadTtlMs = MEDIA_POST_DOWNLOAD_EXPIRE_MS
+    ): Promise<void> {
+      writeTree((t) => {
+        const existing = t.requests[teamId]?.[requestId];
+        if (!existing || !existing.mediaBase64) return;
+        const prevExpires =
+          typeof existing.mediaExpiresAt === 'number'
+            ? existing.mediaExpiresAt
+            : (existing.processedAt ?? existing.createdAt) + MEDIA_AUTO_EXPIRE_MS;
+        existing.mediaExpiresAt = Math.min(prevExpires, nowMs + postDownloadTtlMs);
+        existing.mediaDownloadedAt = existing.mediaDownloadedAt ?? nowMs;
+      });
+    },
+
     async claimRequestForProcessing(
       teamId,
       requestId,
@@ -847,7 +867,7 @@ export function createDemoStore(options?: {
       writeTree((t) => {
         const pub = t.teams[teamId]?.public;
         if (pub) {
-          pub.penaltyMs = Math.max(0, (pub.penaltyMs || 0) + deltaPenaltyMs);
+          pub.penaltyMs = (pub.penaltyMs || 0) + deltaPenaltyMs;
           pub.clueCount = Math.max(0, (pub.clueCount || 0) + deltaClueCount);
           updated = structuredClone(pub);
         }
@@ -973,8 +993,8 @@ export function createDemoStore(options?: {
       };
       writeTree((t) => {
         t.state.hiderPrivate = {
-          anchorPoint: null,
-          radarStages: [],
+          anchorPoint: t.state.hiderPrivate?.anchorPoint ?? null,
+          radarStages: t.state.hiderPrivate?.radarStages ?? [],
           qrSecret: cleanPassword,
           shortCode: cleanPassword,
         };

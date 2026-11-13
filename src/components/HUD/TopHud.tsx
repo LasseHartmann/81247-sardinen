@@ -151,15 +151,19 @@ export const TopHud: React.FC<TopHudProps> = ({
               </div>
             ) : (
               <div
-                title="Aufgelaufene Hinweis-Strafzeit deines Teams"
+                title="Aufgelaufene Hinweis-Strafzeit / Zeitbonus deines Teams"
                 className={`rounded-lg px-1.5 py-1 text-[10px] font-bold tracking-wide uppercase sm:px-2 sm:text-[11px] ${
                   ownTeam.penaltyMs > 0
                     ? 'cmf-badge-orange'
-                    : 'cmf-well hidden font-tech text-[var(--text-muted)] min-[390px]:inline-flex'
+                    : ownTeam.penaltyMs < 0
+                      ? 'cmf-badge-teal'
+                      : 'cmf-well hidden font-tech text-[var(--text-muted)] min-[390px]:inline-flex'
                 }`}
               >
                 <span className="sm:hidden">
-                  +{Math.round(ownTeam.penaltyMs / 60000)}m
+                  {ownTeam.penaltyMs < 0
+                    ? `${Math.round(ownTeam.penaltyMs / 60000)}m`
+                    : `+${Math.round(ownTeam.penaltyMs / 60000)}m`}
                 </span>
                 <span className="hidden sm:inline">
                   {formatPenaltyMinutes(ownTeam.penaltyMs)}

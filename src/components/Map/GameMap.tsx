@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
-import { LocateFixed, Maximize2, Minus, Plus } from 'lucide-react';
+import { LocateFixed, Maximize2 } from 'lucide-react';
 import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson';
 import { MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM } from '../../config/gameConfig';
 import {
@@ -347,12 +347,6 @@ export const GameMap: React.FC<GameMapProps> = ({
     }
   }, [playArea]);
 
-  const handleZoomBy = useCallback((delta: number) => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.setZoom(map.getZoom() + delta);
-  }, []);
-
   return (
     <div className="relative h-full w-full bg-[var(--bg-page)]">
       <div
@@ -361,7 +355,7 @@ export const GameMap: React.FC<GameMapProps> = ({
         className="h-full w-full z-0"
       />
 
-      {/* Einhand-Daumensteuerung rechts auf der Karte (Zentrieren, 81247-Übersicht, große Zoom-Tasten) */}
+      {/* Einhand-Daumensteuerung rechts auf der Karte (Zentrieren & 81247-Übersicht) */}
       <div
         className={`pointer-events-auto absolute right-[max(0.65rem,env(safe-area-inset-right))] z-[390] flex flex-col gap-1.5 transition-all duration-200 ${
           hasBottomDock ? 'top-16 sm:top-auto sm:bottom-48' : 'bottom-6'
@@ -393,27 +387,6 @@ export const GameMap: React.FC<GameMapProps> = ({
         >
           <Maximize2 className="h-4 w-4 text-[var(--cmf-orange)]" />
         </button>
-
-        <div className="cmf-chassis flex flex-col overflow-hidden rounded-2xl shadow-lg">
-          <button
-            type="button"
-            onClick={() => handleZoomBy(1)}
-            aria-label="Hineinzoomen"
-            title="Hineinzoomen"
-            className="flex h-11 w-11 items-center justify-center border-b border-[var(--shell-border)] text-[var(--text-main)] active:bg-white"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleZoomBy(-1)}
-            aria-label="Herauszoomen"
-            title="Herauszoomen"
-            className="flex h-11 w-11 items-center justify-center text-[var(--text-main)] active:bg-white"
-          >
-            <Minus className="h-4 w-4" />
-          </button>
-        </div>
       </div>
 
       {clickMode.kind !== 'NONE' && (

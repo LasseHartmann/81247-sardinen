@@ -264,6 +264,8 @@ export interface ClueRequest {
   mediaBase64?: string;
   mediaMimeType?: string;
   mediaSynthetic?: boolean;
+  mediaExpiresAt?: number;
+  mediaDownloadedAt?: number;
   mediaAcknowledgedAt?: number;
   usedOfflineOsmFallback?: boolean;
   rejectionReason?: string;

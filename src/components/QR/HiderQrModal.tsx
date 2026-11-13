@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Users, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Lock, QrCode, Users, ShieldCheck } from 'lucide-react';
 import { serializeQrPayload } from '../../services/qrService';
 import type { HiderPrivateState, TeamPublic } from '../../types/game';
 
@@ -10,6 +10,8 @@ export interface HiderQrModalProps {
   teamsPublic: Record<string, TeamPublic>;
   activeTeamIds?: string[];
   sardineGroupMemberNames?: string[];
+  canChangeHiderPassword?: boolean;
+  onSetHiderPassword?: (rawPassword: string) => Promise<void>;
 }
 
 export const HiderQrView: React.FC<HiderQrModalProps> = ({
@@ -18,7 +20,15 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
   teamsPublic,
   activeTeamIds,
   sardineGroupMemberNames = [],
+  canChangeHiderPassword = false,
+  onSetHiderPassword,
 }) => {
+  const [pwFormOpen, setPwFormOpen] = useState(false);
+  const [pwDraft, setPwDraft] = useState('');
+  const [showPwDraft, setShowPwDraft] = useState(false);
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+
   if (!hiderPrivate || !hiderPrivate.qrSecret || !hiderPrivate.shortCode) {
     return (
       <div className="cmf-drafting-bg flex h-full items-center justify-center p-6 text-center">
@@ -42,6 +52,27 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
       t.memberPlayerIds.length > 0 &&
       (!activeSet || activeSet.has(t.id))
   );
+
+  const handleSaveNewCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onSetHiderPassword) return;
+    setPwError(null);
+    const cleaned = pwDraft.trim();
+    if (cleaned.length < 3) {
+      setPwError('Der neue Verstecker-Code muss mindestens 3 Zeichen lang sein.');
+      return;
+    }
+    setPwSaving(true);
+    try {
+      await onSetHiderPassword(cleaned);
+      setPwDraft('');
+      setPwFormOpen(false);
+    } catch {
+      setPwError('Verstecker-Code konnte nicht geändert werden.');
+    } finally {
+      setPwSaving(false);
+    }
+  };
 
   return (
     <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
@@ -77,7 +108,7 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
           {/* Eingebettete schwarze OLED-Insel für Verstecker-Passwort / Fang-Code */}
           <div className="cmf-oled w-full p-4 text-center">
             <span className="font-tech block text-[10px] font-bold tracking-wider text-[#9AA4AE] uppercase">
-              VERSTECKER-PASSWORT // FANG-CODE (FALLS KAMERA BLENDET)
+              VERSTECKER-CODE // FANG-CODE (FALLS KAMERA BLENDET)
             </span>
             <div
               data-testid="hider-short-code"
@@ -86,6 +117,88 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
               {hiderPrivate.shortCode}
             </div>
           </div>
+
+          {/* Verstecker-Code direkt während der laufenden Runde ändern */}
+          {canChangeHiderPassword && onSetHiderPassword && !pwFormOpen && (
+            <button
+              type="button"
+              data-testid="open-midround-hider-pw-btn"
+              onClick={() => {
+                setPwError(null);
+                setPwFormOpen(true);
+              }}
+              className="cmf-btn-secondary font-tech inline-flex min-h-[42px] w-full items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold uppercase"
+            >
+              <KeyRound className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+              Verstecker-Code in laufender Runde ändern
+            </button>
+          )}
+
+          {canChangeHiderPassword && onSetHiderPassword && pwFormOpen && (
+            <form
+              onSubmit={(e) => void handleSaveNewCode(e)}
+              className="cmf-well w-full space-y-2.5 p-3.5 text-left"
+            >
+              <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-2">
+                <span className="flex items-center gap-1.5 font-tech text-[11px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
+                  <Lock className="h-3.5 w-3.5" />
+                  Neuen Verstecker-Code setzen
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPwFormOpen(false);
+                    setPwError(null);
+                  }}
+                  className="font-tech text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
+                >
+                  [Abbrechen]
+                </button>
+              </div>
+              <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+                Aktualisiert sofort QR-Code, Fang-Code & Verstecker-Login (Versteck-Position bleibt erhalten).{' '}
+                <strong className="text-[var(--text-main)]">Nur Verstecker</strong> werden ausgeloggt, Sucher bleiben ungestört eingeloggt!
+              </p>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showPwDraft ? 'text' : 'password'}
+                    data-testid="midround-hider-pw-input"
+                    maxLength={32}
+                    value={pwDraft}
+                    onChange={(e) => setPwDraft(e.target.value)}
+                    placeholder="Neuer Code (mind. 3 Zeichen)"
+                    className="cmf-input cmf-input-orange font-tech min-h-[42px] w-full px-3 py-2 pr-9 text-xs font-bold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPwDraft((v) => !v)}
+                    className="absolute top-1/2 right-2.5 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                    title={showPwDraft ? 'Verbergen' : 'Anzeigen'}
+                  >
+                    {showPwDraft ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <button
+                  type="submit"
+                  data-testid="save-midround-hider-pw-btn"
+                  disabled={pwSaving || pwDraft.trim().length < 3}
+                  className="cmf-btn-primary font-dot min-h-[42px] shrink-0 px-3.5 py-2 text-xs font-bold"
+                >
+                  {pwSaving ? 'Speichere ...' : 'Ändern'}
+                </button>
+              </div>
+              {pwError && (
+                <p className="font-tech text-[11px] font-bold text-[var(--cmf-orange)]">
+                  {pwError}
+                </p>
+              )}
+            </form>
+          )}
         </div>
 
         <div className="cmf-module p-4 text-xs space-y-3">

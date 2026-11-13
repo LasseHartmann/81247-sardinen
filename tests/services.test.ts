@@ -394,6 +394,35 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(snapStarted.state.hiderPrivate.shortCode).toBe(chosenPw);
     expect(snapStarted.state.hiderPrivate.qrSecret).toBe(chosenPw);
 
+    // 2b. Ändert ein Verstecker den Verstecker-Code mitten in der Runde, bleiben AnchorPoint & RadarStages vollständig erhalten!
+    await store.adapter.saveHiderPrivate({
+      ...snapStarted.state.hiderPrivate,
+      anchorPoint: {
+        lat: 48.1632,
+        lng: 11.4572,
+        accuracy: 7,
+        lockedAt: t0 + 3_500,
+        lockedByUid: 'demo_uid_lasse',
+      },
+    });
+    const midRoundPw = 'NeuerSardinenCode';
+    const midRoundLock = await store.adapter.setHiderPasswordAndTriggerLogout({
+      uid: 'demo_uid_lasse',
+      sessionId,
+      cleanPassword: midRoundPw,
+      passwordHash: computeHiderPasswordHash(midRoundPw),
+      hiderPlayerIds: ['lasse'],
+      nowMs: t0 + 3_800,
+    });
+    const snapMidRound = store.getSnapshot();
+    expect(snapMidRound.state.hiderPrivate.shortCode).toBe(midRoundPw);
+    expect(snapMidRound.state.hiderPrivate.qrSecret).toBe(midRoundPw);
+    expect(snapMidRound.state.hiderPrivate.anchorPoint?.lat).toBeCloseTo(
+      48.1632,
+      4
+    );
+    expect(midRoundLock.hiderPlayerIds).toEqual(['lasse']);
+
     // 3. Notfallnachricht inkl. GPS-Standort senden, für alle sichtbar extrahieren & Löschschutz bei Orphan-Cleanup prüfen
     await store.adapter.sendEmergencyMessage({
       uid: 'demo_uid_thomas',

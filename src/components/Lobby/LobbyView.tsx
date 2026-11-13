@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   CheckCircle2,
   ChevronDown,
@@ -25,6 +25,7 @@ import type {
   PublicGameState,
   TeamPublic,
 } from '../../types/game';
+import { PhysicsBottomSheet } from '../Common/PhysicsBottomSheet';
 
 export interface LoginScreenProps {
   firebaseAvailable: boolean;
@@ -345,7 +346,6 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   const [pwError, setPwError] = useState<string | null>(null);
   const [togglingReady, setTogglingReady] = useState(false);
   const [sheetCollapsed, setSheetCollapsed] = useState(false);
-  const touchStartYRef = useRef<number | null>(null);
 
   const hasPasswordSet = Boolean(activeHiderLock?.passwordHash);
   const ownRoleAssigned =
@@ -390,35 +390,15 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   };
 
   return (
-    <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto flex max-h-[68dvh] sm:max-h-[calc(100dvh-160px)] w-full max-w-lg flex-col overflow-hidden text-[var(--text-main)] transition-all duration-250 ease-[var(--ease-spring)]">
-      {/* Smartphone Bottom-Sheet Drag-/Tap-Handle zum Ein- & Ausklappen (freie Kartensicht!) */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={!sheetCollapsed}
-        onClick={() => setSheetCollapsed((c) => !c)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setSheetCollapsed((c) => !c);
-          }
-        }}
-        onTouchStart={(e) => {
-          touchStartYRef.current = e.touches[0]?.clientY ?? null;
-        }}
-        onTouchEnd={(e) => {
-          if (touchStartYRef.current === null) return;
-          const dy =
-            (e.changedTouches[0]?.clientY ?? touchStartYRef.current) -
-            touchStartYRef.current;
-          touchStartYRef.current = null;
-          if (dy > 28) setSheetCollapsed(true);
-          else if (dy < -28) setSheetCollapsed(false);
-        }}
-        className="flex cursor-pointer flex-col items-center justify-center border-b border-[var(--shell-border)]/70 px-4 pt-2 pb-2 select-none active:bg-white/40"
-      >
-        <span className="h-1 w-10 rounded-full bg-[var(--hardware-border)]" />
-        <div className="mt-1.5 flex w-full items-center justify-between gap-2">
+    <PhysicsBottomSheet
+      collapsed={sheetCollapsed}
+      onCollapsedChange={setSheetCollapsed}
+      maxWidthClass="max-w-lg"
+      sheetClassName="max-h-[68dvh] sm:max-h-[calc(100dvh-160px)] text-[var(--text-main)]"
+      bodyClassName="cmf-scroll-area flex-1 p-3.5 sm:p-5"
+      handleTestId="lobby-sheet-handle"
+      header={
+        <div className="flex w-full items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <span className="font-industrial truncate text-sm text-[var(--text-main)]">
               Lobby • {ownMember.name}
@@ -429,14 +409,14 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
               </span>
             ) : (
               <span className="cmf-badge-amber shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
-                PW offen
+                Code offen
               </span>
             )}
           </div>
           <span className="inline-flex shrink-0 items-center gap-1 font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
             {sheetCollapsed ? (
               <>
-                <span>Aufklappen</span>
+                <span>Aufziehen</span>
                 <ChevronUp className="h-3.5 w-3.5" />
               </>
             ) : (
@@ -447,42 +427,9 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
             )}
           </span>
         </div>
-      </div>
-
-      {/* Kompakter Schnell-Bereit-Balken im eingeklappten Zustand */}
-      {sheetCollapsed && hasPasswordSet && canPressReady && (
-        <div className="p-2.5">
-          <button
-            type="button"
-            data-testid="toggle-ready-btn"
-            disabled={togglingReady}
-            onClick={async () => {
-              setTogglingReady(true);
-              try {
-                await onToggleOwnReady(!isOwnReady);
-              } finally {
-                setTogglingReady(false);
-              }
-            }}
-            className={`font-dot flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold ${
-              isOwnReady ? 'cmf-btn-active' : 'cmf-btn-primary'
-            }`}
-          >
-            <CheckCircle2
-              className={`h-4 w-4 ${
-                isOwnReady ? 'text-[var(--cmf-teal)]' : 'text-white'
-              }`}
-            />
-            {isOwnReady
-              ? `Bereit bestätigt (${readyCount}/${memberList.length})`
-              : `Ich bin bereit! (${readyCount}/${memberList.length})`}
-          </button>
-        </div>
-      )}
-
-      {!sheetCollapsed && (
-        <div className="cmf-scroll-area cmf-view-enter flex-1 p-3.5 sm:p-5">
-          {/* Kopfzeile */}
+      }
+    >
+      {/* Kopfzeile */}
           <div className="flex items-center justify-between gap-2">
             <div>
               <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
@@ -612,8 +559,8 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
             )}
           </div>
           <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
-            Wird euer <strong className="text-[var(--text-main)]">QR-Code & Fang-Code</strong> zum Finden sowie das{' '}
-            <strong className="text-[var(--text-main)]">Login-Passwort für alle Verstecker-Accounts</strong>. Nach dem Speichern werden alle Spieler einmalig ausgeloggt!
+            Wird euer <strong className="text-[var(--text-main)]">QR-Code & Fang-Code</strong> zum Finden sowie der{' '}
+            <strong className="text-[var(--text-main)]">Login-Code für alle Verstecker-Accounts</strong>. Beim Festlegen werden nur Verstecker ausgeloggt (Sucher bleiben angemeldet)!
           </p>
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -670,7 +617,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
 
       {ownMember.side !== 'HIDER' && !hasPasswordSet && hiderMembers.length > 0 && (
         <div className="cmf-well mt-3.5 p-3 text-xs text-[var(--text-muted)]">
-          Die Verstecker legen gerade ihr geheimes Passwort fest. Danach werdet ihr kurz ausgeloggt und könnt auf <strong className="text-[var(--text-main)]">„Bereit“</strong> drücken!
+          Die Verstecker legen gerade ihren geheimen Verstecker-Code fest. Sobald er steht, könnt ihr direkt auf <strong className="text-[var(--text-main)]">„Bereit“</strong> drücken!
         </div>
       )}
 
@@ -770,8 +717,6 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
           Admin-Konsole öffnen (Teams & Steuerung)
         </button>
       )}
-        </div>
-      )}
-    </div>
+    </PhysicsBottomSheet>
   );
 };

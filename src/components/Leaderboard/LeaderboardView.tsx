@@ -128,10 +128,22 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     </div>
                     <div className="cmf-well flex items-center justify-between px-3 py-1.5">
                       <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
-                        <AlertCircle className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                        Strafzeit:
+                        <AlertCircle
+                          className={`h-3.5 w-3.5 ${
+                            entry.penaltyMs < 0
+                              ? 'text-[var(--cmf-teal)]'
+                              : 'text-[var(--cmf-orange)]'
+                          }`}
+                        />
+                        {entry.penaltyMs < 0 ? 'Zeitbonus:' : 'Strafzeit:'}
                       </span>
-                      <strong className="font-tech text-[var(--cmf-orange)]">
+                      <strong
+                        className={`font-tech ${
+                          entry.penaltyMs < 0
+                            ? 'text-[var(--cmf-teal)]'
+                            : 'text-[var(--cmf-orange)]'
+                        }`}
+                      >
                         {formatPenaltyMinutes(entry.penaltyMs)}
                       </strong>
                     </div>

@@ -201,22 +201,57 @@ export function useAuth(): {
     return adapter.registerTabPresence(authUser.uid, tabId, ua);
   }, [adapter, authUser, activeMember?.enabled, tabId]);
 
-  // Synchronisiert Zwangs-Logout bei neu gesetztem Verstecker-Passwort sowie Passwortschutz für Verstecker-Accounts
+  // Synchronisiert Zwangs-Logout ausschließlich für Verstecker bei neu gesetztem Verstecker-Code
   const syncWithActiveHiderLock = useCallback(
     (activeHiderLock: HiderLoginLock | null) => {
       if (!activeHiderLock || !isSessionUnlocked) return;
       const saved = loadStoredSession();
       const lastAck = saved?.ackLogoutGen ?? loadLastAckLogoutGen();
 
-      // 1. Verstecker haben gerade ein neues Passwort festgelegt -> ALLE Spieler sofort ausloggen!
-      if (activeHiderLock.logoutGen && lastAck !== activeHiderLock.logoutGen) {
+      const isOwnAccountHider = firebaseMember
+        ? firebaseMember.side === 'HIDER'
+        : Boolean(
+            saved?.playerId &&
+              activeHiderLock.hiderPlayerIds.includes(saved.playerId)
+          );
+
+      // Sucher und unzugewiesene Spieler brauchen den Verstecker-Code nicht -> eingeloggt lassen!
+      if (!isOwnAccountHider) {
+        if (
+          saved &&
+          activeHiderLock.logoutGen &&
+          saved.ackLogoutGen !== activeHiderLock.logoutGen
+        ) {
+          saveStoredSession({
+            ...saved,
+            ackLogoutGen: activeHiderLock.logoutGen,
+          });
+        }
+        return;
+      }
+
+      const needsLogoutForNewCode = Boolean(
+        activeHiderLock.logoutGen && lastAck !== activeHiderLock.logoutGen
+      );
+      const needsPasswordVerification = Boolean(
+        activeHiderLock.passwordHash &&
+          saved?.verifiedHiderPwHash !== activeHiderLock.passwordHash
+      );
+
+      if (needsLogoutForNewCode || needsPasswordVerification) {
+        const targetName =
+          firebaseMember?.name ??
+          findPresetPlayerById(saved?.playerId ?? '')?.name ??
+          null;
         clearStoredSession(activeHiderLock.logoutGen);
         setIsSessionUnlocked(false);
-        setPendingHiderPasswordFor(null);
+        setPendingHiderPasswordFor(targetName);
         setLoginError(null);
         setSeatConflictError(null);
         setLogoutNotice(
-          'Die Verstecker haben ihr Passwort festgelegt – alle Spieler wurden sicherheitshalber ausgeloggt. Bitte logge dich wieder ein und klicke auf „Bereit“!'
+          needsLogoutForNewCode
+            ? 'Ein neuer Verstecker-Code wurde festgelegt – Verstecker müssen sich mit dem neuen Code anmelden.'
+            : `${targetName ?? 'Dieser Account'} ist als Verstecker eingeteilt. Bitte gib den aktuellen Verstecker-Code ein.`
         );
         if (authUser && firebaseMember) {
           void adapter
@@ -231,21 +266,6 @@ export function useAuth(): {
             .releasePlayerSeat(firebaseMember.playerId, authUser.uid, tabId)
             .catch(() => {});
         }
-        return;
-      }
-
-      // 2. Falls dieser Spieler ein Verstecker ist, aber das aktuelle Verstecker-Passwort in dieser Sitzung noch nicht bestätigt hat
-      if (
-        firebaseMember?.side === 'HIDER' &&
-        activeHiderLock.passwordHash &&
-        saved?.verifiedHiderPwHash !== activeHiderLock.passwordHash
-      ) {
-        clearStoredSession(activeHiderLock.logoutGen);
-        setIsSessionUnlocked(false);
-        setPendingHiderPasswordFor(firebaseMember.name);
-        setLogoutNotice(
-          `${firebaseMember.name} ist als Verstecker eingeteilt. Bitte gib das Verstecker-Passwort ein.`
-        );
       }
     },
     [adapter, authUser, firebaseMember, isSessionUnlocked, tabId]

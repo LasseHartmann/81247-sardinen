@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Crown,
   Eye,
   EyeOff,
@@ -63,8 +65,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   };
 
   return (
-    <div className="cmf-drafting-bg flex h-[100dvh] w-full flex-col items-center justify-center overflow-y-auto p-4 text-[var(--text-main)]">
-      <div className="cmf-chassis w-full max-w-md p-6 sm:p-7">
+    <div className="cmf-drafting-bg cmf-scroll-area flex h-[100dvh] w-full flex-col items-center justify-start sm:justify-center pt-[max(1.25rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] text-[var(--text-main)]">
+      <div className="cmf-chassis my-auto w-full max-w-md p-5 sm:p-7">
         {/* Hardware-Kopfzeile mit Serien-Tag & OLED-Emblem */}
         <div className="flex items-center justify-between">
           <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
@@ -113,6 +115,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               id="player-name-input"
               data-testid="player-name-input"
               type="text"
+              enterKeyHint="go"
               autoComplete="off"
               autoFocus={!pendingHiderPasswordFor}
               value={effectiveName}
@@ -158,12 +161,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 id="hider-login-password-input"
                 data-testid="hider-login-password-input"
                 type={showPw ? 'text' : 'password'}
+                enterKeyHint="go"
                 autoComplete="off"
                 autoFocus
                 value={hiderPassword}
                 onChange={(e) => setHiderPassword(e.target.value)}
                 placeholder="Geheimes Verstecker-Passwort ..."
-                className="cmf-input cmf-input-orange font-tech min-h-[46px] w-full px-3.5 py-2.5 text-sm font-bold"
+                className="cmf-input cmf-input-orange font-tech min-h-[48px] w-full px-3.5 py-2.5 text-base font-bold sm:text-sm"
               />
             </div>
           )}
@@ -336,6 +340,8 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   const [pwSaving, setPwSaving] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [togglingReady, setTogglingReady] = useState(false);
+  const [sheetCollapsed, setSheetCollapsed] = useState(false);
+  const touchStartYRef = useRef<number | null>(null);
 
   const hasPasswordSet = Boolean(activeHiderLock?.passwordHash);
   const ownRoleAssigned =
@@ -380,31 +386,122 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   };
 
   return (
-    <div className="cmf-chassis pointer-events-auto mx-auto max-h-[calc(100dvh-146px)] w-full max-w-lg overflow-y-auto p-4 sm:p-5 text-[var(--text-main)]">
-      {/* Kopfzeile */}
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-            LOBBY // SEKTOR 81247
-          </span>
-          <h2 className="font-industrial flex items-center gap-2 text-lg text-[var(--text-main)]">
-            <span>Hallo {ownMember.name}!</span>
-            {ownMember.isHost && (
-              <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
-                ADMIN
+    <div className="cmf-chassis pointer-events-auto mx-auto flex max-h-[68dvh] sm:max-h-[calc(100dvh-160px)] w-full max-w-lg flex-col overflow-hidden text-[var(--text-main)]">
+      {/* Smartphone Bottom-Sheet Drag-/Tap-Handle zum Ein- & Ausklappen (freie Kartensicht!) */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={!sheetCollapsed}
+        onClick={() => setSheetCollapsed((c) => !c)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setSheetCollapsed((c) => !c);
+          }
+        }}
+        onTouchStart={(e) => {
+          touchStartYRef.current = e.touches[0]?.clientY ?? null;
+        }}
+        onTouchEnd={(e) => {
+          if (touchStartYRef.current === null) return;
+          const dy =
+            (e.changedTouches[0]?.clientY ?? touchStartYRef.current) -
+            touchStartYRef.current;
+          touchStartYRef.current = null;
+          if (dy > 28) setSheetCollapsed(true);
+          else if (dy < -28) setSheetCollapsed(false);
+        }}
+        className="flex cursor-pointer flex-col items-center justify-center border-b border-[var(--shell-border)]/70 px-4 pt-2 pb-2 select-none active:bg-white/40"
+      >
+        <span className="h-1 w-10 rounded-full bg-[var(--hardware-border)]" />
+        <div className="mt-1.5 flex w-full items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="font-industrial truncate text-sm text-[var(--text-main)]">
+              Lobby • {ownMember.name}
+            </span>
+            {hasPasswordSet ? (
+              <span className="cmf-badge-teal shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
+                Bereit {readyCount}/{memberList.length}
+              </span>
+            ) : (
+              <span className="cmf-badge-amber shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
+                PW offen
               </span>
             )}
-          </h2>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1 font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+            {sheetCollapsed ? (
+              <>
+                <span>Aufklappen</span>
+                <ChevronUp className="h-3.5 w-3.5" />
+              </>
+            ) : (
+              <>
+                <span>Karte zeigen</span>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </>
+            )}
+          </span>
         </div>
-        <button
-          type="button"
-          onClick={() => void onLogout()}
-          className="cmf-btn-secondary font-tech inline-flex min-h-[36px] items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-          Abmelden
-        </button>
       </div>
+
+      {/* Kompakter Schnell-Bereit-Balken im eingeklappten Zustand */}
+      {sheetCollapsed && hasPasswordSet && canPressReady && (
+        <div className="p-2.5">
+          <button
+            type="button"
+            data-testid="toggle-ready-btn"
+            disabled={togglingReady}
+            onClick={async () => {
+              setTogglingReady(true);
+              try {
+                await onToggleOwnReady(!isOwnReady);
+              } finally {
+                setTogglingReady(false);
+              }
+            }}
+            className={`font-dot flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold ${
+              isOwnReady ? 'cmf-btn-active' : 'cmf-btn-primary'
+            }`}
+          >
+            <CheckCircle2
+              className={`h-4 w-4 ${
+                isOwnReady ? 'text-[var(--cmf-teal)]' : 'text-white'
+              }`}
+            />
+            {isOwnReady
+              ? `Bereit bestätigt (${readyCount}/${memberList.length})`
+              : `Ich bin bereit! (${readyCount}/${memberList.length})`}
+          </button>
+        </div>
+      )}
+
+      {!sheetCollapsed && (
+        <div className="cmf-scroll-area flex-1 p-3.5 sm:p-5">
+          {/* Kopfzeile */}
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                LOBBY // SEKTOR 81247
+              </span>
+              <h2 className="font-industrial flex items-center gap-2 text-base sm:text-lg text-[var(--text-main)]">
+                <span>Hallo {ownMember.name}!</span>
+                {ownMember.isHost && (
+                  <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
+                    ADMIN
+                  </span>
+                )}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => void onLogout()}
+              className="cmf-btn-secondary font-tech inline-flex min-h-[40px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Abmelden
+            </button>
+          </div>
 
       {/* Eingebettete schwarze OLED-Insel: Rollen-Status & Bereitschafts-Telemetrie */}
       <div className="cmf-oled mt-3 p-3.5 space-y-2.5">
@@ -669,10 +766,12 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
           type="button"
           data-testid="open-host-panel-btn"
           onClick={onOpenHostTab}
-          className="cmf-btn-active font-tech mt-3 flex min-h-[44px] w-full items-center justify-center px-4 py-2 text-xs font-bold tracking-wider uppercase"
+          className="cmf-btn-active font-tech mt-3 flex min-h-[46px] w-full items-center justify-center px-4 py-2.5 text-xs font-bold tracking-wider uppercase"
         >
           Admin-Konsole öffnen (Teams & Steuerung)
         </button>
+      )}
+        </div>
       )}
     </div>
   );

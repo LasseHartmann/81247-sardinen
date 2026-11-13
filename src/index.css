@@ -32,6 +32,8 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -40,6 +42,51 @@ body {
   background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
   background-size: 18px 18px;
   font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Smartphone Touch- & Scroll-Ergonomie:
+   - Kein 300ms Tap-Delay / Doppeltipp-Zoom auf Bedienelementen
+   - Kein automatisches Heranzoomen in iOS Safari bei Texteingaben (< 16px)
+   - Isoliertes Momentum-Scrolling ohne Pull-to-Refresh-Kettenreaktion */
+button,
+a,
+select,
+input,
+textarea,
+label,
+[role='button'],
+[role='switch'],
+[role='slider'] {
+  touch-action: manipulation;
+}
+
+button,
+[role='button'] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@media (max-width: 640px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+.cmf-scroll-area {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cmf-no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.cmf-no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* ==========================================================================

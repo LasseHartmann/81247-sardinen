@@ -282,15 +282,15 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   }).filter((t) => t.memberNames.length > 0);
 
   return (
-    <div className="cmf-drafting-bg h-full overflow-y-auto p-4 text-[var(--text-main)]">
-      <div className="mx-auto max-w-3xl space-y-5 pb-12">
+    <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
+      <div className="mx-auto max-w-3xl space-y-4 sm:space-y-5 pb-12">
         {/* Kopfzeile */}
-        <div className="cmf-chassis flex flex-wrap items-center justify-between gap-3 p-5">
+        <div className="cmf-chassis flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
           <div>
             <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
               SPIELLEITER // KONSOLE
             </span>
-            <h2 className="font-dot mt-1.5 text-xl text-[var(--text-main)]">
+            <h2 className="font-dot mt-1 text-lg sm:text-xl text-[var(--text-main)]">
               Rundensteuerung & Teams
             </h2>
           </div>
@@ -299,7 +299,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               type="button"
               data-testid="lock-admin-console-btn"
               onClick={onLeaveAndLockConsole}
-              className="cmf-btn-secondary font-tech inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-2 text-xs font-bold uppercase"
+              className="cmf-btn-secondary font-tech inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold uppercase"
             >
               <Lock className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
               Konsole sperren & verlassen
@@ -405,7 +405,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2.5 pt-1">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2.5 pt-1">
             {publicState.status === 'LOBBY' ||
             publicState.status === 'FINISHED' ? (
               <button
@@ -413,7 +413,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 data-testid="host-start-round-btn"
                 disabled={hiderCount === 0 || occupiedTeams.length === 0}
                 onClick={() => void handleStartRound()}
-                className="cmf-btn-primary font-dot inline-flex min-h-[46px] items-center gap-2 px-4 py-2.5 text-xs font-bold"
+                className="cmf-btn-primary font-dot inline-flex min-h-[48px] w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
               >
                 <Play className="h-4 w-4" />
                 Runde manuell sofort starten
@@ -423,7 +423,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => void handleTogglePause()}
-                  className="cmf-btn-active font-dot inline-flex min-h-[46px] items-center gap-2 px-4 py-2.5 text-xs font-bold"
+                  className="cmf-btn-active font-dot inline-flex min-h-[48px] w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
                 >
                   {publicState.status === 'PAUSED' ? (
                     <>
@@ -440,7 +440,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => void handleForceStartOpenSearch()}
-                    className="cmf-btn-primary font-dot inline-flex min-h-[46px] items-center gap-2 px-4 py-2.5 text-xs font-bold"
+                    className="cmf-btn-primary font-dot inline-flex min-h-[48px] w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
                   >
                     <FastForward className="h-4 w-4" />
                     Offene Suche sofort freigeben
@@ -452,7 +452,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             <button
               type="button"
               onClick={() => void handleResetRound()}
-              className="cmf-btn-secondary font-tech inline-flex min-h-[46px] items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase"
+              className="cmf-btn-secondary font-tech inline-flex min-h-[48px] w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold uppercase"
             >
               <RotateCcw className="h-4 w-4" />
               Runde zurücksetzen
@@ -530,15 +530,15 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               return (
                 <div
                   key={m.uid}
-                  className="cmf-well flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-xs"
+                  className="cmf-well flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 text-xs"
                 >
                   <div className="flex items-center gap-2">
                     <span
-                      className={`h-2.5 w-2.5 rounded-full ${
+                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${
                         online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
                       }`}
                     />
-                    <span className="font-bold text-[var(--text-main)]">{m.name}</span>
+                    <span className="text-sm font-bold text-[var(--text-main)]">{m.name}</span>
                     {m.isHost && (
                       <span className="cmf-badge-teal rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
                         Host
@@ -551,12 +551,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex w-full sm:w-auto items-center gap-2">
                     <select
                       aria-label={`Rolle für ${m.name}`}
                       value={currentValue}
                       onChange={(e) => void handleAssignMember(m, e.target.value)}
-                      className="cmf-input min-h-[38px] px-2.5 py-1.5 text-xs font-semibold"
+                      className="cmf-input min-h-[44px] flex-1 sm:flex-initial px-3 py-2 text-base sm:text-xs font-semibold"
                     >
                       <option value="HIDER">Verstecker (Die Sardinen)</option>
                       {TEAM_PALETTE.map((t) => (
@@ -573,9 +573,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                         data-testid={`kick-player-${m.playerId}`}
                         onClick={() => void handleKickMember(m)}
                         title={`${m.name} aus der Runde kicken`}
-                        className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-[var(--cmf-orange)] uppercase"
+                        className="cmf-btn-secondary font-tech inline-flex min-h-[44px] shrink-0 items-center gap-1 px-3 py-2 text-[11px] font-bold text-[var(--cmf-orange)] uppercase"
                       >
-                        <UserX className="h-3.5 w-3.5" />
+                        <UserX className="h-4 w-4" />
                         <span>Kicken</span>
                       </button>
                     )}

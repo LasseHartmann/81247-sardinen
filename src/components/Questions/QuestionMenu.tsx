@@ -137,7 +137,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         type="button"
         data-testid={`preview-btn-${qType}`}
         onClick={() => toggleOrShowMapPreview(qType)}
-        className={`font-tech inline-flex min-h-[42px] items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase ${
+        className={`font-tech inline-flex min-h-[46px] items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase ${
           isActive
             ? 'cmf-btn-active'
             : 'cmf-btn-secondary bg-white/60 text-[var(--text-main)]'
@@ -145,13 +145,13 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
       >
         {isActive ? (
           <>
-            <X className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-            <span>Vorschau beenden</span>
+            <X className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+            <span>Vorschau aus</span>
           </>
         ) : (
           <>
-            <Eye className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-            <span>Vorschau auf Karte</span>
+            <Eye className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+            <span>Vorschau</span>
           </>
         )}
       </button>
@@ -202,9 +202,9 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   // Für Verstecker & Spielleiter zeigt dieser Tab das Protokoll aller Hinweise im Spiel
   if (!isSeekerActive) {
     return (
-      <div className="cmf-drafting-bg h-full overflow-y-auto p-4 text-[var(--text-main)]">
+      <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
         <div className="mx-auto max-w-2xl space-y-4 pb-10">
-          <div className="cmf-chassis p-5">
+          <div className="cmf-chassis p-4 sm:p-5">
             <span className="cmf-badge-teal inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
               TELEMETRIE // LOGBUCH
             </span>
@@ -241,16 +241,22 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
       )
     : 0;
 
+  const scrollToSection = (sectionId: string) => {
+    document
+      .getElementById(sectionId)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
-    <div className="cmf-drafting-bg h-full overflow-y-auto p-4 text-[var(--text-main)]">
-      <div className="mx-auto max-w-2xl space-y-5 pb-12">
-        <div className="cmf-chassis p-5">
+    <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
+      <div className="mx-auto max-w-2xl space-y-4 pb-12">
+        <div className="cmf-chassis p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <span className="cmf-badge-amber inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
                 HINWEIS-INSTRUMENTE // {ownTeam?.name}
               </span>
-              <h2 className="font-dot mt-1.5 text-xl text-[var(--text-main)]">
+              <h2 className="font-dot mt-1 text-lg sm:text-xl text-[var(--text-main)]">
                 Hinweise gegen Zeitstrafe kaufen
               </h2>
             </div>
@@ -260,7 +266,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 type="button"
                 data-testid="menu-clear-preview-btn"
                 onClick={() => onChangePreviewQuestion(null)}
-                className="cmf-btn-active font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase"
+                className="cmf-btn-active font-tech inline-flex min-h-[40px] items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase"
               >
                 <X className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
                 Kartenvorschau beenden
@@ -270,6 +276,31 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Alle Ergebnisse & Karten-Overlays sind ausschließlich für euer eigenes Team sichtbar.
           </p>
+        </div>
+
+        {/* Sticky Smartphone-Schnellsprungleiste für Einhand-Navigation */}
+        <div className="sticky top-0 z-10 -mx-1 px-1 py-1 backdrop-blur-md">
+          <div className="cmf-no-scrollbar flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[var(--shell-border)] bg-[var(--shell-bg)] p-1.5 shadow-sm">
+            {[
+              { id: 'q-cat-1', label: 'Teiler +2m' },
+              { id: 'q-cat-2', label: 'ÖPNV +3m' },
+              { id: 'q-cat-3', label: 'Distanz +3/4m' },
+              { id: 'q-cat-4', label: 'Medien +5m' },
+              {
+                id: 'q-history',
+                label: `Verlauf (${Object.keys(teamClues).length})`,
+              },
+            ].map((pill) => (
+              <button
+                key={pill.id}
+                type="button"
+                onClick={() => scrollToSection(pill.id)}
+                className="cmf-btn-secondary shrink-0 rounded-xl bg-white/75 px-3 py-2 font-tech text-[11px] font-bold text-[var(--text-main)] uppercase"
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {(isPaused || isHidingPhase || !ownFix) && (
@@ -288,7 +319,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         )}
 
         {/* KATEGORIE 1: Richtungs- & Kartenteiler (+2 Min.) */}
-        <section className="cmf-module p-4 sm:p-5 space-y-4">
+        <section id="q-cat-1" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
               Kategorie 1: Richtungs- & Kartenteiler
@@ -492,7 +523,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         </section>
 
         {/* KATEGORIE 2: Umgebungs-Check mit OSM/Overpass (+3 Min.) — Grünflächen-Check entfernt */}
-        <section className="cmf-module p-4 sm:p-5 space-y-3.5">
+        <section id="q-cat-2" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
               Kategorie 2: 81247-Umgebungs-Check (OSM)
@@ -523,7 +554,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         </section>
 
         {/* KATEGORIE 3: Distanz-Scanner (Radius-Radar +3 Min. per Drehknopf / Donut-Ring +4 Min.) */}
-        <section className="cmf-module p-4 sm:p-5 space-y-3.5">
+        <section id="q-cat-3" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
               Kategorie 3: Distanz-Scanner
@@ -601,7 +632,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         </section>
 
         {/* KATEGORIE 4: Manuelle Foto- & Audio-Hinweise (+5 Min.) */}
-        <section className="cmf-module p-4 sm:p-5 space-y-3.5">
+        <section id="q-cat-4" className="cmf-module scroll-mt-14 p-3.5 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
               Kategorie 4: Live-Foto & 10s-Audio der Sardinen
@@ -667,7 +698,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         </section>
 
         {/* Bisherige Hinweise & Overlay-Schalter */}
-        <section className="space-y-2.5">
+        <section id="q-history" className="scroll-mt-14 space-y-2.5">
           <h3 className="font-industrial px-1 text-base text-[var(--text-main)]">
             Eure ausgewerteten Hinweise ({Object.keys(teamClues).length})
           </h3>

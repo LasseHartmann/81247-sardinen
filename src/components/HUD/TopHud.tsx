@@ -85,12 +85,17 @@ export const TopHud: React.FC<TopHudProps> = ({
   };
 
   return (
-    <header className="pointer-events-auto z-20 border-b-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]">
-      <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-2">
-        {/* Eingebettete schwarze OLED-Telemetrie-Insel: Timer + Phase + Radar */}
-        <div className="cmf-oled flex items-center gap-2.5 px-3 py-1.5">
-          <div className="flex items-center gap-2">
-            {isRunning ? (
+    <header className="pointer-events-auto z-20 border-b-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] pt-[max(0.4rem,env(safe-area-inset-top))] pr-[max(0.65rem,env(safe-area-inset-right))] pb-1.5 pl-[max(0.65rem,env(safe-area-inset-left))] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]">
+      <div className="mx-auto flex max-w-4xl items-center justify-between gap-1.5 sm:gap-2">
+        {/* Eingebettete schwarze OLED-Telemetrie-Insel: Timer + Phase + Radar (einzeilig & überlaufsicher auf Smartphones) */}
+        <div className="cmf-oled flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 sm:flex-initial sm:gap-2.5 sm:px-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            {!connected ? (
+              <WifiOff
+                className="h-3.5 w-3.5 shrink-0 text-[var(--nothing-red)]"
+                aria-label="Offline"
+              />
+            ) : isRunning ? (
               <span className="nothing-red-dot" title="Live-Sitzung aktiv" />
             ) : (
               <span
@@ -101,21 +106,21 @@ export const TopHud: React.FC<TopHudProps> = ({
             )}
             <span
               data-testid="hud-net-clock"
-              className="font-dot text-base leading-none text-[#F8FAFC] sm:text-lg"
+              className="font-dot text-sm leading-none text-[#F8FAFC] sm:text-lg"
             >
               {formatDurationClock(timer.netElapsedMs)}
             </span>
           </div>
 
-          <div className="h-6 border-l border-dashed border-[#27272A]" />
+          <div className="h-5 shrink-0 border-l border-dashed border-[#27272A] sm:h-6" />
 
-          <div className="flex flex-col leading-tight">
-            <span className="font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase">
+          <div className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate font-tech text-[9px] font-bold tracking-wider text-[#F8FAFC] uppercase sm:text-[10px]">
               {getPhaseLabelDe(activePhase)}
             </span>
-            <span className="flex items-center gap-1 font-tech text-[10px] text-[var(--cmf-amber)]">
-              <Radar className="h-3 w-3 shrink-0 text-[var(--cmf-teal)]" />
-              <span className="truncate max-w-[140px] sm:max-w-none">
+            <span className="flex min-w-0 items-center gap-1 font-tech text-[9px] text-[var(--cmf-amber)] sm:text-[10px]">
+              <Radar className="h-2.5 w-2.5 shrink-0 text-[var(--cmf-teal)] sm:h-3 sm:w-3" />
+              <span className="truncate">
                 {timer.nextStageRemainingMs !== null
                   ? `${timer.nextStageLabel} (${formatDurationClock(timer.nextStageRemainingMs)})`
                   : timer.nextStageLabel}
@@ -125,40 +130,45 @@ export const TopHud: React.FC<TopHudProps> = ({
         </div>
 
         {/* Rechte Hardware-Statusleiste: Strafzeit, GPS, Funk, Notfall & Admin */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
           {ownTeam && (
             <div
               title="Aufgelaufene Hinweis-Strafzeit deines Teams"
-              className={`rounded-lg px-2 py-1 text-[11px] font-bold tracking-wide uppercase ${
+              className={`rounded-lg px-1.5 py-1 text-[10px] font-bold tracking-wide uppercase sm:px-2 sm:text-[11px] ${
                 ownTeam.penaltyMs > 0
                   ? 'cmf-badge-orange'
-                  : 'cmf-well font-tech text-[var(--text-muted)]'
+                  : 'cmf-well hidden font-tech text-[var(--text-muted)] min-[390px]:inline-flex'
               }`}
             >
-              {formatPenaltyMinutes(ownTeam.penaltyMs)}
+              <span className="sm:hidden">
+                +{Math.round(ownTeam.penaltyMs / 60000)}m
+              </span>
+              <span className="hidden sm:inline">
+                {formatPenaltyMinutes(ownTeam.penaltyMs)}
+              </span>
             </div>
           )}
 
           <div
             title="GPS-Status & Genauigkeit"
-            className={`hidden sm:inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold uppercase ${
+            className={`inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-bold uppercase sm:px-2 sm:text-[11px] ${
               gpsStatus === 'DENIED' ? 'cmf-badge-orange' : 'cmf-badge-teal'
             }`}
           >
             {gpsStatus === 'DENIED' ? (
               <>
-                <AlertTriangle className="h-3 w-3" />
-                <span>NO GPS</span>
+                <AlertTriangle className="h-3 w-3 shrink-0" />
+                <span className="hidden min-[380px]:inline">NO GPS</span>
               </>
             ) : (
               <>
-                <Crosshair className="h-3 w-3" />
+                <Crosshair className="h-3 w-3 shrink-0" />
                 <span>
                   {gpsStatus === 'MANUAL_TEST'
-                    ? 'TESTPIN'
+                    ? 'PIN'
                     : ownFix
-                      ? `±${Math.round(ownFix.accuracy)}M`
-                      : 'GPS...'}
+                      ? `±${Math.min(999, Math.round(ownFix.accuracy))}m`
+                      : '...'}
                 </span>
               </>
             )}
@@ -166,7 +176,7 @@ export const TopHud: React.FC<TopHudProps> = ({
 
           <div
             title={connected ? 'Live verbunden' : 'Offline'}
-            className="cmf-well flex h-8 w-8 items-center justify-center"
+            className="cmf-well hidden h-9 w-9 items-center justify-center sm:flex"
           >
             {connected ? (
               <Wifi className="h-4 w-4 text-[var(--cmf-teal)]" />
@@ -182,19 +192,20 @@ export const TopHud: React.FC<TopHudProps> = ({
               setAdminModalOpen(false);
               setEmergencyDrawerOpen((v) => !v);
             }}
+            aria-label="Notfallnachricht"
             title="Notfallnachricht an alle senden oder eigene löschen"
-            className={`inline-flex min-h-[36px] items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold tracking-wider uppercase ${
+            className={`inline-flex min-h-[40px] min-w-[40px] items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-bold tracking-wider uppercase sm:px-2.5 ${
               ownEmergencyMessage
                 ? 'cmf-btn-primary font-dot'
                 : 'cmf-btn-secondary font-tech text-[var(--text-main)]'
             }`}
           >
             <AlertOctagon
-              className={`h-3.5 w-3.5 ${
+              className={`h-4 w-4 shrink-0 ${
                 ownEmergencyMessage ? 'text-white' : 'text-[var(--cmf-orange)]'
               }`}
             />
-            <span>Notfall</span>
+            <span className="hidden sm:inline">Notfall</span>
           </button>
 
           {canUnlockAdmin && (
@@ -206,13 +217,14 @@ export const TopHud: React.FC<TopHudProps> = ({
                 setAdminErr(null);
                 setAdminModalOpen((v) => !v);
               }}
+              aria-label="Admin-Code eingeben"
               title="Admin-Code eingeben"
-              className={`inline-flex min-h-[36px] items-center gap-1 px-2.5 py-1.5 font-tech text-[11px] font-bold tracking-wider uppercase ${
+              className={`inline-flex min-h-[40px] min-w-[40px] items-center justify-center gap-1 px-2 py-1.5 font-tech text-[11px] font-bold tracking-wider uppercase sm:px-2.5 ${
                 adminModalOpen ? 'cmf-btn-active' : 'cmf-btn-secondary'
               }`}
             >
-              <KeyRound className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
-              <span>Admin</span>
+              <KeyRound className="h-4 w-4 shrink-0 text-[var(--cmf-amber)]" />
+              <span className="hidden sm:inline">Admin</span>
             </button>
           )}
         </div>
@@ -220,15 +232,15 @@ export const TopHud: React.FC<TopHudProps> = ({
 
       {/* Aufklappbares Hardware-Modul: Notfallnachricht */}
       {emergencyDrawerOpen && (
-        <div className="cmf-module mx-auto mt-2 max-w-xl p-3.5 space-y-2.5">
+        <div className="cmf-module mx-auto mt-2 max-w-xl space-y-2.5 p-3">
           <div className="flex items-center justify-between border-b cmf-divider pb-2">
-            <span className="font-tech text-[11px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
-              NOTFALL-KANAL // DAUERHAFT FÜR ALLE SICHTBAR
+            <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase sm:text-[11px]">
+              NOTFALL-KANAL // FÜR ALLE SICHTBAR
             </span>
             <button
               type="button"
               onClick={() => setEmergencyDrawerOpen(false)}
-              className="font-tech text-[11px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
+              className="min-h-[32px] px-1.5 font-tech text-[11px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
             >
               [Schließen]
             </button>
@@ -245,21 +257,22 @@ export const TopHud: React.FC<TopHudProps> = ({
                   await onClearOwnEmergencyMessage();
                   setEmergencyDrawerOpen(false);
                 }}
-                className="cmf-btn-active font-tech inline-flex min-h-[34px] items-center gap-1 px-2.5 py-1 text-[11px] font-bold uppercase"
+                className="cmf-btn-active font-tech inline-flex min-h-[38px] items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold uppercase"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Eigene Nachricht löschen
+                Nachricht löschen
               </button>
             </div>
           )}
 
           <form
             onSubmit={(e) => void handleEmergencySubmit(e)}
-            className="flex flex-wrap gap-2"
+            className="flex flex-col gap-2 sm:flex-row"
           >
             <input
               type="text"
               data-testid="emergency-message-input"
+              enterKeyHint="send"
               maxLength={180}
               autoFocus
               value={emergencyDraft}
@@ -267,15 +280,15 @@ export const TopHud: React.FC<TopHudProps> = ({
               placeholder={
                 ownEmergencyMessage
                   ? 'Nachricht aktualisieren ...'
-                  : 'Was ist passiert? (z. B. Verletzung, Hilfe benötigt, Standort ...)'
+                  : 'Was ist passiert? (Verletzung, Hilfe, Standort ...)'
               }
-              className="cmf-input cmf-input-orange min-h-[40px] flex-1 px-3 py-1.5 text-xs font-medium"
+              className="cmf-input cmf-input-orange min-h-[44px] flex-1 px-3 py-2 text-base font-medium sm:text-xs"
             />
             <button
               type="submit"
               data-testid="send-emergency-message-btn"
               disabled={sendingEmergency || !emergencyDraft.trim()}
-              className="cmf-btn-primary font-dot inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-1.5 text-xs"
+              className="cmf-btn-primary font-dot inline-flex min-h-[44px] items-center justify-center gap-1.5 px-4 py-2 text-xs"
             >
               <Send className="h-3.5 w-3.5" />
               {sendingEmergency ? 'Sende ...' : 'An alle senden'}
@@ -304,17 +317,18 @@ export const TopHud: React.FC<TopHudProps> = ({
             type="password"
             data-testid="admin-code-input"
             inputMode="numeric"
+            enterKeyHint="done"
             autoFocus
             value={adminCode}
             onChange={(e) => setAdminCode(e.target.value)}
             placeholder="Admin-Code eingeben"
-            className="cmf-input font-tech min-h-[38px] flex-1 px-3 py-1.5 text-xs font-bold tracking-widest"
+            className="cmf-input font-tech min-h-[44px] flex-1 px-3 py-2 text-base font-bold tracking-widest sm:text-xs"
           />
           <button
             type="submit"
             data-testid="submit-admin-code-btn"
             disabled={!adminCode.trim()}
-            className="cmf-btn-primary font-dot min-h-[38px] px-4 py-1.5 text-xs"
+            className="cmf-btn-primary font-dot min-h-[44px] px-4 py-2 text-xs"
           >
             OK
           </button>

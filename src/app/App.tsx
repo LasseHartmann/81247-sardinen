@@ -14,6 +14,8 @@ import {
   X,
   ArrowLeft,
   KeyRound,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { ANCHOR_ACCURACY_WARNING_METERS } from '../config/gameConfig';
 import { computeHiderPasswordHash } from '../config/players';
@@ -148,6 +150,7 @@ export const App: React.FC = () => {
   const [anchorFeedbackError, setAnchorFeedbackError] = useState<string | null>(
     null
   );
+  const [seekerHidingMinimized, setSeekerHidingMinimized] = useState(false);
 
   const [bootAdminModalOpen, setBootAdminModalOpen] = useState(false);
   const [bootAdminCode, setBootAdminCode] = useState('');
@@ -262,8 +265,8 @@ export const App: React.FC = () => {
 
     return (
       <div className="cmf-drafting-bg flex h-[100dvh] flex-col overflow-hidden text-sm text-[var(--text-main)]">
-        {/* Obere Leiste mit Admin-Einstellungscode */}
-        <header className="border-b-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]">
+        {/* Obere Leiste mit Admin-Einstellungscode (Safe-Area-optimiert für Smartphones) */}
+        <header className="border-b-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] pt-[max(0.45rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-2 pl-[max(0.75rem,env(safe-area-inset-left))] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]">
           <div className="mx-auto flex max-w-4xl items-center justify-between gap-2">
             <div className="cmf-oled flex items-center gap-2 px-3 py-1.5">
               <span className="h-2 w-2 rounded-full bg-[var(--cmf-amber)]" />
@@ -550,6 +553,26 @@ export const App: React.FC = () => {
     ownMember.side === 'HIDER' &&
     (!hiderPrivate?.anchorPoint || (isRehidingAnchor && canRehideWhileTimerActive));
 
+  const showSeekerHidingCard =
+    publicState.status !== 'LOBBY' &&
+    effectivePhase === 'HIDING' &&
+    ownMember.side === 'SEEKER' &&
+    !isJoinedSardines;
+
+  const showQuickSardineFab =
+    publicState.status !== 'LOBBY' &&
+    isSardineDashboardView &&
+    Boolean(hiderPrivate?.anchorPoint) &&
+    !showHiderAnchorPanel;
+
+  const hasMapBottomDock = Boolean(
+    publicState.status === 'LOBBY' ||
+      activePreviewQuestion ||
+      showSeekerHidingCard ||
+      showHiderAnchorPanel ||
+      showQuickSardineFab
+  );
+
   return (
     <div className="cmf-drafting-bg flex h-[100dvh] w-full flex-col overflow-hidden text-[var(--text-main)]">
       {/* Offline-Banner, Pausen-Banner & Controller-Warteschlangen-Banner */}
@@ -625,11 +648,12 @@ export const App: React.FC = () => {
             clickMode={mapClickMode}
             onMapCoordinateClick={handleMapCoordinateClick}
             layoutInvalidationKey={`${activeTab}_${publicState.status}`}
+            hasBottomDock={hasMapBottomDock}
           />
 
-          {/* Schwebende OLED-/Hardware-Aktions-Pills auf der Karte */}
-          <div className="pointer-events-none absolute top-3 right-3 left-3 z-[400] flex flex-col gap-2">
-            <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center justify-between gap-2">
+          {/* Obere schlanke Status-Pills auf der Karte (blockieren niemals die Kartenmitte!) */}
+          {(canUseMapClicks || isJoinedSardines) && (
+            <div className="pointer-events-none absolute top-2.5 right-2.5 left-2.5 z-[400] flex flex-wrap items-center justify-between gap-2">
               {canUseMapClicks && (
                 <button
                   type="button"
@@ -645,7 +669,7 @@ export const App: React.FC = () => {
                           }
                     )
                   }
-                  className={`pointer-events-auto inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 font-tech text-[11px] font-bold tracking-wider uppercase shadow-lg ${
+                  className={`pointer-events-auto inline-flex min-h-[40px] items-center gap-1.5 px-3 py-1.5 font-tech text-[11px] font-bold tracking-wider uppercase shadow-lg ${
                     mapClickMode.kind === 'TEST_LOCATION'
                       ? 'cmf-btn-primary font-dot'
                       : 'cmf-oled text-[#F8FAFC]'
@@ -659,225 +683,339 @@ export const App: React.FC = () => {
                     }`}
                   />
                   {mapClickMode.kind === 'TEST_LOCATION'
-                    ? 'Kartenklick abbrechen'
-                    : 'Test-Standort per Klick'}
+                    ? 'Klick abbrechen'
+                    : 'Test-Standort'}
                 </button>
               )}
 
               {isJoinedSardines && (
-                <div className="cmf-oled pointer-events-auto inline-flex items-center gap-2 px-3.5 py-1.5 font-tech text-[11px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg">
-                  <Sparkles className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                  Bei den Sardinen // HQ & QR freigeschaltet
+                <div className="cmf-oled pointer-events-auto inline-flex items-center gap-2 px-3 py-1.5 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
+                  <span>Bei den Sardinen // HQ & QR aktiv</span>
                 </div>
               )}
-            </div>
-
-            {/* Schwebende Steuerleiste für aktive Hinweis-Vorschau auf der Karte (jederzeit beendbar!) */}
-            {activePreviewQuestion && (
-              <div
-                data-testid="map-active-preview-bar"
-                className="cmf-oled pointer-events-auto mx-auto flex w-full max-w-lg flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 shadow-xl"
-              >
-                <div className="flex items-center gap-2">
-                  <Eye className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
-                  <span className="font-tech text-xs font-bold tracking-wider text-[#F8FAFC] uppercase">
-                    VORSCHAU: {getQuestionLabelDe(activePreviewQuestion)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('QUESTIONS')}
-                    className="cmf-btn-secondary font-tech inline-flex min-h-[34px] items-center gap-1 px-2.5 py-1 text-[11px] font-bold uppercase"
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                    Zu Hinweise
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="end-map-preview-btn"
-                    onClick={() => setActivePreviewQuestion(null)}
-                    className="cmf-btn-primary font-dot inline-flex min-h-[34px] items-center gap-1 px-3 py-1 text-[11px] font-bold"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    Vorschau beenden
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* LOBBY-Statuskarte auf der Karte */}
-            {publicState.status === 'LOBBY' && (
-              <div className="mt-1">
-                <LobbyStatusCard
-                  publicState={publicState}
-                  ownMember={ownMember}
-                  members={gameState.members}
-                  presence={gameState.presence}
-                  teamsPublic={gameState.teamsPublic}
-                  activeHiderLock={gameState.activeHiderLock}
-                  readyPlayerIds={gameState.readyPlayerIds}
-                  onSetHiderPassword={handleSetHiderPassword}
-                  onToggleOwnReady={handleToggleOwnReady}
-                  onOpenHostTab={
-                    showHostTab ? () => setActiveTab('HOST') : undefined
-                  }
-                  onLogout={exitOrLogout}
-                />
-              </div>
-            )}
-
-            {/* SUCHER-ANSICHT WÄHREND DER VERSTECKPHASE */}
-            {publicState.status !== 'LOBBY' &&
-              effectivePhase === 'HIDING' &&
-              ownMember.side === 'SEEKER' &&
-              !isJoinedSardines && (
-                <div className="cmf-chassis pointer-events-auto mx-auto mt-2 w-full max-w-md p-5 text-center">
-                  <div className="cmf-oled mx-auto mb-3 flex h-12 w-12 items-center justify-center text-[var(--cmf-amber)]">
-                    <EyeOff className="h-5 w-5" />
-                  </div>
-                  <h2 className="font-dot text-lg text-[var(--text-main)]">
-                    Die Sardinen verstecken sich ...
-                  </h2>
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">
-                    Keine Verstecker-Bewegungen sichtbar. Nutzt die Zeit, euch innerhalb der markierten 81247-Zone strategisch zu verteilen!
-                  </p>
-                  <div className="cmf-oled mt-3.5 py-3 font-dot text-2xl text-[var(--cmf-amber)]">
-                    {formatDurationClock(timer.hidingRemainingMs)}
-                  </div>
-                  <p className="mt-2 font-tech text-[10px] tracking-wider text-[var(--text-muted)] uppercase">
-                    OFFENE SUCHE & HINWEISE STARTEN AUTOMATISCH BEI{' '}
-                    {formatDurationClock(publicState.radarSchedule.hidingDurationMs)}
-                  </p>
-                </div>
-              )}
-          </div>
-
-          {/* VERSTECKER-PANEL ZUM FIXIEREN ODER NEU-WÄHLEN DES ANCHOR POINTS */}
-          {showHiderAnchorPanel && (
-            <div className="cmf-chassis pointer-events-auto absolute inset-x-3 bottom-3 z-[420] mx-auto max-w-lg p-4">
-              <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-2.5">
-                <div className="flex items-center gap-2">
-                  <Anchor className="h-4 w-4 text-[var(--cmf-orange)]" />
-                  <h3 className="font-industrial text-sm text-[var(--text-main)]">
-                    {hiderPrivate?.anchorPoint
-                      ? 'Versteck neu wählen (solange Timer läuft)'
-                      : 'Sardinen-Versteck (Anchor Point) wählen'}
-                  </h3>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="cmf-oled px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--cmf-teal)]">
-                    {fineAdjustAnchorPt
-                      ? 'PIN: MANUELL'
-                      : `GPS: ${geo.currentFix ? `±${Math.round(geo.currentFix.accuracy)}M` : '...'}`}
-                  </span>
-                  {hiderPrivate?.anchorPoint && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsRehidingAnchor(false);
-                        setFineAdjustAnchorPt(null);
-                        setMapClickMode({ kind: 'NONE' });
-                      }}
-                      className="font-tech text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
-                    >
-                      [Abbrechen]
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Immer verfügbare Option zum exakten Antippen auf der Karte, falls GPS abweicht */}
-              <div className="cmf-well mt-2.5 space-y-2 p-3 text-xs text-[var(--text-main)]">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium text-[var(--text-muted)]">
-                    {fineAdjustAnchorPt
-                      ? `Exakte Position gewählt: [${fineAdjustAnchorPt.lat.toFixed(5)}, ${fineAdjustAnchorPt.lng.toFixed(5)}]`
-                      : 'Weicht das GPS ab? Tippe eure exakte Versteck-Position direkt auf der Karte an:'}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    data-testid="pinpoint-anchor-on-map-btn"
-                    onClick={() =>
-                      setMapClickMode((prev) =>
-                        prev.kind === 'PICK_ANCHOR_POINT'
-                          ? { kind: 'NONE' }
-                          : {
-                              kind: 'PICK_ANCHOR_POINT',
-                              label:
-                                'Tippe auf eure exakte Versteck-Position innerhalb des 81247-Polygons',
-                            }
-                      )
-                    }
-                    className={`font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase ${
-                      mapClickMode.kind === 'PICK_ANCHOR_POINT'
-                        ? 'cmf-btn-active'
-                        : 'cmf-btn-secondary bg-white/70 text-[var(--text-main)]'
-                    }`}
-                  >
-                    <Crosshair className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                    {mapClickMode.kind === 'PICK_ANCHOR_POINT'
-                      ? 'Kartenauswahl aktiv (Antippen ...)'
-                      : 'Position auf Karte exakt antippen'}
-                  </button>
-
-                  {fineAdjustAnchorPt && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFineAdjustAnchorPt(null);
-                        setMapClickMode({ kind: 'NONE' });
-                      }}
-                      className="cmf-btn-secondary font-tech min-h-[38px] px-2.5 py-1.5 text-[11px] font-bold uppercase"
-                    >
-                      Auf GPS zurücksetzen
-                    </button>
-                  )}
-
-                  {geo.currentFix &&
-                    geo.currentFix.accuracy > ANCHOR_ACCURACY_WARNING_METERS && (
-                      <button
-                        type="button"
-                        onClick={geo.retryGpsPermission}
-                        className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
-                      >
-                        <AlertTriangle className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
-                        GPS neu messen (±{Math.round(geo.currentFix.accuracy)}m)
-                      </button>
-                    )}
-                </div>
-              </div>
-
-              {anchorFeedbackError && (
-                <div className="cmf-badge-orange mt-2.5 rounded-xl p-2.5 text-xs font-semibold">
-                  {anchorFeedbackError}
-                </div>
-              )}
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  data-testid="lock-anchor-btn"
-                  onClick={() => void handleLockAnchorByHider()}
-                  className="cmf-btn-primary font-dot flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  {hiderPrivate?.anchorPoint
-                    ? 'Neues Versteck jetzt hier fixieren'
-                    : 'Versteck jetzt hier fixieren'}
-                </button>
-              </div>
             </div>
           )}
 
-          {/* Schnellzugriff „Versteck neu wählen“ (solange Timer läuft) & „Sardinen-QR-Code zeigen“ */}
-          {publicState.status !== 'LOBBY' &&
-            isSardineDashboardView &&
-            hiderPrivate?.anchorPoint &&
-            !showHiderAnchorPanel && (
-              <div className="pointer-events-auto absolute right-3 bottom-3 left-3 z-[410] flex flex-wrap items-center justify-end gap-2">
+          {/* Einheitliches Daumenzonen-Bottom-Dock am unteren Kartenrand (Smartphone-optimiert) */}
+          <div className="pointer-events-none absolute right-2.5 bottom-2.5 left-2.5 z-[420] flex flex-col gap-2">
+            {/* 1. Aktive Live-Hinweisvorschau mit direkten Einhand-Steuerelementen auf der Karte */}
+            {activePreviewQuestion && (
+              <div
+                data-testid="map-active-preview-bar"
+                className="cmf-oled pointer-events-auto mx-auto w-full max-w-lg space-y-2.5 p-3 shadow-2xl"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Eye className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+                    <span className="truncate font-tech text-xs font-bold tracking-wider text-[#F8FAFC] uppercase">
+                      VORSCHAU: {getQuestionLabelDe(activePreviewQuestion)}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('QUESTIONS')}
+                      className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold uppercase"
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      <span>Hinweise</span>
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="end-map-preview-btn"
+                      onClick={() => setActivePreviewQuestion(null)}
+                      className="cmf-btn-primary font-dot inline-flex min-h-[38px] items-center gap-1 px-3 py-1.5 text-[11px] font-bold"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      <span>Beenden</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Direkte Einhand-Steuerung auf der Karte ohne Tab-Wechsel! */}
+                {activePreviewQuestion === 'CONE_45' && (
+                  <div className="space-y-1.5 border-t border-dashed border-[#27272A] pt-2">
+                    <div className="flex items-center justify-between gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConeBearingDeg((d) => (d - 15 + 360) % 360)
+                        }
+                        className="cmf-btn-secondary min-h-[38px] flex-1 px-2 font-tech text-[11px] font-bold uppercase"
+                      >
+                        -15°
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConeBearingDeg((d) => (d - 5 + 360) % 360)
+                        }
+                        className="cmf-btn-secondary min-h-[38px] flex-1 px-2 font-tech text-[11px] font-bold uppercase"
+                      >
+                        -5°
+                      </button>
+                      <span className="min-w-[64px] text-center font-dot text-sm text-[var(--cmf-amber)]">
+                        {coneBearingDeg}°
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setConeBearingDeg((d) => (d + 5) % 360)}
+                        className="cmf-btn-secondary min-h-[38px] flex-1 px-2 font-tech text-[11px] font-bold uppercase"
+                      >
+                        +5°
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConeBearingDeg((d) => (d + 15) % 360)}
+                        className="cmf-btn-secondary min-h-[38px] flex-1 px-2 font-tech text-[11px] font-bold uppercase"
+                      >
+                        +15°
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {activePreviewQuestion === 'RADIUS_RADAR' && (
+                  <div className="grid grid-cols-5 gap-1 border-t border-dashed border-[#27272A] pt-2">
+                    {([50, 100, 250, 500, 1000] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setSelectedRadius(r)}
+                        className={`min-h-[38px] rounded-lg px-1 font-tech text-[10px] font-bold uppercase ${
+                          selectedRadius === r
+                            ? 'bg-[var(--cmf-orange)] text-white'
+                            : 'bg-[#181B20] text-[#CBD2D9]'
+                        }`}
+                      >
+                        {r}m
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {(activePreviewQuestion === 'SPLIT_NS' ||
+                  activePreviewQuestion === 'SPLIT_EW') && (
+                  <div className="grid grid-cols-2 gap-1.5 border-t border-dashed border-[#27272A] pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setActivePreviewQuestion('SPLIT_NS')}
+                      className={`min-h-[38px] rounded-lg px-2 font-tech text-[11px] font-bold uppercase ${
+                        activePreviewQuestion === 'SPLIT_NS'
+                          ? 'bg-[var(--cmf-orange)] text-white'
+                          : 'bg-[#181B20] text-[#CBD2D9]'
+                      }`}
+                    >
+                      Nord / Süd
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActivePreviewQuestion('SPLIT_EW')}
+                      className={`min-h-[38px] rounded-lg px-2 font-tech text-[11px] font-bold uppercase ${
+                        activePreviewQuestion === 'SPLIT_EW'
+                          ? 'bg-[var(--cmf-orange)] text-white'
+                          : 'bg-[#181B20] text-[#CBD2D9]'
+                      }`}
+                    >
+                      Ost / West
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2. Einklappbares Lobby-Bottom-Sheet in der Daumenzone */}
+            {publicState.status === 'LOBBY' && (
+              <LobbyStatusCard
+                publicState={publicState}
+                ownMember={ownMember}
+                members={gameState.members}
+                presence={gameState.presence}
+                teamsPublic={gameState.teamsPublic}
+                activeHiderLock={gameState.activeHiderLock}
+                readyPlayerIds={gameState.readyPlayerIds}
+                onSetHiderPassword={handleSetHiderPassword}
+                onToggleOwnReady={handleToggleOwnReady}
+                onOpenHostTab={
+                  showHostTab ? () => setActiveTab('HOST') : undefined
+                }
+                onLogout={exitOrLogout}
+              />
+            )}
+
+            {/* 3. Einklappbares Sucher-Bottom-Sheet während der Versteckphase (freie 81247-Kartenplanung!) */}
+            {showSeekerHidingCard && !activePreviewQuestion && (
+              <div className="cmf-chassis pointer-events-auto mx-auto w-full max-w-md overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setSeekerHidingMinimized((m) => !m)}
+                  className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left active:bg-white/40"
+                >
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="cmf-oled flex h-9 w-9 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
+                      <EyeOff className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="block truncate font-industrial text-sm text-[var(--text-main)]">
+                        Sardinen verstecken sich ...
+                      </span>
+                      <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
+                        Verteilt euch in 81247!
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="cmf-oled px-2.5 py-1 font-dot text-base text-[var(--cmf-amber)]">
+                      {formatDurationClock(timer.hidingRemainingMs)}
+                    </span>
+                    {seekerHidingMinimized ? (
+                      <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
+                    )}
+                  </div>
+                </button>
+
+                {!seekerHidingMinimized && (
+                  <div className="border-t cmf-divider px-4 pt-2.5 pb-3.5 text-center">
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Keine Verstecker-Bewegungen sichtbar. Tippe oben auf diese Leiste, um sie einzuklappen und die Karte frei zu erkunden!
+                    </p>
+                    <p className="mt-2 font-tech text-[10px] tracking-wider text-[var(--text-muted)] uppercase">
+                      OFFENE SUCHE & HINWEISE STARTEN BEI{' '}
+                      {formatDurationClock(publicState.radarSchedule.hidingDurationMs)}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 4. Verstecker-Panel zum Fixieren / Neu-Wählen des Anchor Points (blendet beim Karten-Pinpoint automatisch klein!) */}
+            {showHiderAnchorPanel && (
+              <div className="cmf-chassis pointer-events-auto mx-auto w-full max-w-lg p-3.5 sm:p-4">
+                {mapClickMode.kind === 'PICK_ANCHOR_POINT' ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-tech text-xs font-bold text-[var(--text-main)] uppercase">
+                      Tippe jetzt auf euer exaktes Versteck auf der Karte ...
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMapClickMode({ kind: 'NONE' })}
+                      className="cmf-btn-active font-tech min-h-[40px] shrink-0 px-3 py-1.5 text-[11px] font-bold uppercase"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-2.5">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Anchor className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+                        <h3 className="truncate font-industrial text-sm text-[var(--text-main)]">
+                          {hiderPrivate?.anchorPoint
+                            ? 'Versteck neu wählen'
+                            : 'Sardinen-Versteck wählen'}
+                        </h3>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="cmf-oled px-2.5 py-1 font-tech text-[10px] font-bold text-[var(--cmf-teal)] sm:text-[11px]">
+                          {fineAdjustAnchorPt
+                            ? 'PIN: MANUELL'
+                            : `GPS: ${geo.currentFix ? `±${Math.round(geo.currentFix.accuracy)}M` : '...'}`}
+                        </span>
+                        {hiderPrivate?.anchorPoint && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsRehidingAnchor(false);
+                              setFineAdjustAnchorPt(null);
+                              setMapClickMode({ kind: 'NONE' });
+                            }}
+                            className="min-h-[32px] px-1 font-tech text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
+                          >
+                            [Abbrechen]
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="cmf-well mt-2.5 space-y-2 p-2.5 sm:p-3 text-xs text-[var(--text-main)]">
+                      <span className="block font-medium text-[var(--text-muted)]">
+                        {fineAdjustAnchorPt
+                          ? `Exakte Position gewählt: [${fineAdjustAnchorPt.lat.toFixed(5)}, ${fineAdjustAnchorPt.lng.toFixed(5)}]`
+                          : 'Weicht das GPS ab? Tippe eure exakte Versteck-Position direkt auf der Karte an:'}
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          data-testid="pinpoint-anchor-on-map-btn"
+                          onClick={() =>
+                            setMapClickMode({
+                              kind: 'PICK_ANCHOR_POINT',
+                              label:
+                                'Tippe auf eure exakte Versteck-Position innerhalb des 81247-Polygons',
+                            })
+                          }
+                          className="cmf-btn-secondary font-tech inline-flex min-h-[42px] flex-1 items-center justify-center gap-1.5 bg-white/75 px-3 py-2 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                        >
+                          <Crosshair className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+                          <span>Position auf Karte antippen</span>
+                        </button>
+
+                        {fineAdjustAnchorPt && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFineAdjustAnchorPt(null);
+                              setMapClickMode({ kind: 'NONE' });
+                            }}
+                            className="cmf-btn-secondary font-tech min-h-[42px] px-3 py-2 text-[11px] font-bold uppercase"
+                          >
+                            GPS nutzen
+                          </button>
+                        )}
+
+                        {geo.currentFix &&
+                          geo.currentFix.accuracy >
+                            ANCHOR_ACCURACY_WARNING_METERS && (
+                            <button
+                              type="button"
+                              onClick={geo.retryGpsPermission}
+                              className="cmf-btn-secondary font-tech inline-flex min-h-[42px] items-center gap-1 px-2.5 py-2 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                            >
+                              <AlertTriangle className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
+                              GPS neu (±{Math.round(geo.currentFix.accuracy)}m)
+                            </button>
+                          )}
+                      </div>
+                    </div>
+
+                    {anchorFeedbackError && (
+                      <div className="cmf-badge-orange mt-2.5 rounded-xl p-2.5 text-xs font-semibold">
+                        {anchorFeedbackError}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      data-testid="lock-anchor-btn"
+                      onClick={() => void handleLockAnchorByHider()}
+                      className="cmf-btn-primary font-dot mt-2.5 flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {hiderPrivate?.anchorPoint
+                        ? 'Neues Versteck jetzt hier fixieren'
+                        : 'Versteck jetzt hier fixieren'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* 5. Schnellzugriff „Versteck neu wählen“ & „Sardinen-QR-Code zeigen“ */}
+            {showQuickSardineFab && (
+              <div className="pointer-events-auto mx-auto flex w-full max-w-lg items-center justify-end gap-2">
                 {canRehideWhileTimerActive && (
                   <button
                     type="button"
@@ -886,10 +1024,10 @@ export const App: React.FC = () => {
                       setAnchorFeedbackError(null);
                       setIsRehidingAnchor(true);
                     }}
-                    className="cmf-btn-active font-tech inline-flex min-h-[46px] items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold uppercase shadow-lg"
+                    className="cmf-btn-active font-tech inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-bold uppercase shadow-lg"
                   >
-                    <RotateCcw className="h-4 w-4 text-[var(--cmf-teal)]" />
-                    Versteck neu wählen
+                    <RotateCcw className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+                    <span>Neu verstecken</span>
                   </button>
                 )}
 
@@ -897,13 +1035,14 @@ export const App: React.FC = () => {
                   type="button"
                   data-testid="quick-show-sardinen-qr-btn"
                   onClick={() => setActiveTab('QR')}
-                  className="cmf-btn-primary font-dot inline-flex min-h-[46px] items-center gap-2 px-4 py-2.5 text-xs font-bold shadow-lg"
+                  className="cmf-btn-primary font-dot inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold shadow-lg"
                 >
-                  <QrCode className="h-4 w-4" />
-                  Sardinen-QR-Code zeigen
+                  <QrCode className="h-4 w-4 shrink-0" />
+                  <span>QR-Code zeigen</span>
                 </button>
               </div>
             )}
+          </div>
         </div>
 
         {/* TAB 2: HINWEIS-MENÜ & VERLAUF */}

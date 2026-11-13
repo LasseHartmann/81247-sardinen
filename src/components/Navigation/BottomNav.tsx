@@ -26,23 +26,23 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     {
       id: 'MAP',
       label: 'Karte',
-      icon: <Compass className="h-4 w-4" />,
+      icon: <Compass className="h-5 w-5" />,
     },
     {
       id: 'QUESTIONS',
       label: 'Hinweise',
-      icon: <HelpCircle className="h-4 w-4" />,
+      icon: <HelpCircle className="h-5 w-5" />,
       badge: pendingQuestionsBadgeCount,
     },
     {
       id: 'QR',
       label: 'QR / Catch',
-      icon: <QrCode className="h-4 w-4" />,
+      icon: <QrCode className="h-5 w-5" />,
     },
     {
       id: 'LEADERBOARD',
       label: 'Rangliste',
-      icon: <Trophy className="h-4 w-4" />,
+      icon: <Trophy className="h-5 w-5" />,
     },
   ];
 
@@ -50,7 +50,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     items.push({
       id: 'HOST',
       label: 'Admin',
-      icon: <Shield className="h-4 w-4" />,
+      icon: <Shield className="h-5 w-5" />,
       badge: joinRequestsBadgeCount,
     });
   }
@@ -58,7 +58,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   return (
     <nav
       aria-label="Hauptnavigation"
-      className="z-30 border-t-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] shadow-[0_-12px_32px_rgba(20,25,30,0.08),inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]"
+      className="z-30 border-t-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] pt-1.5 pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.45rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] shadow-[0_-12px_32px_rgba(20,25,30,0.08),inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]"
     >
       <div className="mx-auto flex max-w-xl items-center justify-around gap-1">
         {items.map((item) => {
@@ -69,14 +69,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               type="button"
               data-testid={`nav-tab-${item.id}`}
               onClick={() => onSelectTab(item.id)}
-              className={`relative flex min-h-[48px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-1.5 font-tech text-[10px] font-bold tracking-wider uppercase transition ${
+              className={`relative flex min-h-[50px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 font-tech text-[10px] font-bold tracking-wide uppercase transition ${
                 isActive
                   ? 'bg-[#14171A] text-white shadow-sm'
                   : 'text-[var(--text-muted)] hover:bg-[var(--module-sub)] hover:text-[var(--text-main)]'
               }`}
             >
               {isActive && (
-                <span className="absolute top-1 right-2 h-1.5 w-1.5 rounded-full bg-[var(--cmf-orange)]" />
+                <span className="absolute top-1.5 right-2 h-1.5 w-1.5 rounded-full bg-[var(--cmf-orange)]" />
               )}
               <div className="relative">
                 {item.icon}
@@ -86,7 +86,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   </span>
                 )}
               </div>
-              <span>{item.label}</span>
+              <span className="max-w-full truncate">{item.label}</span>
             </button>
           );
         })}

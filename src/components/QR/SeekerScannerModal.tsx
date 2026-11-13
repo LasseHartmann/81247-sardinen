@@ -111,13 +111,13 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
   }
 
   return (
-    <div className="cmf-drafting-bg h-full overflow-y-auto p-4 text-[var(--text-main)]">
+    <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-md space-y-4 pb-10">
-        <div className="cmf-chassis p-5">
+        <div className="cmf-chassis p-4 sm:p-5">
           <span className="cmf-badge-orange inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
             SARDINEN GEFUNDEN?
           </span>
-          <h2 className="font-dot mt-1.5 text-xl text-[var(--text-main)]">
+          <h2 className="font-dot mt-1 text-lg sm:text-xl text-[var(--text-main)]">
             QR-Code scannen oder Verstecker-Passwort eingeben
           </h2>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
@@ -133,7 +133,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
 
         {/* Kamera-Scanner */}
         <div className="cmf-module p-4 space-y-3">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
             <span className="font-industrial text-sm text-[var(--text-main)]">
               1. Per Smartphone-Kamera scannen
             </span>
@@ -141,7 +141,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
               type="button"
               disabled={!gameRunning}
               onClick={() => setCameraActive((a) => !a)}
-              className={`font-dot inline-flex min-h-[42px] items-center gap-2 px-3.5 py-2 text-xs font-bold ${
+              className={`font-dot inline-flex min-h-[48px] w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold ${
                 cameraActive ? 'cmf-btn-active' : 'cmf-btn-primary'
               }`}
             >
@@ -191,6 +191,8 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
               id="manual-short-code"
               data-testid="manual-catch-code-input"
               type="text"
+              enterKeyHint="send"
+              autoComplete="off"
               maxLength={32}
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}

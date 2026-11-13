@@ -36,9 +36,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   );
 
   return (
-    <div className="cmf-drafting-bg h-full overflow-y-auto p-4 text-[var(--text-main)]">
-      <div className="mx-auto max-w-2xl space-y-5 pb-10">
-        <div className="cmf-chassis flex items-center gap-3.5 p-5">
+    <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
+      <div className="mx-auto max-w-2xl space-y-4 sm:space-y-5 pb-10">
+        <div className="cmf-chassis flex items-center gap-3 p-4 sm:p-5">
           <div className="cmf-oled flex h-12 w-12 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
             <Trophy className="h-6 w-6" />
           </div>

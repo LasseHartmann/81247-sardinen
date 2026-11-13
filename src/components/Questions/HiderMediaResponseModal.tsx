@@ -137,7 +137,7 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
   };
 
   return (
-    <div className="fixed inset-x-0 bottom-16 z-[600] mx-auto max-w-lg p-3">
+    <div className="fixed inset-x-0 bottom-[calc(4.15rem+env(safe-area-inset-bottom))] z-[600] mx-auto max-w-lg px-2.5 py-2 sm:p-3">
       <div className="cmf-chassis p-4 sm:p-5 text-[var(--text-main)]">
         <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
           <div>

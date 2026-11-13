@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
+import { LocateFixed, Maximize2, Minus, Plus } from 'lucide-react';
 import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson';
 import { MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM } from '../../config/gameConfig';
 import {
@@ -51,6 +52,7 @@ export interface GameMapProps {
   clickMode: MapClickInteractionMode;
   onMapCoordinateClick?: (pt: LatLng) => void;
   layoutInvalidationKey?: string | number;
+  hasBottomDock?: boolean;
 }
 
 export const GameMap: React.FC<GameMapProps> = ({
@@ -71,6 +73,7 @@ export const GameMap: React.FC<GameMapProps> = ({
   clickMode,
   onMapCoordinateClick,
   layoutInvalidationKey,
+  hasBottomDock = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -110,8 +113,6 @@ export const GameMap: React.FC<GameMapProps> = ({
       zoomControl: false,
       attributionControl: true,
     });
-
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -294,6 +295,30 @@ export const GameMap: React.FC<GameMapProps> = ({
     activeTeamIds,
   ]);
 
+  const handleCenterOnOwnFix = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !ownFix) return;
+    map.flyTo([ownFix.lat, ownFix.lng], Math.max(map.getZoom(), 16), {
+      duration: 0.45,
+    });
+  }, [ownFix]);
+
+  const handleFitPlayArea = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const tempPoly = L.geoJSON(playArea);
+    const bounds = tempPoly.getBounds();
+    if (bounds.isValid()) {
+      map.flyToBounds(bounds, { padding: [24, 24], maxZoom: 15, duration: 0.45 });
+    }
+  }, [playArea]);
+
+  const handleZoomBy = useCallback((delta: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setZoom(map.getZoom() + delta);
+  }, []);
+
   return (
     <div className="relative h-full w-full bg-[var(--bg-page)]">
       <div
@@ -301,9 +326,65 @@ export const GameMap: React.FC<GameMapProps> = ({
         data-testid="leaflet-map-container"
         className="h-full w-full z-0"
       />
+
+      {/* Einhand-Daumensteuerung rechts auf der Karte (Zentrieren, 81247-Übersicht, große Zoom-Tasten) */}
+      <div
+        className={`pointer-events-auto absolute right-[max(0.65rem,env(safe-area-inset-right))] z-[390] flex flex-col gap-1.5 transition-all duration-200 ${
+          hasBottomDock ? 'top-16 sm:top-auto sm:bottom-48' : 'bottom-6'
+        }`}
+      >
+        <button
+          type="button"
+          data-testid="map-locate-me-btn"
+          disabled={!ownFix}
+          onClick={handleCenterOnOwnFix}
+          aria-label="Auf eigenen Standort zentrieren"
+          title="Auf eigenen Standort zentrieren"
+          className="cmf-chassis flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--text-main)] shadow-lg disabled:opacity-40 active:scale-95"
+        >
+          <LocateFixed
+            className={`h-5 w-5 ${
+              ownFix ? 'text-[var(--cmf-teal)]' : 'text-[var(--text-muted)]'
+            }`}
+          />
+        </button>
+
+        <button
+          type="button"
+          data-testid="map-fit-zone-btn"
+          onClick={handleFitPlayArea}
+          aria-label="Gesamtes 81247-Gebiet anzeigen"
+          title="Gesamtes 81247-Gebiet anzeigen"
+          className="cmf-chassis flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--text-main)] shadow-lg active:scale-95"
+        >
+          <Maximize2 className="h-4 w-4 text-[var(--cmf-orange)]" />
+        </button>
+
+        <div className="cmf-chassis flex flex-col overflow-hidden rounded-2xl shadow-lg">
+          <button
+            type="button"
+            onClick={() => handleZoomBy(1)}
+            aria-label="Hineinzoomen"
+            title="Hineinzoomen"
+            className="flex h-11 w-11 items-center justify-center border-b border-[var(--shell-border)] text-[var(--text-main)] active:bg-white"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleZoomBy(-1)}
+            aria-label="Herauszoomen"
+            title="Herauszoomen"
+            className="flex h-11 w-11 items-center justify-center text-[var(--text-main)] active:bg-white"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
       {clickMode.kind !== 'NONE' && (
-        <div className="cmf-oled pointer-events-none absolute bottom-20 left-1/2 -translate-x-1/2 z-[450] flex items-center gap-2 px-4 py-2 text-[11px] font-tech tracking-wide uppercase shadow-xl">
-          <span className="h-2 w-2 rounded-full bg-[var(--cmf-amber)]" />
+        <div className="cmf-oled pointer-events-none absolute top-14 right-3 left-3 z-[450] mx-auto flex max-w-sm items-center justify-center gap-2 px-3.5 py-2 text-center text-[11px] font-tech tracking-wide uppercase shadow-xl">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--cmf-amber)]" />
           <span className="text-[#F8FAFC]">
             {clickMode.label ?? 'Tippe auf die Karte, um den Punkt zu setzen'}
           </span>

@@ -261,9 +261,9 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
             }
           }}
           title="Im Kreis ziehen oder auf den Ring tippen wie bei einem Thermostat"
-          className={`relative flex h-[140px] w-[140px] shrink-0 cursor-grab touch-none items-center justify-center rounded-full border-2 bg-[var(--bg-module)] shadow-[0_6px_18px_rgba(24,27,32,0.16),inset_0_2px_0_rgba(255,255,255,0.95)] select-none active:cursor-grabbing ${
+          className={`relative flex h-[140px] w-[140px] shrink-0 cursor-grab touch-none items-center justify-center rounded-full border-2 bg-[var(--bg-module)] shadow-[0_6px_18px_rgba(24,27,32,0.16),inset_0_2px_0_rgba(255,255,255,0.95)] transition-all duration-200 select-none active:cursor-grabbing ${
             isDragging
-              ? 'border-[var(--cmf-orange)] ring-2 ring-[var(--cmf-orange)]/25'
+              ? 'scale-[1.03] border-[var(--cmf-orange)] ring-4 ring-[var(--cmf-orange)]/20'
               : 'border-[var(--shell-border)]'
           }`}
         >
@@ -302,7 +302,10 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
                   stroke={t.active ? '#FF4D00' : '#9AA4AE'}
                   strokeWidth={t.major ? 2.4 : 1.6}
                   strokeLinecap="round"
-                  opacity={t.active ? 1 : 0.55}
+                  opacity={t.active ? 1 : 0.5}
+                  style={{
+                    transition: 'stroke 120ms ease, opacity 120ms ease',
+                  }}
                 />
               );
             })}
@@ -311,16 +314,27 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
             <circle
               cx={thumbX}
               cy={thumbY}
-              r="7"
+              r={isDragging ? 8.2 : 7}
               fill="#FF4D00"
               stroke="#FFFFFF"
               strokeWidth="2.2"
+              style={{ transition: 'r 140ms cubic-bezier(0.34, 1.45, 0.64, 1)' }}
             />
           </svg>
 
           {/* Eingelassenes rundes OLED-Thermostat-Zentraldisplay */}
-          <div className="cmf-oled pointer-events-none relative z-10 flex h-[84px] w-[84px] flex-col items-center justify-center rounded-full border border-[#27272A] px-2 text-center shadow-inner">
-            <span className="mb-0.5 h-1.5 w-1.5 rounded-full bg-[var(--cmf-orange)]" />
+          <div
+            className={`cmf-oled pointer-events-none relative z-10 flex h-[84px] w-[84px] flex-col items-center justify-center rounded-full border px-2 text-center shadow-inner transition-all duration-200 ${
+              isDragging
+                ? 'border-[var(--cmf-orange)]/80 shadow-[0_0_16px_rgba(255,77,0,0.28)]'
+                : 'border-[#27272A]'
+            }`}
+          >
+            <span
+              className={`mb-0.5 h-1.5 w-1.5 rounded-full bg-[var(--cmf-orange)] transition-transform duration-150 ${
+                isDragging ? 'scale-125' : ''
+              }`}
+            />
             <span className="font-dot text-base leading-tight text-[#F8FAFC] sm:text-lg">
               {displayStr}
             </span>

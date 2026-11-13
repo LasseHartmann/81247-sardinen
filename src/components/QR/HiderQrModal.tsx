@@ -42,9 +42,9 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
   );
 
   return (
-    <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
+    <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-md space-y-4 pb-10">
-        <div className="cmf-chassis flex flex-col items-center p-4 sm:p-6 text-center space-y-3.5">
+        <div className="cmf-chassis cmf-card-enter flex flex-col items-center p-4 sm:p-6 text-center space-y-3.5">
           <div className="cmf-badge-teal inline-flex items-center gap-2 rounded-full px-3.5 py-1 text-[10px] font-bold tracking-wider uppercase">
             <QrCode className="h-3.5 w-3.5" />
             SARDINEN HQ // OFFIZIELLER CATCH-CODE
@@ -60,7 +60,7 @@ export const HiderQrView: React.FC<HiderQrModalProps> = ({
           </div>
 
           {/* Maximaler Kontrast (Schwarz auf reinem Weiß) im gefrästen Polycarbonat-Rahmen, responsiv für kleine Smartphones */}
-          <div className="w-full max-w-[232px] rounded-2xl border-2 border-[var(--shell-border)] bg-white p-4 shadow-sm">
+          <div className="cmf-pop-in w-full max-w-[232px] rounded-2xl border-2 border-[var(--shell-border)] bg-white p-4 shadow-sm">
             <QRCodeSVG
               value={qrValue}
               size={200}

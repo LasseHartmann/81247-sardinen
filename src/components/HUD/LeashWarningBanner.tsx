@@ -18,7 +18,7 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
     return (
       <div
         role="alert"
-        className="z-20 w-full border-b-2 border-[#E04300] bg-[var(--cmf-orange)] px-4 py-2.5 text-white shadow-md"
+        className="cmf-alert-slide z-20 w-full border-b-2 border-[#E04300] bg-[var(--cmf-orange)] px-4 py-2.5 text-white shadow-md"
       >
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
@@ -51,7 +51,7 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
     return (
       <div
         role="status"
-        className="z-20 w-full border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-4 py-2 text-center font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase backdrop-blur-md"
+        className="cmf-alert-slide z-20 w-full border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-4 py-2 text-center font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase backdrop-blur-md"
       >
         WARNUNG // Die Verstecker haben ihren 20m-Versteckradius vorübergehend verlassen!
       </div>

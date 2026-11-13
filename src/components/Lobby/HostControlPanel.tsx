@@ -297,10 +297,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   }).filter((t) => t.memberNames.length > 0);
 
   return (
-    <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
+    <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-3xl space-y-4 sm:space-y-5 pb-12">
         {/* Kopfzeile (Admin-Zugriff bleibt beim Tab-Wechsel & Neuladen erhalten) */}
-        <div className="cmf-chassis flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
+        <div className="cmf-chassis cmf-card-enter flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
           <div>
             <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
               SPIELLEITER // KONSOLE

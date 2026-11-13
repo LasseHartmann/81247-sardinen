@@ -57,6 +57,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     });
   }
 
+  const activeIndex = Math.max(
+    0,
+    items.findIndex((i) => i.id === activeTab)
+  );
+
   return (
     <nav
       aria-label="Hauptnavigation"
@@ -67,7 +72,30 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           : 'border-[var(--shell-border)] bg-[var(--shell-bg)] shadow-[0_-12px_32px_rgba(20,25,30,0.08),inset_0_1px_0_rgba(255,255,255,0.75)]'
       }`}
     >
-      <div className="mx-auto flex max-w-xl items-center justify-around gap-1">
+      <div
+        className="relative mx-auto grid max-w-xl items-center"
+        style={{
+          gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`,
+        }}
+      >
+        {/* Gleitender Hardware-Auswahlschlitten (Spring-Animation beim Tabwechsel) */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute top-0 bottom-0 left-0 px-0.5 transition-transform duration-250 ease-[var(--ease-spring)]"
+          style={{
+            width: `${100 / items.length}%`,
+            transform: `translate3d(${activeIndex * 100}%, 0, 0)`,
+          }}
+        >
+          <div
+            className={`h-full w-full rounded-xl shadow-sm transition-colors duration-250 ${
+              hasActiveEmergency
+                ? 'bg-[#450A0A] ring-1 ring-[#FCA5A5]'
+                : 'bg-[#14171A]'
+            }`}
+          />
+        </div>
+
         {items.map((item) => {
           const isActive = activeTab === item.id;
           return (
@@ -76,23 +104,28 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               type="button"
               data-testid={`nav-tab-${item.id}`}
               onClick={() => onSelectTab(item.id)}
-              className={`relative flex min-h-[50px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 font-tech text-[10px] font-bold tracking-wide uppercase transition ${
+              className={`relative z-10 flex min-h-[50px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 font-tech text-[10px] font-bold tracking-wide uppercase transition-all duration-200 active:scale-95 ${
                 isActive
-                  ? hasActiveEmergency
-                    ? 'bg-[#450A0A] text-white shadow-sm ring-1 ring-[#FCA5A5]'
-                    : 'bg-[#14171A] text-white shadow-sm'
+                  ? 'text-white'
                   : hasActiveEmergency
-                    ? 'text-[#FEE2E2] hover:bg-[#991B1B] hover:text-white'
-                    : 'text-[var(--text-muted)] hover:bg-[var(--module-sub)] hover:text-[var(--text-main)]'
+                    ? 'text-[#FEE2E2] hover:text-white'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
               }`}
             >
               {isActive && (
-                <span className="absolute top-1.5 right-2 h-1.5 w-1.5 rounded-full bg-[var(--cmf-orange)]" />
+                <span className="cmf-pop-in absolute top-1.5 right-2.5 h-1.5 w-1.5 rounded-full bg-[var(--cmf-orange)]" />
               )}
-              <div className="relative">
+              <div
+                className={`relative transition-transform duration-200 ease-[var(--ease-detent)] ${
+                  isActive ? '-translate-y-0.5 scale-105' : ''
+                }`}
+              >
                 {item.icon}
                 {Boolean(item.badge && item.badge > 0) && (
-                  <span className="absolute -top-1.5 -right-3 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--cmf-orange)] px-1 font-tech text-[9px] font-bold text-white shadow">
+                  <span
+                    key={item.badge}
+                    className="cmf-pop-in absolute -top-1.5 -right-3 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--cmf-orange)] px-1 font-tech text-[9px] font-bold text-white shadow"
+                  >
                     {item.badge}
                   </span>
                 )}

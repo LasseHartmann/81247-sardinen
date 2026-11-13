@@ -606,7 +606,7 @@ export const App: React.FC = () => {
       data-emergency-hud={hasActiveEmergency ? 'true' : 'false'}
       className={`cmf-drafting-bg flex h-[100dvh] w-full flex-col overflow-hidden text-[var(--text-main)] transition-shadow duration-300 ${
         hasActiveEmergency
-          ? 'ring-4 ring-inset ring-[#EF4444] shadow-[inset_0_0_48px_rgba(220,38,38,0.28)]'
+          ? 'cmf-emergency-frame ring-4 ring-inset ring-[#EF4444]'
           : ''
       }`}
     >
@@ -745,7 +745,7 @@ export const App: React.FC = () => {
             {activePreviewQuestion && (
               <div
                 data-testid="map-active-preview-bar"
-                className="cmf-oled pointer-events-auto mx-auto w-full max-w-lg space-y-2.5 p-3 shadow-2xl"
+                className="cmf-oled cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg space-y-2.5 p-3 shadow-2xl"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
@@ -888,7 +888,7 @@ export const App: React.FC = () => {
 
             {/* 3. Einklappbares Sucher-Bottom-Sheet während der Versteckphase (freie 81247-Kartenplanung!) */}
             {showSeekerHidingCard && !activePreviewQuestion && (
-              <div className="cmf-chassis pointer-events-auto mx-auto w-full max-w-md overflow-hidden">
+              <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-md overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setSeekerHidingMinimized((m) => !m)}
@@ -920,7 +920,7 @@ export const App: React.FC = () => {
                 </button>
 
                 {!seekerHidingMinimized && (
-                  <div className="border-t cmf-divider px-4 pt-2.5 pb-3.5 text-center">
+                  <div className="cmf-view-enter border-t cmf-divider px-4 pt-2.5 pb-3.5 text-center">
                     <p className="text-xs text-[var(--text-muted)]">
                       Keine Verstecker-Bewegungen sichtbar. Tippe oben auf diese Leiste, um sie einzuklappen und die Karte frei zu erkunden!
                     </p>
@@ -935,7 +935,7 @@ export const App: React.FC = () => {
 
             {/* 4. Verstecker-Panel zum Fixieren / Neu-Wählen des Anchor Points (blendet beim Karten-Pinpoint automatisch klein!) */}
             {showHiderAnchorPanel && (
-              <div className="cmf-chassis pointer-events-auto mx-auto w-full max-w-lg p-3.5 sm:p-4">
+              <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg p-3.5 sm:p-4">
                 {mapClickMode.kind === 'PICK_ANCHOR_POINT' ? (
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-tech text-xs font-bold text-[var(--text-main)] uppercase">
@@ -1034,7 +1034,7 @@ export const App: React.FC = () => {
                     </div>
 
                     {anchorFeedbackError && (
-                      <div className="cmf-badge-orange mt-2.5 rounded-xl p-2.5 text-xs font-semibold">
+                      <div className="cmf-badge-orange cmf-shake mt-2.5 rounded-xl p-2.5 text-xs font-semibold">
                         {anchorFeedbackError}
                       </div>
                     )}
@@ -1057,7 +1057,7 @@ export const App: React.FC = () => {
 
             {/* 5. Schnellzugriff „Versteck neu wählen“ & „Sardinen-QR-Code zeigen“ */}
             {showQuickSardineFab && (
-              <div className="pointer-events-auto mx-auto flex w-full max-w-lg items-center justify-end gap-2">
+              <div className="cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg items-center justify-end gap-2">
                 {canRehideWhileTimerActive && (
                   <button
                     type="button"

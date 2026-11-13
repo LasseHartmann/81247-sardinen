@@ -242,7 +242,7 @@ export const TopHud: React.FC<TopHudProps> = ({
 
       {/* Aufklappbares Hardware-Modul: Notfallnachricht */}
       {emergencyDrawerOpen && (
-        <div className="cmf-module mx-auto mt-2 max-w-xl space-y-2.5 p-3">
+        <div className="cmf-module cmf-drawer-down mx-auto mt-2 max-w-xl space-y-2.5 p-3">
           <div className="flex items-center justify-between border-b cmf-divider pb-2">
             <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase sm:text-[11px]">
               NOTFALL-KANAL // FÜR ALLE SICHTBAR
@@ -321,7 +321,9 @@ export const TopHud: React.FC<TopHudProps> = ({
               setAdminErr(res.error ?? 'Falscher Admin-Code.');
             }
           }}
-          className="cmf-module mx-auto mt-2 flex max-w-md flex-wrap items-center gap-2 p-2.5"
+          className={`cmf-module cmf-drawer-down mx-auto mt-2 flex max-w-md flex-wrap items-center gap-2 p-2.5 ${
+            adminErr ? 'cmf-shake' : ''
+          }`}
         >
           <input
             type="password"

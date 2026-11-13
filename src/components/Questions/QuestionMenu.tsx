@@ -202,7 +202,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   // Für Verstecker & Spielleiter zeigt dieser Tab das Protokoll aller Hinweise im Spiel
   if (!isSeekerActive) {
     return (
-      <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
+      <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
         <div className="mx-auto max-w-2xl space-y-4 pb-10">
           <div className="cmf-chassis p-4 sm:p-5">
             <span className="cmf-badge-teal inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
@@ -248,7 +248,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   };
 
   return (
-    <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
+    <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-2xl space-y-4 pb-12">
         <div className="cmf-chassis p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">

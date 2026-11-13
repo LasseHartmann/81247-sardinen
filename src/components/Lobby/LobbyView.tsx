@@ -65,7 +65,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   return (
     <div className="cmf-drafting-bg cmf-scroll-area flex h-[100dvh] w-full flex-col items-center justify-start sm:justify-center pt-[max(1.25rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] text-[var(--text-main)]">
-      <div className="cmf-chassis my-auto w-full max-w-md p-5 sm:p-7">
+      <div className="cmf-chassis cmf-sheet-up my-auto w-full max-w-md p-5 sm:p-7">
         {/* Hardware-Kopfzeile mit Serien-Tag & OLED-Emblem */}
         <div className="flex items-center justify-between">
           <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
@@ -131,7 +131,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </div>
 
           {pendingHiderPasswordFor && (
-            <div className="cmf-module space-y-2 p-3.5">
+            <div className="cmf-module cmf-drawer-down space-y-2 p-3.5">
               <div className="flex items-center justify-between">
                 <label
                   htmlFor="hider-login-password-input"
@@ -180,7 +180,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           {loginError && (
             <div
               role="alert"
-              className="cmf-badge-orange rounded-xl px-3.5 py-2.5 text-xs font-semibold"
+              className="cmf-badge-orange cmf-shake rounded-xl px-3.5 py-2.5 text-xs font-semibold"
             >
               {loginError}
             </div>
@@ -390,7 +390,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   };
 
   return (
-    <div className="cmf-chassis pointer-events-auto mx-auto flex max-h-[68dvh] sm:max-h-[calc(100dvh-160px)] w-full max-w-lg flex-col overflow-hidden text-[var(--text-main)]">
+    <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto flex max-h-[68dvh] sm:max-h-[calc(100dvh-160px)] w-full max-w-lg flex-col overflow-hidden text-[var(--text-main)] transition-all duration-250 ease-[var(--ease-spring)]">
       {/* Smartphone Bottom-Sheet Drag-/Tap-Handle zum Ein- & Ausklappen (freie Kartensicht!) */}
       <div
         role="button"
@@ -481,7 +481,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
       )}
 
       {!sheetCollapsed && (
-        <div className="cmf-scroll-area flex-1 p-3.5 sm:p-5">
+        <div className="cmf-scroll-area cmf-view-enter flex-1 p-3.5 sm:p-5">
           {/* Kopfzeile */}
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -709,7 +709,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                       : '–'}
                 </span>
                 {hasPasswordSet && playerReady && (
-                  <span className="font-tech text-[11px] font-bold text-[var(--cmf-teal)]">
+                  <span className="cmf-pop-in font-tech text-[11px] font-bold text-[var(--cmf-teal)]">
                     ✓
                   </span>
                 )}

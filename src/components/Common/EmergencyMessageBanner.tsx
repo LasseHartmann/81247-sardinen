@@ -33,7 +33,7 @@ export const EmergencyMessageBanner: React.FC<EmergencyMessageBannerProps> = ({
     <div
       role="alert"
       data-testid="emergency-messages-container"
-      className="z-30 flex flex-col border-b-2 border-[#FCA5A5] bg-[#991B1B] text-white shadow-[0_6px_24px_rgba(220,38,38,0.5)]"
+      className="cmf-alert-slide z-30 flex flex-col border-b-2 border-[#FCA5A5] bg-[#991B1B] text-white shadow-[0_6px_24px_rgba(220,38,38,0.5)]"
     >
       {messages.map((msg) => {
         const isSender = msg.uid === ownUid;

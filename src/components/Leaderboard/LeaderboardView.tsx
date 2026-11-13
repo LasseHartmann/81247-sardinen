@@ -36,9 +36,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   );
 
   return (
-    <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
+    <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-2xl space-y-4 sm:space-y-5 pb-10">
-        <div className="cmf-chassis flex items-center gap-3 p-4 sm:p-5">
+        <div className="cmf-chassis cmf-card-enter flex items-center gap-3 p-4 sm:p-5">
           <div className="cmf-oled flex h-12 w-12 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
             <Trophy className="h-6 w-6" />
           </div>
@@ -72,10 +72,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 <div
                   key={entry.teamId}
                   data-testid={`leaderboard-row-${entry.teamId}`}
+                  style={{ animationDelay: `${Math.min(idx * 50, 250)}ms` }}
                   className={`cmf-module p-4 ${
                     rank === 1
-                      ? 'border-[1.5px] !border-[var(--cmf-orange)]'
-                      : ''
+                      ? 'cmf-winner-card border-[1.5px] !border-[var(--cmf-orange)]'
+                      : 'cmf-card-enter'
                   }`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">

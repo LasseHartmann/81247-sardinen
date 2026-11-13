@@ -22,6 +22,11 @@
   --cmf-teal: #00A896;     /* Online/GPS indicators, active zones, normal/ready states */
   --cmf-amber: #F0A500;    /* Timers, range adjustments, medium-density states */
   --nothing-red: #D71921;  /* Live pulsing recording/session dots */
+
+  /* CMF × Nothing Tactile Motion Curves */
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-detent: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --ease-mechanical: cubic-bezier(0.2, 0, 0, 1);
 }
 
 html,
@@ -168,16 +173,22 @@ button,
   border: 1px solid #E04300;
   border-radius: 0.75rem;
   box-shadow: 0 4px 16px rgba(255, 77, 0, 0.25);
-  transition: filter 140ms ease, transform 90ms ease, opacity 140ms ease;
+  transition:
+    filter 140ms var(--ease-mechanical),
+    transform 110ms var(--ease-detent),
+    box-shadow 160ms var(--ease-mechanical),
+    opacity 140ms ease;
   cursor: pointer;
 }
 
 .cmf-btn-primary:hover:not(:disabled) {
   filter: brightness(1.06);
+  box-shadow: 0 6px 20px rgba(255, 77, 0, 0.34);
 }
 
 .cmf-btn-primary:active:not(:disabled) {
-  transform: translateY(1.5px);
+  transform: translateY(1.5px) scale(0.975);
+  box-shadow: 0 2px 8px rgba(255, 77, 0, 0.22);
 }
 
 .cmf-btn-primary:disabled {
@@ -191,7 +202,11 @@ button,
   color: var(--text-muted);
   border: 1px solid var(--shell-border);
   border-radius: 0.75rem;
-  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, transform 90ms ease;
+  transition:
+    background-color 140ms var(--ease-mechanical),
+    color 140ms var(--ease-mechanical),
+    border-color 140ms var(--ease-mechanical),
+    transform 110ms var(--ease-detent);
   cursor: pointer;
 }
 
@@ -202,7 +217,7 @@ button,
 }
 
 .cmf-btn-secondary:active:not(:disabled) {
-  transform: translateY(1.5px);
+  transform: translateY(1.5px) scale(0.975);
 }
 
 .cmf-btn-secondary:disabled {
@@ -215,7 +230,9 @@ button,
   color: #FFFFFF;
   border: 1px solid #14171A;
   border-radius: 0.75rem;
-  transition: filter 140ms ease, transform 90ms ease;
+  transition:
+    filter 140ms var(--ease-mechanical),
+    transform 110ms var(--ease-detent);
   cursor: pointer;
 }
 
@@ -224,7 +241,7 @@ button,
 }
 
 .cmf-btn-active:active:not(:disabled) {
-  transform: translateY(1.5px);
+  transform: translateY(1.5px) scale(0.975);
 }
 
 .cmf-btn-active:disabled {
@@ -432,4 +449,245 @@ input[type='range'].cmf-range::-moz-range-thumb {
 .leaflet-control-attribution a {
   color: var(--text-main) !important;
   font-weight: 600;
+}
+
+/* ==========================================================================
+   CMF × Nothing Hardware Motion Primitives (60fps GPU-Composited)
+   ========================================================================== */
+
+@keyframes cmfViewEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes cmfSheetUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes cmfDrawerDown {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -10px, 0) scaleY(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scaleY(1);
+  }
+}
+
+@keyframes cmfAlertSlide {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -100%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes cmfPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.65);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cmfCardEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes cmfShake {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    transform: translate3d(-5px, 0, 0);
+  }
+  40% {
+    transform: translate3d(5px, 0, 0);
+  }
+  60% {
+    transform: translate3d(-3.5px, 0, 0);
+  }
+  80% {
+    transform: translate3d(3.5px, 0, 0);
+  }
+}
+
+@keyframes cmfGpsRipple {
+  0% {
+    transform: scale(0.75);
+    opacity: 0.75;
+  }
+  80%, 100% {
+    transform: scale(1.75);
+    opacity: 0;
+  }
+}
+
+@keyframes cmfHqBreathe {
+  0%, 100% {
+    box-shadow: 0 4px 16px rgba(255, 77, 0, 0.36), 0 0 0 0 rgba(255, 77, 0, 0.38);
+  }
+  50% {
+    box-shadow: 0 6px 22px rgba(255, 77, 0, 0.55), 0 0 0 9px rgba(255, 77, 0, 0);
+  }
+}
+
+@keyframes cmfSosShockwave {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@keyframes cmfEmergencyFramePulse {
+  0%, 100% {
+    box-shadow: inset 0 0 36px rgba(220, 38, 38, 0.24);
+  }
+  50% {
+    box-shadow: inset 0 0 64px rgba(220, 38, 38, 0.46);
+  }
+}
+
+@keyframes cmfScanSweep {
+  0% {
+    transform: translateY(0%);
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translateY(200px);
+    opacity: 0.25;
+  }
+}
+
+@keyframes cmfWinnerGlow {
+  0%, 100% {
+    box-shadow: 0 8px 24px -8px rgba(255, 77, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  }
+  50% {
+    box-shadow: 0 12px 30px -6px rgba(255, 77, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  }
+}
+
+.cmf-view-enter {
+  animation: cmfViewEnter 210ms var(--ease-spring) both;
+}
+
+.cmf-sheet-up {
+  animation: cmfSheetUp 240ms var(--ease-spring) both;
+}
+
+.cmf-drawer-down {
+  transform-origin: top center;
+  animation: cmfDrawerDown 190ms var(--ease-spring) both;
+}
+
+.cmf-alert-slide {
+  animation: cmfAlertSlide 220ms var(--ease-spring) both;
+}
+
+.cmf-pop-in {
+  animation: cmfPopIn 220ms var(--ease-detent) both;
+}
+
+.cmf-card-enter {
+  animation: cmfCardEnter 240ms var(--ease-spring) both;
+}
+
+.cmf-stagger-1 {
+  animation-delay: 35ms;
+}
+.cmf-stagger-2 {
+  animation-delay: 70ms;
+}
+.cmf-stagger-3 {
+  animation-delay: 105ms;
+}
+.cmf-stagger-4 {
+  animation-delay: 140ms;
+}
+
+.cmf-shake {
+  animation: cmfShake 320ms var(--ease-mechanical) both;
+}
+
+.cmf-gps-ripple {
+  animation: cmfGpsRipple 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.cmf-hq-glow {
+  animation: cmfHqBreathe 2.6s ease-in-out infinite;
+}
+
+.cmf-sos-wave {
+  animation: cmfSosShockwave 1.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.cmf-emergency-frame {
+  animation: cmfEmergencyFramePulse 1.8s ease-in-out infinite;
+}
+
+.cmf-winner-card {
+  animation: cmfCardEnter 260ms var(--ease-spring) both, cmfWinnerGlow 3.2s ease-in-out infinite;
+}
+
+.cmf-scan-line {
+  animation: cmfScanSweep 1.9s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmf-view-enter,
+  .cmf-sheet-up,
+  .cmf-drawer-down,
+  .cmf-alert-slide,
+  .cmf-pop-in,
+  .cmf-card-enter,
+  .cmf-shake,
+  .cmf-gps-ripple,
+  .cmf-hq-glow,
+  .cmf-sos-wave,
+  .cmf-emergency-frame,
+  .cmf-winner-card,
+  .cmf-scan-line,
+  .nothing-red-dot {
+    animation: none !important;
+    transition: none !important;
+  }
 }

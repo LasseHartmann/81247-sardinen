@@ -32,7 +32,7 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
 
   return (
     <div className="space-y-3">
-      {sorted.map((clue) => {
+      {sorted.map((clue, idx) => {
         const isHidden = hiddenClueIds.has(clue.id);
         const hasOverlay = Boolean(clue.overlayGeoJson);
         const linkedReq = requestsMap[clue.requestId];
@@ -46,7 +46,8 @@ export const ClueHistoryList: React.FC<ClueHistoryListProps> = ({
           <div
             key={clue.id}
             data-testid={`clue-card-${clue.questionType}`}
-            className="cmf-module p-4"
+            style={{ animationDelay: `${Math.min(idx * 40, 200)}ms` }}
+            className="cmf-module cmf-card-enter p-4"
           >
             <div className="flex items-start justify-between gap-2">
               <div>

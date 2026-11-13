@@ -111,9 +111,9 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
   }
 
   return (
-    <div className="cmf-drafting-bg cmf-scroll-area h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
+    <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-md space-y-4 pb-10">
-        <div className="cmf-chassis p-4 sm:p-5">
+        <div className="cmf-chassis cmf-card-enter p-4 sm:p-5">
           <span className="cmf-badge-orange inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
             SARDINEN GEFUNDEN?
           </span>
@@ -158,10 +158,16 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
           </div>
 
           {cameraActive && (
-            <div
-              id={scannerRegionId}
-              className="cmf-oled overflow-hidden p-1"
-            />
+            <div className="cmf-drawer-down relative overflow-hidden rounded-xl">
+              <div
+                id={scannerRegionId}
+                className="cmf-oled overflow-hidden p-1"
+              />
+              <span
+                aria-hidden="true"
+                className="cmf-scan-line pointer-events-none absolute inset-x-3 top-2 h-0.5 rounded-full bg-[var(--cmf-orange)] shadow-[0_0_12px_#FF4D00]"
+              />
+            </div>
           )}
 
           {cameraError && (
@@ -216,10 +222,10 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
             data-testid="catch-feedback-box"
             className={`rounded-2xl p-4 text-xs font-semibold ${
               watchedCatch.status === 'ACCEPTED'
-                ? 'cmf-badge-teal'
+                ? 'cmf-badge-teal cmf-pop-in'
                 : watchedCatch.status === 'INVALID'
-                  ? 'cmf-badge-orange'
-                  : 'cmf-oled text-[#F8FAFC]'
+                  ? 'cmf-badge-orange cmf-shake'
+                  : 'cmf-oled cmf-card-enter text-[#F8FAFC]'
             }`}
           >
             {watchedCatch.status === 'PENDING' ||

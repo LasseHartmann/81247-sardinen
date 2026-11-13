@@ -18,7 +18,7 @@ export const StatusBanners: React.FC<StatusBannersProps> = ({
       {!connected && (
         <div
           role="alert"
-          className="flex items-center justify-center gap-2 border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-3 py-1.5 font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase backdrop-blur-md"
+          className="cmf-alert-slide flex items-center justify-center gap-2 border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-3 py-1.5 font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase backdrop-blur-md"
         >
           <WifiOff className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-orange)]" />
           Offline // Synchronisiere automatisch bei Netzrückkehr ...
@@ -28,7 +28,7 @@ export const StatusBanners: React.FC<StatusBannersProps> = ({
       {isControllerDisconnected && (
         <div
           role="status"
-          className="flex items-center justify-center gap-2 border-b border-[var(--shell-border)] bg-[var(--module-sub)] px-3 py-1.5 font-tech text-[11px] font-medium text-[var(--text-main)]"
+          className="cmf-alert-slide flex items-center justify-center gap-2 border-b border-[var(--shell-border)] bg-[var(--module-sub)] px-3 py-1.5 font-tech text-[11px] font-medium text-[var(--text-main)]"
         >
           <ServerCrash className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-amber)]" />
           <span>
@@ -38,7 +38,7 @@ export const StatusBanners: React.FC<StatusBannersProps> = ({
       )}
 
       {gameStatus === 'PAUSED' && (
-        <div className="flex items-center justify-center gap-2 border-b border-[#27272A] bg-[#0B0D10] px-3 py-1.5 font-tech text-[11px] font-bold tracking-wider text-[var(--cmf-amber)] uppercase">
+        <div className="cmf-alert-slide flex items-center justify-center gap-2 border-b border-[#27272A] bg-[#0B0D10] px-3 py-1.5 font-tech text-[11px] font-bold tracking-wider text-[var(--cmf-amber)] uppercase">
           <PauseCircle className="h-4 w-4 shrink-0 text-[var(--cmf-amber)]" />
           Spiel pausiert — Spielzeit, Radar & Fristen eingefroren
         </div>

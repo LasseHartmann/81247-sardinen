@@ -79,8 +79,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         </div>
 
         <div className="mt-5 flex items-center gap-3.5">
-          <div className="cmf-oled flex h-14 w-14 shrink-0 items-center justify-center">
-            <span className="font-dot text-lg text-[var(--cmf-orange)]">81</span>
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#27272A] bg-black p-1 shadow-md">
+            <img
+              src="/logo.png"
+              alt="81247 Sardinen Logo"
+              className="h-full w-full bg-black object-contain"
+            />
           </div>
           <div>
             <h1 className="font-dot text-2xl leading-tight font-bold text-[var(--text-main)]">
@@ -433,18 +437,27 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
     >
       {/* Kopfzeile */}
           <div className="flex items-center justify-between gap-2">
-            <div>
-              <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                LOBBY // SEKTOR 81247
-              </span>
-              <h2 className="font-industrial flex items-center gap-2 text-base sm:text-lg text-[var(--text-main)]">
-                <span>Hallo {ownMember.name}!</span>
-                {ownMember.isHost && (
-                  <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
-                    ADMIN
-                  </span>
-                )}
-              </h2>
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#27272A] bg-black p-1 shadow-sm">
+                <img
+                  src="/logo.png"
+                  alt="81247 Sardinen Logo"
+                  className="h-full w-full bg-black object-contain"
+                />
+              </div>
+              <div>
+                <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                  LOBBY // SEKTOR 81247
+                </span>
+                <h2 className="font-industrial flex items-center gap-2 text-base sm:text-lg text-[var(--text-main)]">
+                  <span>Hallo {ownMember.name}!</span>
+                  {ownMember.isHost && (
+                    <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
+                      ADMIN
+                    </span>
+                  )}
+                </h2>
+              </div>
             </div>
             <button
               type="button"

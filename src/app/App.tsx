@@ -230,7 +230,12 @@ export const App: React.FC = () => {
   if (authLoading || (isSessionUnlocked && memberLoading)) {
     return (
       <div className="cmf-drafting-bg flex h-[100dvh] items-center justify-center p-4">
-        <div className="cmf-oled flex items-center gap-3 px-5 py-3 shadow-xl">
+        <div className="cmf-oled flex items-center gap-3 px-4 py-3 shadow-xl">
+          <img
+            src="/logo.png"
+            alt="81247 Sardinen Logo"
+            className="h-10 w-10 shrink-0 rounded-lg bg-black object-contain"
+          />
           <span className="nothing-red-dot" />
           <span className="font-dot text-sm text-[#F8FAFC]">
             81247 SARDINEN WIRD GELADEN ...

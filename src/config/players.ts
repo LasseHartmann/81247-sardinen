@@ -4,6 +4,38 @@ export interface PresetPlayer {
   canUnlockAdmin: boolean;
   loginEmail: string;
   isOverviewOnly?: boolean;
+  greeting?: string;
+}
+
+export const PLAYER_CUSTOM_GREETINGS: Record<string, string> = {
+  linus: 'GOLD! GOLD! GOLD!',
+  lasse: 'Welcome back, sir.',
+  thomas: 'Papaya Rules sind heute aktiv!',
+  nick: 'Hast du das POTENZIAL zu gewinnen?',
+  robert: 'Hast du deinen Atlas dabei? Wenn ja: Warum?',
+  jonah: 'Hast du dein Handtuch dabei?',
+  lorenzo: 'Ciao, boss mafiosi.',
+  max: 'ATTACK THE D POINT!',
+  theo: 'YO PHONE LINGING!',
+};
+
+export function getPlayerGreeting(
+  playerOrMember:
+    | { playerId?: string | null; id?: string | null; name?: string | null }
+    | string
+): string {
+  if (typeof playerOrMember === 'string') {
+    const key = playerOrMember.trim().toLowerCase();
+    return PLAYER_CUSTOM_GREETINGS[key] ?? `Hallo ${playerOrMember.trim()}!`;
+  }
+  const pid = (playerOrMember.playerId ?? playerOrMember.id ?? '')
+    .trim()
+    .toLowerCase();
+  const byName = (playerOrMember.name ?? '').trim().toLowerCase();
+  const custom =
+    PLAYER_CUSTOM_GREETINGS[pid] ?? PLAYER_CUSTOM_GREETINGS[byName];
+  if (custom) return custom;
+  return `Hallo ${playerOrMember.name ?? 'Spieler'}!`;
 }
 
 /**

@@ -16,10 +16,17 @@ import {
   Users,
 } from 'lucide-react';
 import { TEAM_PALETTE } from '../../config/gameConfig';
-import { isOverviewMember, REGULAR_PLAYER_COUNT } from '../../config/players';
+import {
+  getPlayerGreeting,
+  isOverviewMember,
+  REGULAR_PLAYER_COUNT,
+} from '../../config/players';
 import type { GpsPermissionState } from '../../hooks/useGeolocation';
 import {
+  deduplicateEnabledMembers,
   filterOnlineEnabledMembers,
+  getRequiredReadyHiderMembers,
+  isPlayerOnline,
 } from '../../services/databaseAdapter';
 import type {
   AuthUserSummary,
@@ -411,27 +418,36 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
     !isOverviewAccount &&
       (!ownFix || gpsStatus === 'DENIED' || gpsStatus === 'UNSUPPORTED')
   );
-  // Vor Rundenbeginn zählen für Gruppen & „Bereit"-Check ausschließlich aktuell online verbundene Spieler!
-  const memberList = filterOnlineEnabledMembers(
+  // Bereitmachen müssen ausschließlich ALLE Mitglieder des Verstecker-Teams (auch wenn offline!), niemand sonst.
+  const onlineMemberList = filterOnlineEnabledMembers(
     members,
     presence,
     ownMember.uid
   );
+  const allEnabledMembers = deduplicateEnabledMembers(members, presence);
+  const requiredHiderMembers = getRequiredReadyHiderMembers(members, presence);
+
+  // Für die Spielerliste in der Lobby: Alle Verstecker (auch offline) + alle online verbundenen übrigen Spieler
+  const lobbyDisplayMembers = [
+    ...requiredHiderMembers,
+    ...onlineMemberList.filter((m) => m.side !== 'HIDER'),
+  ];
+
   const readySet = new Set(readyPlayerIds);
   const isOwnReady = readySet.has(ownMember.playerId);
 
-  const hiderMembers = memberList.filter((m) => m.side === 'HIDER');
-  const seekerMembers = memberList.filter(
+  const seekerPool =
+    onlineMemberList.some((m) => m.side === 'SEEKER' && Boolean(m.teamId))
+      ? onlineMemberList
+      : allEnabledMembers;
+  const seekerMembers = seekerPool.filter(
     (m) => m.side === 'SEEKER' && Boolean(m.teamId)
-  );
-  const unassignedMembers = memberList.filter(
-    (m) => m.side === 'UNASSIGNED' || (m.side === 'SEEKER' && !m.teamId)
   );
 
   // Besetzte Teams anhand der aktuellen Zuweisungen ermitteln (nur Teams mit mindestens 1 Person!)
   const occupiedTeams = TEAM_PALETTE.map((palette) => {
     const pub = teamsPublic[palette.id];
-    const assignedNames = memberList
+    const assignedNames = seekerPool
       .filter((m) => m.side === 'SEEKER' && m.teamId === palette.id)
       .map((m) => m.name);
     return {
@@ -451,19 +467,19 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   const [sheetCollapsed, setSheetCollapsed] = useState(true);
 
   const hasPasswordSet = Boolean(activeHiderLock?.passwordHash);
-  const ownRoleAssigned =
-    ownMember.side === 'HIDER' ||
-    (ownMember.side === 'SEEKER' && Boolean(ownMember.teamId));
+  const isOwnHider = ownMember.side === 'HIDER' && !isOverviewAccount;
 
   const canPressReady =
     hasPasswordSet &&
-    ownRoleAssigned &&
-    hiderMembers.length > 0 &&
-    seekerMembers.length > 0 &&
-    unassignedMembers.length === 0;
+    isOwnHider &&
+    requiredHiderMembers.length > 0 &&
+    seekerMembers.length > 0;
 
-  const readyCount = memberList.filter((m) => readySet.has(m.playerId)).length;
-  const readyRatio = memberList.length > 0 ? readyCount / memberList.length : 0;
+  const totalRequiredReady = requiredHiderMembers.length;
+  const readyCount = requiredHiderMembers.filter((m) =>
+    readySet.has(m.playerId)
+  ).length;
+  const readyRatio = totalRequiredReady > 0 ? readyCount / totalRequiredReady : 0;
   // 3-stage hardware color progression: --cmf-teal -> --cmf-amber -> --cmf-orange
   const meterColor =
     readyRatio < 0.5
@@ -506,7 +522,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         <div className="flex w-full items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <span className="font-industrial truncate text-sm text-[var(--text-main)]">
-              Lobby • {ownMember.name}
+              {ownMember.name} • {getPlayerGreeting(ownMember)}
             </span>
             {isManhunt && (
               <span className="cmf-badge-orange shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
@@ -515,7 +531,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
             )}
             {hasPasswordSet ? (
               <span className="cmf-badge-teal shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
-                Bereit {readyCount}/{memberList.length}
+                HQ Bereit {readyCount}/{totalRequiredReady}
               </span>
             ) : (
               <span className="cmf-badge-amber shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
@@ -551,10 +567,10 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
               </div>
               <div>
                 <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                  LOBBY // SEKTOR 81247 // {isManhunt ? 'MANHUNT' : 'KLASSISCH'}
+                  LOBBY // {ownMember.name} // {isManhunt ? 'MANHUNT' : 'KLASSISCH'}
                 </span>
-                <h2 className="font-industrial flex items-center gap-2 text-base sm:text-lg text-[var(--text-main)]">
-                  <span>Hallo {ownMember.name}!</span>
+                <h2 className="font-industrial flex flex-wrap items-center gap-2 text-base sm:text-lg text-[var(--text-main)]">
+                  <span>{getPlayerGreeting(ownMember)}</span>
                   {ownMember.isHost && (
                     <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
                       ADMIN
@@ -614,9 +630,9 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         {hasPasswordSet && (
           <div className="border-t border-dashed border-[#27272A] pt-2">
             <div className="mb-1 flex items-center justify-between font-tech text-[10px] uppercase">
-              <span className="text-[#9AA4AE]">BEREITSCHAFTS-STATUS</span>
+              <span className="text-[#9AA4AE]">VERSTECKER-BEREITSCHAFT</span>
               <span className="font-dot text-xs text-[#F8FAFC]">
-                BEREIT {readyCount} / {memberList.length}
+                BEREIT {readyCount} / {totalRequiredReady}
               </span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-[#181B20] p-[1px]">
@@ -738,28 +754,35 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         </div>
       )}
 
-      {ownMember.side !== 'HIDER' && !hasPasswordSet && hiderMembers.length > 0 && (
+      {ownMember.side !== 'HIDER' && !isOverviewAccount && !hasPasswordSet && requiredHiderMembers.length > 0 && (
         <div className="cmf-well mt-3.5 p-3 text-xs text-[var(--text-muted)]">
-          Die Verstecker legen gerade ihren geheimen Verstecker-Code fest. Sobald er steht, könnt ihr direkt auf <strong className="text-[var(--text-main)]">„Bereit“</strong> drücken!
+          Die Verstecker legen gerade ihren geheimen Verstecker-Code fest und machen sich bereit. Die Runde startet automatisch, sobald <strong className="text-[var(--text-main)]">alle Verstecker bereit</strong> sind!
         </div>
       )}
 
-      {/* Spielerliste mit Online- & Bereit-Status (zeigt nur aktuell online verbundene Spieler) */}
+      {/* Spielerliste mit Online- & Verstecker-Bereit-Status (inkl. Offline-Verstecker) */}
       <div className="mt-3.5 border-t cmf-divider pt-3">
         <div className="mb-2 flex items-center justify-between font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
           <span className="flex items-center gap-1.5">
             <Users className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-            Online ({memberList.length} / {REGULAR_PLAYER_COUNT})
+            Online ({onlineMemberList.length} / {REGULAR_PLAYER_COUNT})
           </span>
           {hasPasswordSet && (
             <span className="text-[var(--cmf-teal)]">
-              BEREIT: {readyCount}/{memberList.length}
+              VERSTECKER BEREIT: {readyCount}/{totalRequiredReady}
             </span>
           )}
         </div>
         <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
-          {memberList.map((m) => {
-            const playerReady = readySet.has(m.playerId);
+          {lobbyDisplayMembers.map((m) => {
+            const isHider = m.side === 'HIDER';
+            const playerOnline = isPlayerOnline(
+              m.playerId,
+              members,
+              presence,
+              ownMember.uid
+            );
+            const playerReady = isHider && readySet.has(m.playerId);
             return (
               <span
                 key={m.uid}
@@ -769,11 +792,19 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                     : 'cmf-well text-[var(--text-main)]'
                 }`}
               >
-                <span className="h-2 w-2 rounded-full bg-[var(--cmf-teal)]" />
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    playerOnline
+                      ? 'bg-[var(--cmf-teal)]'
+                      : 'bg-[var(--cmf-amber)] opacity-75'
+                  }`}
+                />
                 <span className="font-semibold text-[var(--text-main)]">{m.name}</span>
                 <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
-                  {m.side === 'HIDER'
-                    ? 'HQ'
+                  {isHider
+                    ? playerOnline
+                      ? 'HQ'
+                      : 'HQ•OFF'
                     : m.teamId
                       ? m.teamId.replace('team-', 'T')
                       : '–'}
@@ -826,43 +857,51 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         </div>
       )}
 
-      {/* BEREIT-Button für alle Spieler -> startet automatisch sobald alle bereit sind! */}
+      {/* BEREIT-Button NUR für das Verstecker-Team -> startet automatisch sobald alle Verstecker (auch offline eingeteilte) bereit sind! */}
       {hasPasswordSet && !isOverviewAccount && (
         <div className="mt-3.5 space-y-1.5">
-          {!canPressReady ? (
-            <div className="cmf-badge-amber rounded-xl p-2.5 text-center text-xs font-medium">
-              {unassignedMembers.length > 0
-                ? `Noch nicht alle Spieler eingeteilt (${unassignedMembers.map((u) => u.name).join(', ')}).`
-                : hiderMembers.length === 0
+          {isOwnHider ? (
+            !canPressReady ? (
+              <div className="cmf-badge-amber rounded-xl p-2.5 text-center text-xs font-medium">
+                {requiredHiderMembers.length === 0
                   ? 'Es muss mindestens ein Verstecker eingeteilt sein.'
                   : 'Es muss mindestens ein Sucher-Team besetzt sein.'}
-            </div>
-          ) : (
-            <button
-              type="button"
-              data-testid="toggle-ready-btn"
-              disabled={togglingReady}
-              onClick={async () => {
-                setTogglingReady(true);
-                try {
-                  await onToggleOwnReady(!isOwnReady);
-                } finally {
-                  setTogglingReady(false);
-                }
-              }}
-              className={`font-dot flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-3 text-sm font-bold ${
-                isOwnReady ? 'cmf-btn-active' : 'cmf-btn-primary'
-              }`}
-            >
-              <CheckCircle2
-                className={`h-4 w-4 ${
-                  isOwnReady ? 'text-[var(--cmf-teal)]' : 'text-white'
+              </div>
+            ) : (
+              <button
+                type="button"
+                data-testid="toggle-ready-btn"
+                disabled={togglingReady}
+                onClick={async () => {
+                  setTogglingReady(true);
+                  try {
+                    await onToggleOwnReady(!isOwnReady);
+                  } finally {
+                    setTogglingReady(false);
+                  }
+                }}
+                className={`font-dot flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-3 text-sm font-bold ${
+                  isOwnReady ? 'cmf-btn-active' : 'cmf-btn-primary'
                 }`}
-              />
-              {isOwnReady
-                ? `Bereit bestätigt (${readyCount}/${memberList.length})`
-                : `Ich bin bereit! (${readyCount}/${memberList.length})`}
-            </button>
+              >
+                <CheckCircle2
+                  className={`h-4 w-4 ${
+                    isOwnReady ? 'text-[var(--cmf-teal)]' : 'text-white'
+                  }`}
+                />
+                {isOwnReady
+                  ? `Bereit bestätigt (${readyCount}/${totalRequiredReady})`
+                  : `Ich bin bereit! (${readyCount}/${totalRequiredReady})`}
+              </button>
+            )
+          ) : (
+            <div
+              data-testid="seeker-waiting-for-hiders-ready"
+              className="cmf-badge-teal rounded-xl p-2.5 text-center text-xs font-medium"
+            >
+              Nur das Verstecker-Team muss sich bereitmachen ({readyCount}/
+              {totalRequiredReady} bereit). Die Runde startet automatisch, sobald alle Verstecker bereit sind!
+            </div>
           )}
         </div>
       )}

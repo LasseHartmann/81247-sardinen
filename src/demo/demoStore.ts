@@ -666,10 +666,23 @@ export function createDemoStore(options?: {
       return subscribeSlice((t) => t.state.public, cb);
     },
 
-    async initializeDefaultLobbyIfNeeded(defaultState, defaultTeams): Promise<void> {
+    async initializeDefaultLobbyIfNeeded(
+      defaultState,
+      defaultTeams,
+      defaultSecrets
+    ): Promise<void> {
       writeTree((t) => {
         if (!t.state?.public) {
           t.state.public = structuredClone(defaultState);
+        }
+        if (defaultSecrets && !t.state?.hiderPrivate) {
+          t.state.hiderPrivate = {
+            anchorPoint: null,
+            radarStages: [],
+            qrSecret: defaultSecrets.qrSecret,
+            shortCode: defaultSecrets.shortCode,
+            hiderLocations: {},
+          };
         }
         for (const [id, team] of Object.entries(defaultTeams)) {
           if (!t.teams[id]) {

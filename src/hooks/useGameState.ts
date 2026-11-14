@@ -5,12 +5,14 @@ import {
   TEAM_PALETTE,
 } from '../config/gameConfig';
 import {
+  deduplicateEnabledMembers,
   extractActiveHiderLock,
   extractActiveLeashViolation,
   extractEmergencyMessages,
   extractReadyPlayerIds,
   extractRoundStartMeta,
   filterOnlineEnabledMembers,
+  getRequiredReadyHiderMembers,
   type DatabaseAdapter,
   type UnsubscribeFn,
 } from '../services/databaseAdapter';
@@ -113,13 +115,11 @@ export function useGameState(
           const defaults = createDefaultPublicState(sessionId);
           const defaultTeams = createDefaultTeams();
           const secrets = generateSessionSecrets();
-          void adapter.initializeDefaultLobbyIfNeeded(defaults, defaultTeams);
-          void adapter.saveHiderPrivate({
-            anchorPoint: null,
-            radarStages: [],
-            qrSecret: secrets.qrSecret,
-            shortCode: secrets.shortCode,
-          });
+          void adapter.initializeDefaultLobbyIfNeeded(
+            defaults,
+            defaultTeams,
+            secrets
+          );
         }
       }),
       adapter.subscribeControllerLease(setControllerLease),
@@ -157,7 +157,10 @@ export function useGameState(
 
   const publicState = useMemo<PublicGameState | null>(() => {
     if (!rawPublicState) return null;
-    if (rawPublicState.status !== 'LOBBY') {
+    if (
+      rawPublicState.status !== 'LOBBY' &&
+      rawPublicState.gameStartTimestamp === null
+    ) {
       const fallbackMeta = extractRoundStartMeta(rawPublicState, presence);
       if (fallbackMeta) {
         return {
@@ -165,22 +168,20 @@ export function useGameState(
           gameStartTimestamp:
             rawPublicState.gameStartTimestamp ?? fallbackMeta.gameStartTimestamp,
           activeTeamIds:
-            rawPublicState.gameStartTimestamp !== null
-              ? rawPublicState.activeTeamIds
-              : fallbackMeta.activeTeamIds,
+            fallbackMeta.activeTeamIds ?? rawPublicState.activeTeamIds,
           gameMode:
             rawPublicState.gameMode === 'MANHUNT' ||
             fallbackMeta.gameMode === 'MANHUNT'
               ? 'MANHUNT'
               : 'CLASSIC',
           classicSearchDurationMs:
-            fallbackMeta.classicSearchDurationMs ??
-            rawPublicState.classicSearchDurationMs,
+            rawPublicState.classicSearchDurationMs ??
+            fallbackMeta.classicSearchDurationMs,
           manhuntShrinkDurationMs:
-            fallbackMeta.manhuntShrinkDurationMs ??
-            rawPublicState.manhuntShrinkDurationMs,
+            rawPublicState.manhuntShrinkDurationMs ??
+            fallbackMeta.manhuntShrinkDurationMs,
           radarSchedule:
-            fallbackMeta.radarSchedule ?? rawPublicState.radarSchedule,
+            rawPublicState.radarSchedule ?? fallbackMeta.radarSchedule,
         };
       }
     }
@@ -259,7 +260,7 @@ export function useGameState(
     return adapter.subscribeHiderPrivate(setHiderPrivate);
   }, [adapter, canReadHiderSecrets]);
 
-  // Automatischer Rundenstart, sobald Verstecker-Passwort gesetzt ist und ALLE online verbundenen Spieler auf „Bereit" gedrückt haben!
+  // Automatischer Rundenstart, sobald Verstecker-Passwort gesetzt ist und ALLE Mitglieder des Verstecker-Teams (auch offline) auf „Bereit" gedrückt haben!
   const autoStartedTokenRef = useRef<string | null>(null);
   useEffect(() => {
     if (!ownMember?.enabled || !publicState) return;
@@ -267,39 +268,46 @@ export function useGameState(
     if (!activeHiderLock?.passwordHash) return;
     if (!ownMember.isHost && ownMember.side !== 'HIDER') return;
 
+    const requiredHiders = getRequiredReadyHiderMembers(
+      members,
+      presence
+    ).sort((a, b) => a.playerId.localeCompare(b.playerId));
+    if (requiredHiders.length === 0) return;
+
+    const readySet = new Set(readyPlayerIds);
+    const allHidersReady = requiredHiders.every((h) =>
+      readySet.has(h.playerId)
+    );
+    if (!allHidersReady) return;
+
     const onlineList = filterOnlineEnabledMembers(
       members,
       presence,
       ownMember.uid
     );
-    if (onlineList.length < 2) return;
-
-    const hiders = onlineList
-      .filter((m) => m.side === 'HIDER')
-      .sort((a, b) => a.playerId.localeCompare(b.playerId));
-    const seekers = onlineList.filter(
+    const allSeekers = deduplicateEnabledMembers(members, presence).filter(
       (m) => m.side === 'SEEKER' && Boolean(m.teamId)
     );
-
-    if (hiders.length === 0 || seekers.length === 0) return;
-
-    const allAssigned = onlineList.every(
-      (m) => m.side === 'HIDER' || (m.side === 'SEEKER' && Boolean(m.teamId))
+    const onlineSeekers = onlineList.filter(
+      (m) => m.side === 'SEEKER' && Boolean(m.teamId)
     );
-    if (!allAssigned) return;
-
-    const readySet = new Set(readyPlayerIds);
-    const everyoneReady = onlineList.every((m) => readySet.has(m.playerId));
-    if (!everyoneReady) return;
+    const activeSeekers =
+      onlineSeekers.length > 0 ? onlineSeekers : allSeekers;
+    if (activeSeekers.length === 0) return;
 
     const roundReadyToken = `${publicState.sessionId}:${activeHiderLock.logoutGen}`;
     if (autoStartedTokenRef.current === roundReadyToken) return;
 
     const onlineHost = onlineList.find((m) => m.isHost);
+    const onlineReadyHiders = onlineList
+      .filter((m) => m.side === 'HIDER')
+      .sort((a, b) => a.playerId.localeCompare(b.playerId));
     const isPrimaryStarter = onlineHost
       ? onlineHost.playerId === ownMember.playerId
-      : hiders[0]?.playerId === ownMember.playerId;
+      : onlineReadyHiders[0]?.playerId === ownMember.playerId;
     const delayMs = isPrimaryStarter ? 150 : 1400;
+
+    const starterMemberPool = [...requiredHiders, ...activeSeekers];
 
     const timerId = setTimeout(() => {
       if (autoStartedTokenRef.current === roundReadyToken) return;
@@ -308,7 +316,7 @@ export function useGameState(
         .startRoundWhenAllReady({
           starterUid: ownMember.uid,
           publicState,
-          enabledMembers: onlineList,
+          enabledMembers: starterMemberPool,
           currentHiderPrivate: hiderPrivate,
           nowMs: adapter.getServerNow(),
         })

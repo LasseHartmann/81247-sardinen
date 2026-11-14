@@ -11,29 +11,42 @@ import {
   FastForward,
   Lock,
   CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import {
   buildManhuntRadarSchedule,
+  buildManhuntRadarScheduleForHidingMs,
   buildRadarScheduleForHidingMinutes,
+  buildRadarScheduleForHidingMs,
   createDefaultPublicState,
   createDefaultTeams,
+  DEFAULT_CLASSIC_HIDING_MINUTES,
   DEFAULT_CLASSIC_SEARCH_MINUTES,
   DEFAULT_MANHUNT_HIDING_MINUTES,
   DEFAULT_MANHUNT_SHRINK_MINUTES,
+  getManhuntPingStatusAtElapsedMs,
   getQuestionPenaltyMs,
   TEAM_PALETTE,
 } from '../../config/gameConfig';
+import { getDueRadarCircle, getPhaseForElapsedMs } from '../../geo/radar';
+import {
+  lockHiderAnchorAndGenerateRadar,
+  resolveClassicHiderCandidateLocation,
+} from '../../hooks/useControllerEngine';
 import { HardwareKnob } from '../Common/HardwareKnob';
 import {
   deduplicateEnabledMembers,
   filterOnlineEnabledMembers,
+  getRequiredReadyHiderMembers,
   isPlayerOnline,
   type DatabaseAdapter,
 } from '../../services/databaseAdapter';
 import { generateRandomId, generateSessionSecrets } from '../../services/qrService';
 import type {
   ClueRecord,
+  ClueRequest,
   GameMode,
+  GamePhase,
   HiderLoginLock,
   HiderPrivateState,
   JoinRequest,
@@ -41,6 +54,7 @@ import type {
   PlayerSide,
   PresenceSession,
   PublicGameState,
+  RadarStageId,
   TeamPublic,
 } from '../../types/game';
 import {
@@ -61,6 +75,7 @@ export interface HostControlPanelProps {
   presence: Record<string, Record<string, PresenceSession>>;
   teamsPublic: Record<string, TeamPublic>;
   cluesByTeam?: Record<string, Record<string, ClueRecord>>;
+  requestsByTeam?: Record<string, Record<string, ClueRequest>>;
   onNavigateToMap: () => void;
   onLeaveAndLockConsole?: () => void;
 }
@@ -77,6 +92,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   presence,
   teamsPublic,
   cluesByTeam = {},
+  requestsByTeam = {},
   onNavigateToMap,
   onLeaveAndLockConsole,
 }) => {
@@ -89,7 +105,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   const isManhunt = selectedMode === 'MANHUNT';
 
   const [classicHidingMin, setClassicHidingMin] = useState(() => {
-    if (publicState.gameMode === 'MANHUNT') return 20;
+    if (publicState.gameMode === 'MANHUNT') return DEFAULT_CLASSIC_HIDING_MINUTES;
     const mins = Math.round(publicState.radarSchedule.hidingDurationMs / 60_000);
     return Math.min(55, Math.max(5, Math.round(mins / 5) * 5));
   });
@@ -137,26 +153,47 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     (a, b) => a.requestedAt - b.requestedAt
   );
 
+  const [hostNowMs, setHostNowMs] = useState(() => adapter.getServerNow());
+  const [customTimeMinutesInput, setCustomTimeMinutesInput] = useState('');
+
+  useEffect(() => {
+    setHostNowMs(adapter.getServerNow());
+    if (publicState.status !== 'RUNNING' && publicState.status !== 'PAUSED') {
+      return;
+    }
+    const id = setInterval(() => {
+      setHostNowMs(adapter.getServerNow());
+    }, 1000);
+    return () => clearInterval(id);
+  }, [adapter, publicState.status]);
+
   const enabledMembers = deduplicateEnabledMembers(members, presence);
   const onlineMembers = filterOnlineEnabledMembers(
     members,
     presence,
     ownMember.uid
   );
+  const requiredHiderMembers = getRequiredReadyHiderMembers(members, presence);
+  const lobbyEditableMembers = [
+    ...requiredHiderMembers,
+    ...onlineMembers.filter((m) => m.side !== 'HIDER'),
+  ];
   const activeGroupMembers =
-    publicState.status === 'LOBBY' ? onlineMembers : enabledMembers;
+    publicState.status === 'LOBBY' ? lobbyEditableMembers : enabledMembers;
   const offlineLobbyMembers =
     publicState.status === 'LOBBY'
       ? enabledMembers.filter(
-          (m) => !isPlayerOnline(m.playerId, members, presence, ownMember.uid)
+          (m) =>
+            m.side !== 'HIDER' &&
+            !isPlayerOnline(m.playerId, members, presence, ownMember.uid)
         )
       : [];
 
   const readySet = new Set(readyPlayerIds);
-  const readyCount = onlineMembers.filter((m) => readySet.has(m.playerId)).length;
-  const hiderCount = activeGroupMembers.filter(
-    (m) => m.enabled && m.side === 'HIDER'
+  const readyCount = requiredHiderMembers.filter((m) =>
+    readySet.has(m.playerId)
   ).length;
+  const hiderCount = requiredHiderMembers.length;
 
   const handleStartRound = async () => {
     const now = adapter.getServerNow();
@@ -166,8 +203,14 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     const preservedShortCode =
       hiderPrivate?.shortCode?.trim() || fallbackSecrets.shortCode;
 
+    const seekerSource = onlineMembers.some(
+      (m) => m.side === 'SEEKER' && Boolean(m.teamId)
+    )
+      ? onlineMembers
+      : enabledMembers;
+
     const nextTeams = createDefaultTeams();
-    for (const m of onlineMembers) {
+    for (const m of seekerSource) {
       if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
         if (!nextTeams[m.teamId].memberPlayerIds.includes(m.playerId)) {
           nextTeams[m.teamId].memberPlayerIds.push(m.playerId);
@@ -239,36 +282,251 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     }
   };
 
+  const syncClassicPrivateRadarStages = async (
+    nextSched: PublicGameState['radarSchedule'],
+    basePrivate: HiderPrivateState | null
+  ): Promise<HiderPrivateState | null> => {
+    if (
+      !basePrivate ||
+      !basePrivate.anchorPoint ||
+      basePrivate.radarStages.length !== 5
+    ) {
+      return basePrivate;
+    }
+    const schedMap: Record<RadarStageId, number> = {
+      1: nextSched.stage1Ms,
+      2: nextSched.stage2Ms,
+      3: nextSched.stage3Ms,
+      4: nextSched.stage4Ms,
+      5: nextSched.stage5Ms,
+    };
+    const synced: HiderPrivateState = {
+      ...basePrivate,
+      radarStages: basePrivate.radarStages.map((s) => ({
+        ...s,
+        triggerElapsedMs: schedMap[s.stage],
+      })),
+    };
+    await adapter.saveHiderPrivate(synced);
+    return synced;
+  };
+
   const handleForceStartOpenSearch = async () => {
     const now = adapter.getServerNow();
+    const addedPause =
+      publicState.status === 'PAUSED' && publicState.pausedAt !== null
+        ? Math.max(0, now - publicState.pausedAt)
+        : 0;
+    const nextTotalPausedMs = publicState.totalPausedMs + addedPause;
+    const unpausedState: PublicGameState = {
+      ...publicState,
+      status: 'RUNNING',
+      pausedAt: null,
+      totalPausedMs: nextTotalPausedMs,
+    };
+    const currentNetMs = computeNetElapsedMs(unpausedState, now);
+
     if (isManhunt) {
-      const currentNetMs = computeNetElapsedMs(publicState, now);
-      const baseSched = buildManhuntRadarSchedule(0, manhuntShrinkMin);
+      const shrinkDurationMs =
+        publicState.manhuntShrinkDurationMs ?? manhuntShrinkMin * 60_000;
+      const nextSched = buildManhuntRadarScheduleForHidingMs(
+        currentNetMs,
+        shrinkDurationMs
+      );
       await adapter.savePublicStateByHost({
-        ...publicState,
+        ...unpausedState,
         currentPhase: 'OPEN_SEARCH',
         searchStartTimestamp: publicState.searchStartTimestamp ?? now,
-        pausedBeforeSearchMs: publicState.totalPausedMs,
+        pausedBeforeSearchMs: nextTotalPausedMs,
         anchorLocked: false,
-        radarSchedule: {
-          hidingDurationMs: currentNetMs,
-          stage1Ms: currentNetMs + baseSched.stage1Ms,
-          stage2Ms: currentNetMs + baseSched.stage2Ms,
-          stage3Ms: currentNetMs + baseSched.stage3Ms,
-          stage4Ms: currentNetMs + baseSched.stage4Ms,
-          stage5Ms: currentNetMs + baseSched.stage5Ms,
-        },
+        radarSchedule: nextSched,
       });
+      setHostNowMs(now);
       return;
+    }
+
+    const searchDurationMs =
+      publicState.classicSearchDurationMs ?? classicSearchMin * 60_000;
+    const nextSched = buildRadarScheduleForHidingMs(
+      currentNetMs,
+      searchDurationMs
+    );
+
+    const nextPublicBase: PublicGameState = {
+      ...unpausedState,
+      currentPhase: 'OPEN_SEARCH',
+      searchStartTimestamp: publicState.searchStartTimestamp ?? now,
+      pausedBeforeSearchMs: nextTotalPausedMs,
+      radarSchedule: nextSched,
+    };
+
+    let effectivePrivate = hiderPrivate;
+    if (effectivePrivate?.anchorPoint) {
+      effectivePrivate = await syncClassicPrivateRadarStages(
+        nextSched,
+        effectivePrivate
+      );
+    } else if (effectivePrivate) {
+      const candidate = resolveClassicHiderCandidateLocation({
+        hiderPrivate: effectivePrivate,
+        serverNowMs: now,
+      });
+      if (candidate) {
+        effectivePrivate = await lockHiderAnchorAndGenerateRadar({
+          adapter,
+          uid: ownMember.uid,
+          targetLocation: { lat: candidate.lat, lng: candidate.lng },
+          accuracy: candidate.accuracy,
+          serverNowMs: now,
+          publicState: nextPublicBase,
+          currentHiderPrivate: effectivePrivate,
+          startSearchImmediately: false,
+        });
+      }
+    }
+
+    await adapter.savePublicStateByHost({
+      ...nextPublicBase,
+      anchorLocked: Boolean(effectivePrivate?.anchorPoint),
+    });
+    setHostNowMs(now);
+  };
+
+  const handleAdjustHidingTimeMs = async (deltaMs: number) => {
+    const now = adapter.getServerNow();
+    const currentNetMs = computeNetElapsedMs(publicState, now);
+    const nextHidingDurationMs = Math.max(
+      0,
+      publicState.radarSchedule.hidingDurationMs + deltaMs
+    );
+    if (nextHidingDurationMs <= currentNetMs) {
+      await handleForceStartOpenSearch();
+      return;
+    }
+
+    const nextSched = isManhunt
+      ? buildManhuntRadarScheduleForHidingMs(
+          nextHidingDurationMs,
+          publicState.manhuntShrinkDurationMs ?? manhuntShrinkMin * 60_000
+        )
+      : buildRadarScheduleForHidingMs(
+          nextHidingDurationMs,
+          publicState.classicSearchDurationMs ?? classicSearchMin * 60_000
+        );
+
+    if (!isManhunt && hiderPrivate?.anchorPoint) {
+      await syncClassicPrivateRadarStages(nextSched, hiderPrivate);
     }
 
     await adapter.savePublicStateByHost({
       ...publicState,
-      currentPhase: 'OPEN_SEARCH',
-      searchStartTimestamp: publicState.searchStartTimestamp ?? now,
-      pausedBeforeSearchMs: publicState.totalPausedMs,
-      anchorLocked: true,
+      radarSchedule: nextSched,
     });
+    setHostNowMs(now);
+  };
+
+  const handleAdjustSearchTimeMs = async (deltaMs: number) => {
+    if (publicState.gameStartTimestamp === null) return;
+    const now = adapter.getServerNow();
+    const currentNetMs = computeNetElapsedMs(publicState, now);
+    const hidingMs = publicState.radarSchedule.hidingDurationMs;
+    const currentSearchElapsedMs = Math.max(0, currentNetMs - hidingMs);
+    const effectiveDeltaMs = Math.max(-currentSearchElapsedMs, deltaMs);
+    if (effectiveDeltaMs === 0) return;
+
+    const nextNetMs = currentNetMs + effectiveDeltaMs;
+    const baseSearchStart = publicState.searchStartTimestamp ?? now;
+
+    let nextPhase: GamePhase = publicState.currentPhase;
+    let nextRadar = publicState.radarCircle;
+
+    if (isManhunt) {
+      const huntDurationMs =
+        publicState.manhuntShrinkDurationMs ?? manhuntShrinkMin * 60_000;
+      const pingStatus = getManhuntPingStatusAtElapsedMs(
+        nextNetMs,
+        hidingMs,
+        huntDurationMs
+      );
+      nextPhase =
+        pingStatus.dueStageId === null
+          ? 'OPEN_SEARCH'
+          : pingStatus.dueStageId === 5
+            ? 'ENDGAME'
+            : (`RADAR_${pingStatus.dueStageId}` as GamePhase);
+      if (pingStatus.dueStageId === null) {
+        nextRadar = null;
+      }
+    } else {
+      const rawPhase = getPhaseForElapsedMs(nextNetMs, publicState.radarSchedule);
+      nextPhase = rawPhase === 'HIDING' ? 'OPEN_SEARCH' : rawPhase;
+      if (hiderPrivate?.radarStages && hiderPrivate.radarStages.length > 0) {
+        nextRadar = getDueRadarCircle(
+          nextNetMs,
+          hiderPrivate.radarStages,
+          now
+        );
+      } else if (nextNetMs < publicState.radarSchedule.stage1Ms) {
+        nextRadar = null;
+      }
+    }
+
+    // Offene Foto-Fristen um dasselbe Netto-Zeitdelta verschieben, damit Vorspulen kein Sofort-Timeout auslöst
+    for (const [teamId, teamMap] of Object.entries(requestsByTeam)) {
+      for (const req of Object.values(teamMap ?? {})) {
+        if (
+          req.sessionId === publicState.sessionId &&
+          req.status === 'AWAITING_HIDER_MEDIA' &&
+          typeof req.mediaDeadlineNetElapsedMs === 'number'
+        ) {
+          await adapter
+            .updateClueRequest(teamId, req.id, {
+              ...req,
+              netElapsedAtRequestMs:
+                typeof req.netElapsedAtRequestMs === 'number'
+                  ? req.netElapsedAtRequestMs + effectiveDeltaMs
+                  : req.netElapsedAtRequestMs,
+              mediaDeadlineNetElapsedMs:
+                req.mediaDeadlineNetElapsedMs + effectiveDeltaMs,
+            })
+            .catch(() => {});
+        }
+      }
+    }
+
+    await adapter.savePublicStateByHost({
+      ...publicState,
+      gameStartTimestamp: publicState.gameStartTimestamp - effectiveDeltaMs,
+      searchStartTimestamp: baseSearchStart - effectiveDeltaMs,
+      currentPhase: nextPhase,
+      radarCircle: nextRadar,
+    });
+    setHostNowMs(now);
+  };
+
+  const handleApplyCustomTimeMinutes = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = Number(customTimeMinutesInput.replace(',', '.'));
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    const now = adapter.getServerNow();
+    const currentNetMs = computeNetElapsedMs(publicState, now);
+
+    if (publicState.currentPhase === 'HIDING') {
+      const currentRemMs = Math.max(
+        0,
+        publicState.radarSchedule.hidingDurationMs - currentNetMs
+      );
+      const targetRemMs = Math.round(parsed * 60_000);
+      await handleAdjustHidingTimeMs(targetRemMs - currentRemMs);
+    } else {
+      const currentSearchMs = Math.max(
+        0,
+        currentNetMs - publicState.radarSchedule.hidingDurationMs
+      );
+      const targetSearchMs = Math.round(parsed * 60_000);
+      await handleAdjustSearchTimeMs(targetSearchMs - currentSearchMs);
+    }
+    setCustomTimeMinutesInput('');
   };
 
   const handleResetRound = async () => {
@@ -521,7 +779,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 <div className="space-y-2.5">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <HardwareKnob
-                      label="VERSTECKZEIT (STANDARD 20 MIN)"
+                      label="VERSTECKZEIT (STANDARD 15 MIN)"
                       ariaLabel="Versteckzeit in Minuten"
                       dataTestId="hiding-time-knob"
                       value={classicHidingMin}
@@ -531,15 +789,22 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                       unit=" Min."
                       onChange={(nextMin) => {
                         setClassicHidingMin(nextMin);
+                        const nextSched = buildRadarScheduleForHidingMinutes(
+                          nextMin,
+                          classicSearchMin
+                        );
+                        if (!isManhunt && hiderPrivate?.anchorPoint) {
+                          void syncClassicPrivateRadarStages(
+                            nextSched,
+                            hiderPrivate
+                          );
+                        }
                         void adapter
                           .savePublicStateByHost({
                             ...publicState,
                             gameMode: 'CLASSIC',
                             classicSearchDurationMs: classicSearchMin * 60_000,
-                            radarSchedule: buildRadarScheduleForHidingMinutes(
-                              nextMin,
-                              classicSearchMin
-                            ),
+                            radarSchedule: nextSched,
                           })
                           .catch(() => {});
                       }}
@@ -556,15 +821,27 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                       unit=" Min."
                       onChange={(nextSearchMin) => {
                         setClassicSearchMin(nextSearchMin);
+                        const effectiveHidingMs =
+                          publicState.status !== 'LOBBY' &&
+                          publicState.currentPhase !== 'HIDING'
+                            ? publicState.radarSchedule.hidingDurationMs
+                            : classicHidingMin * 60_000;
+                        const nextSched = buildRadarScheduleForHidingMs(
+                          effectiveHidingMs,
+                          nextSearchMin * 60_000
+                        );
+                        if (!isManhunt && hiderPrivate?.anchorPoint) {
+                          void syncClassicPrivateRadarStages(
+                            nextSched,
+                            hiderPrivate
+                          );
+                        }
                         void adapter
                           .savePublicStateByHost({
                             ...publicState,
                             gameMode: 'CLASSIC',
                             classicSearchDurationMs: nextSearchMin * 60_000,
-                            radarSchedule: buildRadarScheduleForHidingMinutes(
-                              classicHidingMin,
-                              nextSearchMin
-                            ),
+                            radarSchedule: nextSched,
                           })
                           .catch(() => {});
                       }}
@@ -631,14 +908,19 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                   unit=" Min."
                   onChange={(nextShrinkMin) => {
                     setManhuntShrinkMin(nextShrinkMin);
+                    const effectiveHeadStartMs =
+                      publicState.status !== 'LOBBY' &&
+                      publicState.currentPhase !== 'HIDING'
+                        ? publicState.radarSchedule.hidingDurationMs
+                        : manhuntHeadStartMin * 60_000;
                     void adapter
                       .savePublicStateByHost({
                         ...publicState,
                         gameMode: 'MANHUNT',
                         manhuntShrinkDurationMs: nextShrinkMin * 60_000,
-                        radarSchedule: buildManhuntRadarSchedule(
-                          manhuntHeadStartMin,
-                          nextShrinkMin
+                        radarSchedule: buildManhuntRadarScheduleForHidingMs(
+                          effectiveHeadStartMs,
+                          nextShrinkMin * 60_000
                         ),
                       })
                       .catch(() => {});
@@ -669,7 +951,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
 
             {publicState.status === 'LOBBY' && (
               <span className="font-dot text-sm text-[var(--cmf-teal)]">
-                BEREIT (ONLINE): {readyCount} / {onlineMembers.length}
+                VERSTECKER BEREIT: {readyCount} / {requiredHiderMembers.length}
               </span>
             )}
           </div>
@@ -679,11 +961,103 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
               <span>
                 {activeHiderLock?.passwordHash
-                  ? 'Runde startet automatisch, sobald alle Spieler in der Lobby auf „Bereit“ gedrückt haben!'
+                  ? 'Runde startet automatisch, sobald alle eingeteilten Verstecker (auch offline) auf „Bereit“ gedrückt haben!'
                   : 'Wartet darauf, dass die Verstecker in der Lobby ihr Passwort festlegen.'}
               </span>
             </div>
           )}
+
+          {/* Live-Zeitbearbeitung während laufender oder pausierter Runde */}
+          {(publicState.status === 'RUNNING' ||
+            publicState.status === 'PAUSED') &&
+            (() => {
+              const liveNetMs = computeNetElapsedMs(publicState, hostNowMs);
+              const isHidingNow = publicState.currentPhase === 'HIDING';
+              const remHidingMs = Math.max(
+                0,
+                publicState.radarSchedule.hidingDurationMs - liveNetMs
+              );
+              const searchElapsedMs = Math.max(
+                0,
+                liveNetMs - publicState.radarSchedule.hidingDurationMs
+              );
+
+              return (
+                <div
+                  data-testid="host-live-time-editor"
+                  className="cmf-well space-y-2.5 p-3.5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
+                      <Clock className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                      {isHidingNow
+                        ? 'Zeitbearbeitung // Verbleibende Versteckzeit'
+                        : 'Zeitbearbeitung // Aktuelle Suchzeit'}
+                    </span>
+                    <span
+                      data-testid="host-live-time-readout"
+                      className="cmf-oled rounded-lg px-2.5 py-1 font-dot text-sm text-[var(--cmf-amber)]"
+                    >
+                      {isHidingNow
+                        ? `Noch ${formatDurationClock(remHidingMs)}`
+                        : `Suche ${formatDurationClock(searchElapsedMs)}`}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {([-5, -1, 1, 5] as const).map((deltaMin) => {
+                      const label =
+                        deltaMin > 0 ? `+${deltaMin} Min.` : `${deltaMin} Min.`;
+                      return (
+                        <button
+                          key={deltaMin}
+                          type="button"
+                          data-testid={`host-time-delta-${deltaMin}`}
+                          onClick={() =>
+                            void (isHidingNow
+                              ? handleAdjustHidingTimeMs(deltaMin * 60_000)
+                              : handleAdjustSearchTimeMs(deltaMin * 60_000))
+                          }
+                          className="cmf-btn-secondary font-tech min-h-[40px] px-2 py-1.5 text-xs font-bold uppercase"
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <form
+                    onSubmit={(e) => void handleApplyCustomTimeMinutes(e)}
+                    className="flex flex-wrap items-center gap-2 pt-0.5"
+                  >
+                    <input
+                      type="number"
+                      min={0}
+                      max={300}
+                      step="any"
+                      inputMode="decimal"
+                      data-testid="host-custom-time-input"
+                      value={customTimeMinutesInput}
+                      onChange={(e) => setCustomTimeMinutesInput(e.target.value)}
+                      placeholder={
+                        isHidingNow
+                          ? 'Rest-Versteckzeit in Min. (z. B. 10)'
+                          : 'Suchzeit in Min. setzen (z. B. 15)'
+                      }
+                      className="cmf-input min-h-[40px] min-w-0 flex-1 px-3 py-1.5 font-tech text-xs font-semibold"
+                    />
+                    <button
+                      type="submit"
+                      data-testid="host-custom-time-apply-btn"
+                      disabled={!customTimeMinutesInput.trim()}
+                      className="cmf-btn-active font-tech min-h-[40px] shrink-0 px-3.5 py-1.5 text-xs font-bold uppercase disabled:opacity-50"
+                    >
+                      {isHidingNow ? 'Restzeit setzen' : 'Suchzeit setzen'}
+                    </button>
+                  </form>
+                </div>
+              );
+            })()}
 
           {hiderCount === 0 && (
             <div className="cmf-badge-orange rounded-xl p-3 text-xs font-semibold">
@@ -837,7 +1211,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                         Host
                       </span>
                     )}
-                    {isReady && (
+                    {!online && (
+                      <span className="cmf-badge-amber rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
+                        Offline
+                      </span>
+                    )}
+                    {m.side === 'HIDER' && isReady && (
                       <span className="cmf-badge-teal rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
                         ✓ Bereit
                       </span>
@@ -917,31 +1296,74 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               </p>
             ) : (
               <div className="grid gap-2.5 sm:grid-cols-2">
-                {occupiedTeams.map((team) => (
-                  <div key={team.id} className="cmf-well p-3 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-industrial flex items-center gap-2 text-sm text-[var(--text-main)]">
-                        <span
-                          className="h-3 w-3 rounded-full border border-white/60"
-                          style={{ backgroundColor: team.color }}
-                        />
-                        {team.name}
-                      </span>
-                      <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
-                        {team.memberNames.length} Spieler
-                      </span>
+                {occupiedTeams.map((team) => {
+                  const pubTeam = teamsPublic[team.id];
+                  const teamPenaltyMs = pubTeam?.penaltyMs ?? 0;
+                  return (
+                    <div key={team.id} className="cmf-well p-3 text-xs space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-industrial flex items-center gap-2 text-sm text-[var(--text-main)]">
+                          <span
+                            className="h-3 w-3 rounded-full border border-white/60"
+                            style={{ backgroundColor: team.color }}
+                          />
+                          {team.name}
+                        </span>
+                        <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
+                          {team.memberNames.length} Spieler
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 font-tech text-[11px] text-[var(--text-muted)]">
+                        <Radio className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
+                        <span>
+                          GPS-AVG:{' '}
+                          <strong className="text-[var(--text-main)]">
+                            {team.memberNames.join(', ')}
+                          </strong>
+                        </span>
+                      </div>
+                      {!isManhunt && publicState.status !== 'LOBBY' && (
+                        <div className="space-y-1.5 border-t cmf-divider pt-2">
+                          <div className="flex items-center justify-between font-tech text-[10px] font-bold uppercase">
+                            <span className="text-[var(--text-muted)]">
+                              STRAFZEIT / BONUS
+                            </span>
+                            <span
+                              className={
+                                teamPenaltyMs > 0
+                                  ? 'text-[var(--cmf-orange)]'
+                                  : teamPenaltyMs < 0
+                                    ? 'text-[var(--cmf-teal)]'
+                                    : 'text-[var(--text-main)]'
+                              }
+                            >
+                              {formatPenaltyMinutes(teamPenaltyMs)}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-1">
+                            {([-5, -1, 1, 5] as const).map((deltaMin) => (
+                              <button
+                                key={deltaMin}
+                                type="button"
+                                data-testid={`host-team-penalty-${team.id}-${deltaMin}`}
+                                onClick={() =>
+                                  void adapter.adjustTeamPenaltyAndClueCountAtomically(
+                                    team.id,
+                                    deltaMin * 60_000,
+                                    0
+                                  )
+                                }
+                                className="cmf-btn-secondary font-tech min-h-[32px] px-1.5 py-1 text-[10px] font-bold uppercase"
+                              >
+                                {deltaMin > 0 ? `+${deltaMin}m` : `${deltaMin}m`}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-2 flex items-center gap-1.5 font-tech text-[11px] text-[var(--text-muted)]">
-                      <Radio className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
-                      <span>
-                        GPS-AVG:{' '}
-                        <strong className="text-[var(--text-main)]">
-                          {team.memberNames.join(', ')}
-                        </strong>
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

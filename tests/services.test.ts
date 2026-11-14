@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildManhuntRadarScheduleForHidingMs,
   buildRadarScheduleForHidingMinutes,
+  buildRadarScheduleForHidingMs,
   CLASSIC_SEARCH_DURATION_STEPS_MINUTES,
+  DEFAULT_CLASSIC_HIDING_MINUTES,
   DEFAULT_CLASSIC_SEARCH_MINUTES,
   DEFAULT_PLAY_AREA_FEATURE,
   DEFAULT_RADAR_SCHEDULE,
@@ -14,6 +17,7 @@ import {
 import {
   computeHiderPasswordHash,
   EXPECTED_ADMIN_AUTH_HASH,
+  getPlayerGreeting,
   isOverviewMember,
   PRESET_PLAYERS,
   REGULAR_PLAYER_COUNT,
@@ -32,6 +36,7 @@ import {
   extractEmergencyMessages,
   extractReadyPlayerIds,
   filterOnlineEnabledMembers,
+  getRequiredReadyHiderMembers,
 } from '../src/services/databaseAdapter';
 import { evaluateLocationThrottle } from '../src/services/locationService';
 import {
@@ -217,11 +222,22 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(isOverviewMember({ playerId: 'test-1', name: 'Overview' })).toBe(true);
     expect(isOverviewMember({ playerId: 'lasse', name: 'Lasse' })).toBe(false);
 
-    // Standard-Versteckzeit beträgt 20 Minuten und Radius-Radar kostet 15 Minuten
-    expect(DEFAULT_RADAR_SCHEDULE.hidingDurationMs).toBe(20 * 60_000);
+    // Standard-Versteckzeit beträgt 15 Minuten und Radius-Radar kostet 15 Minuten
+    expect(DEFAULT_CLASSIC_HIDING_MINUTES).toBe(15);
+    expect(DEFAULT_RADAR_SCHEDULE.hidingDurationMs).toBe(15 * 60_000);
+    expect(DEFAULT_RADAR_SCHEDULE.stage1Ms).toBe(30 * 60_000);
     expect(buildRadarScheduleForHidingMinutes(25).hidingDurationMs).toBe(
       25 * 60_000
     );
+    const skippedSched = buildRadarScheduleForHidingMs(95_000, 45 * 60_000);
+    expect(skippedSched.hidingDurationMs).toBe(95_000);
+    expect(skippedSched.stage1Ms).toBe(95_000 + 15 * 60_000);
+    const skippedManhunt = buildManhuntRadarScheduleForHidingMs(
+      95_000,
+      40 * 60_000
+    );
+    expect(skippedManhunt.hidingDurationMs).toBe(95_000);
+    expect(skippedManhunt.stage5Ms).toBe(95_000 + 40 * 60_000);
     expect(getQuestionPenaltyMs('RADIUS_RADAR')).toBe(15 * 60_000);
     expect(getQuestionPenaltyMs('DONUT_RING')).toBe(4 * 60_000);
 
@@ -536,6 +552,15 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
       'lasse',
       'thomas',
     ]);
+    // Für den Bereit-Check müssen ALLE Mitglieder des Verstecker-Teams bereit sein (auch Linus, der aktuell offline ist), und NIEMAND sonst!
+    const requiredHiders = getRequiredReadyHiderMembers(
+      snapOnline.members,
+      snapOnline.presence
+    );
+    expect(requiredHiders.map((m) => m.playerId).sort()).toEqual([
+      'lasse',
+      'linus',
+    ]);
     unsubLasse();
     unsubThomas();
 
@@ -572,5 +597,38 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(activeViolation?.exposeAt).toBe(t0 + 120_000);
     expect(activeViolation?.exposedLat).toBeCloseTo(48.1642, 4);
     expect(activeViolation?.exposedLng).toBeCloseTo(11.4621, 4);
+  });
+
+  it('returns custom greetings for specific players and falls back for others', () => {
+    expect(getPlayerGreeting({ playerId: 'linus', name: 'Linus' })).toBe(
+      'GOLD! GOLD! GOLD!'
+    );
+    expect(getPlayerGreeting({ playerId: 'lasse', name: 'Lasse' })).toBe(
+      'Welcome back, sir.'
+    );
+    expect(getPlayerGreeting({ playerId: 'thomas', name: 'Thomas' })).toBe(
+      'Papaya Rules sind heute aktiv!'
+    );
+    expect(getPlayerGreeting({ playerId: 'nick', name: 'Nick' })).toBe(
+      'Hast du das POTENZIAL zu gewinnen?'
+    );
+    expect(getPlayerGreeting({ playerId: 'robert', name: 'Robert' })).toBe(
+      'Hast du deinen Atlas dabei? Wenn ja: Warum?'
+    );
+    expect(getPlayerGreeting({ playerId: 'jonah', name: 'Jonah' })).toBe(
+      'Hast du dein Handtuch dabei?'
+    );
+    expect(getPlayerGreeting({ playerId: 'lorenzo', name: 'Lorenzo' })).toBe(
+      'Ciao, boss mafiosi.'
+    );
+    expect(getPlayerGreeting({ playerId: 'max', name: 'Max' })).toBe(
+      'ATTACK THE D POINT!'
+    );
+    expect(getPlayerGreeting({ playerId: 'theo', name: 'Theo' })).toBe(
+      'YO PHONE LINGING!'
+    );
+    expect(getPlayerGreeting({ playerId: 'eric', name: 'Eric' })).toBe(
+      'Hallo Eric!'
+    );
   });
 });

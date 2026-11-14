@@ -47,17 +47,17 @@ export const DEFAULT_SAFETY_POINT: SafetyPoint = {
   lng: 11.4572,
 };
 
-export const DEFAULT_CLASSIC_HIDING_MINUTES = 20;
+export const DEFAULT_CLASSIC_HIDING_MINUTES = 15;
 export const DEFAULT_CLASSIC_SEARCH_MINUTES = 45;
 export const CLASSIC_SEARCH_DURATION_STEPS_MINUTES = [30, 45, 60, 75, 90] as const;
 
 export const DEFAULT_RADAR_SCHEDULE: RadarSchedule = {
-  hidingDurationMs: DEFAULT_CLASSIC_HIDING_MINUTES * 60_000, // 20:00 Standard-Versteckzeit
-  stage1Ms: 35 * 60_000, // +15:00 Suche -> 800m
-  stage2Ms: Math.round(42.5 * 60_000), // +22:30 Suche -> 400m
-  stage3Ms: 50 * 60_000, // +30:00 Suche -> 200m
-  stage4Ms: Math.round(57.5 * 60_000), // +37:30 Suche -> 100m
-  stage5Ms: 65 * 60_000, // +45:00 Suche -> 25m
+  hidingDurationMs: DEFAULT_CLASSIC_HIDING_MINUTES * 60_000, // 15:00 Standard-Versteckzeit
+  stage1Ms: 30 * 60_000, // +15:00 Suche -> 800m
+  stage2Ms: Math.round(37.5 * 60_000), // +22:30 Suche -> 400m
+  stage3Ms: 45 * 60_000, // +30:00 Suche -> 200m
+  stage4Ms: Math.round(52.5 * 60_000), // +37:30 Suche -> 100m
+  stage5Ms: 60 * 60_000, // +45:00 Suche -> 25m
 };
 
 export const DEFAULT_MANHUNT_HIDING_MINUTES = 5;
@@ -232,21 +232,70 @@ export function getManhuntPingStatusAtElapsedMs(
  * - Danach schrumpft das Radar in 4 gleichmäßigen Schritten (`2/6`, `3/6`, `4/6`, `5/6`, `6/6` der Suchdauer)
  *   von 800 m -> 400 m -> 200 m -> 100 m -> 25 m.
  */
+export function buildRadarScheduleForHidingMs(
+  hidingDurationMs: number,
+  searchDurationMs = DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000
+): RadarSchedule {
+  const safeHidingMs = Math.max(0, Math.round(hidingDurationMs));
+  const safeSearchMs = Math.min(
+    90 * 60_000,
+    Math.max(30 * 60_000, Math.round(searchDurationMs))
+  );
+  return {
+    hidingDurationMs: safeHidingMs,
+    stage1Ms: safeHidingMs + Math.round((safeSearchMs * 2) / 6),
+    stage2Ms: safeHidingMs + Math.round((safeSearchMs * 3) / 6),
+    stage3Ms: safeHidingMs + Math.round((safeSearchMs * 4) / 6),
+    stage4Ms: safeHidingMs + Math.round((safeSearchMs * 5) / 6),
+    stage5Ms: safeHidingMs + safeSearchMs,
+  };
+}
+
 export function buildRadarScheduleForHidingMinutes(
   hidingMinutes: number,
   searchDurationMinutes = DEFAULT_CLASSIC_SEARCH_MINUTES
 ): RadarSchedule {
   const clampedMin = Math.max(0, Math.round(hidingMinutes));
   const clampedSearchMin = Math.min(90, Math.max(30, Math.round(searchDurationMinutes)));
-  const hidingDurationMs = clampedMin * 60_000;
-  const searchDurationMs = clampedSearchMin * 60_000;
+  return buildRadarScheduleForHidingMs(
+    clampedMin * 60_000,
+    clampedSearchMin * 60_000
+  );
+}
+
+export function buildManhuntRadarScheduleForHidingMs(
+  hidingDurationMs: number,
+  shrinkDurationMs = DEFAULT_MANHUNT_SHRINK_MINUTES * 60_000
+): RadarSchedule {
+  const safeHeadStartMs = Math.max(0, Math.round(hidingDurationMs));
+  const safeShrinkMs = Math.min(
+    80 * 60_000,
+    Math.max(10 * 60_000, Math.round(shrinkDurationMs))
+  );
+  const pings = getManhuntPingScheduleMs(safeHeadStartMs, safeShrinkMs);
+
+  const pickStageMs = (stageIdxZeroBased: number): number => {
+    if (pings.length === 0) {
+      return (
+        safeHeadStartMs + Math.round(((stageIdxZeroBased + 1) * safeShrinkMs) / 5)
+      );
+    }
+    if (stageIdxZeroBased === 0) return pings[0];
+    if (stageIdxZeroBased === 4) return pings[pings.length - 1];
+    const mappedIdx = Math.min(
+      pings.length - 1,
+      Math.max(0, Math.round((stageIdxZeroBased / 4) * (pings.length - 1)))
+    );
+    return pings[mappedIdx];
+  };
+
   return {
-    hidingDurationMs,
-    stage1Ms: hidingDurationMs + Math.round((searchDurationMs * 2) / 6),
-    stage2Ms: hidingDurationMs + Math.round((searchDurationMs * 3) / 6),
-    stage3Ms: hidingDurationMs + Math.round((searchDurationMs * 4) / 6),
-    stage4Ms: hidingDurationMs + Math.round((searchDurationMs * 5) / 6),
-    stage5Ms: hidingDurationMs + searchDurationMs,
+    hidingDurationMs: safeHeadStartMs,
+    stage1Ms: pickStageMs(0),
+    stage2Ms: pickStageMs(1),
+    stage3Ms: pickStageMs(2),
+    stage4Ms: pickStageMs(3),
+    stage5Ms: pickStageMs(4),
   };
 }
 
@@ -262,31 +311,10 @@ export function buildManhuntRadarSchedule(
 ): RadarSchedule {
   const clampedHeadStart = Math.min(30, Math.max(0, Math.round(headStartMinutes)));
   const clampedShrinkMin = Math.min(80, Math.max(10, Math.round(totalShrinkMinutes)));
-  const hidingDurationMs = clampedHeadStart * 60_000;
-  const shrinkDurationMs = clampedShrinkMin * 60_000;
-  const pings = getManhuntPingScheduleMs(hidingDurationMs, shrinkDurationMs);
-
-  const pickStageMs = (stageIdxZeroBased: number): number => {
-    if (pings.length === 0) {
-      return hidingDurationMs + Math.round(((stageIdxZeroBased + 1) * shrinkDurationMs) / 5);
-    }
-    if (stageIdxZeroBased === 0) return pings[0];
-    if (stageIdxZeroBased === 4) return pings[pings.length - 1];
-    const mappedIdx = Math.min(
-      pings.length - 1,
-      Math.max(0, Math.round((stageIdxZeroBased / 4) * (pings.length - 1)))
-    );
-    return pings[mappedIdx];
-  };
-
-  return {
-    hidingDurationMs,
-    stage1Ms: pickStageMs(0),
-    stage2Ms: pickStageMs(1),
-    stage3Ms: pickStageMs(2),
-    stage4Ms: pickStageMs(3),
-    stage5Ms: pickStageMs(4),
-  };
+  return buildManhuntRadarScheduleForHidingMs(
+    clampedHeadStart * 60_000,
+    clampedShrinkMin * 60_000
+  );
 }
 
 export const QUESTION_CATEGORY_MAP: Record<QuestionType, 1 | 2 | 3 | 4> = {

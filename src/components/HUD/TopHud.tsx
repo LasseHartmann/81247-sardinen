@@ -98,7 +98,7 @@ export const TopHud: React.FC<TopHudProps> = ({
     >
       <div className="mx-auto flex max-w-4xl items-center justify-between gap-1.5 sm:gap-2">
         {/* Eingebettete schwarze OLED-Telemetrie-Insel: Timer + Phase + Radar (einzeilig & überlaufsicher auf Smartphones) */}
-        <div className="cmf-oled flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 sm:flex-initial sm:gap-2.5 sm:px-3">
+        <div className="cmf-oled flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 sm:flex-initial sm:gap-2.5 sm:px-3">
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             {!connected ? (
               <WifiOff
@@ -124,25 +124,52 @@ export const TopHud: React.FC<TopHudProps> = ({
 
           <div className="h-5 shrink-0 border-l border-dashed border-[#27272A] sm:h-6" />
 
-          <div className="flex min-w-0 items-center gap-1 font-tech text-[10px] font-bold tracking-wide text-[var(--cmf-amber)] sm:text-xs">
-            <Radar className="h-3 w-3 shrink-0 text-[var(--cmf-teal)] sm:h-3.5 sm:w-3.5" />
-            <span className="truncate whitespace-nowrap" title={timer.nextStageLabel}>
-              {activePhase === 'LOBBY'
-                ? isManhunt
-                  ? 'Lobby • Manhunt'
-                  : 'Lobby'
-                : timer.nextStageRemainingMs !== null
-                  ? isManhunt
-                    ? activePhase === 'HIDING'
-                      ? `Jagd in ${formatDurationClock(timer.nextStageRemainingMs)}`
-                      : timer.manhuntIsInLastQuarter
-                        ? `5m-Ping in ${formatDurationClock(timer.nextStageRemainingMs)}`
-                        : `Ping in ${formatDurationClock(timer.nextStageRemainingMs)}`
-                    : `Tipp in ${formatDurationClock(timer.nextStageRemainingMs)}`
-                  : isManhunt
-                    ? '150m Zone'
-                    : '25m Radar'}
-            </span>
+          <div
+            data-testid="hud-stage-countdown"
+            title={timer.nextStageLabel}
+            className="flex min-w-0 items-center gap-1 font-tech text-[10px] font-bold tracking-wide text-[var(--cmf-amber)] sm:text-xs"
+          >
+            <Radar className="hidden h-3 w-3 shrink-0 text-[var(--cmf-teal)] min-[375px]:inline-block sm:h-3.5 sm:w-3.5" />
+            {activePhase === 'LOBBY' ? (
+              <span className="truncate whitespace-nowrap">
+                {isManhunt ? 'Lobby • Manhunt' : 'Lobby'}
+              </span>
+            ) : timer.nextStageRemainingMs !== null ? (
+              <>
+                <span className="truncate whitespace-nowrap">
+                  {isManhunt ? (
+                    activePhase === 'HIDING' ? (
+                      <>
+                        Jagd<span className="hidden min-[410px]:inline"> in</span>
+                      </>
+                    ) : timer.manhuntIsInLastQuarter ? (
+                      <>
+                        5m-Ping<span className="hidden min-[420px]:inline"> in</span>
+                      </>
+                    ) : (
+                      <>
+                        Ping<span className="hidden min-[410px]:inline"> in</span>
+                      </>
+                    )
+                  ) : activePhase === 'HIDING' ? (
+                    <>
+                      Suche<span className="hidden min-[410px]:inline"> in</span>
+                    </>
+                  ) : (
+                    <>
+                      Tipp<span className="hidden min-[410px]:inline"> in</span>
+                    </>
+                  )}
+                </span>
+                <span className="shrink-0 whitespace-nowrap font-dot text-[11px] leading-none text-[#FBBF24] sm:text-xs">
+                  {formatDurationClock(timer.nextStageRemainingMs)}
+                </span>
+              </>
+            ) : (
+              <span className="truncate whitespace-nowrap">
+                {isManhunt ? '150m Zone' : '25m Radar'}
+              </span>
+            )}
           </div>
         </div>
 

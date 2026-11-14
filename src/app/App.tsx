@@ -26,6 +26,7 @@ import {
 import {
   computeHiderPasswordHash,
   findPresetPlayerById,
+  getPlayerGreeting,
   isOverviewMember,
 } from '../config/players';
 import {
@@ -394,7 +395,7 @@ export const App: React.FC = () => {
         <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
           <div className="cmf-chassis w-full max-w-md space-y-4 p-6">
             <p className="font-industrial text-base text-[var(--text-main)]">
-              Hallo {ownMember.name}! Die Lobby wurde noch nicht initialisiert.
+              {getPlayerGreeting(ownMember)} Die Lobby wurde noch nicht initialisiert.
             </p>
             <p className="text-xs text-[var(--text-muted)]">
               {canInitAsAdmin
@@ -566,8 +567,9 @@ export const App: React.FC = () => {
     if (mapClickMode.kind === 'TEST_LOCATION') {
       geo.setManualTestLocation(pt, true);
       if (
-        (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT' &&
-        (ownMember.side === 'HIDER' || ownTeam?.status === 'JOINED_SARDINES')
+        ownMember.side === 'HIDER' ||
+        ((publicState.gameMode ?? 'CLASSIC') === 'MANHUNT' &&
+          ownTeam?.status === 'JOINED_SARDINES')
       ) {
         void adapter
           .writeHiderLocationPrivate(ownMember.uid, {
@@ -688,11 +690,7 @@ export const App: React.FC = () => {
       .filter((m) => m.side === 'HIDER')
       .map((m) => m.playerId);
     const hiderPlayerIds =
-      publicState.status === 'LOBBY' && onlineHiders.length > 0
-        ? onlineHiders
-        : allAssignedHiders.length > 0
-          ? allAssignedHiders
-          : onlineHiders;
+      allAssignedHiders.length > 0 ? allAssignedHiders : onlineHiders;
 
     const newLock = await adapter.setHiderPasswordAndTriggerLogout({
       uid: ownMember.uid,
@@ -706,6 +704,7 @@ export const App: React.FC = () => {
   };
 
   const handleToggleOwnReady = async (nextReady: boolean) => {
+    if (ownMember.side !== 'HIDER' || isOverviewAccount) return;
     if (nextReady && gameState.activeHiderLock) {
       const token = buildReadyToken(
         publicState.sessionId,
@@ -1637,6 +1636,7 @@ export const App: React.FC = () => {
             presence={gameState.presence}
             teamsPublic={gameState.teamsPublic}
             cluesByTeam={gameState.cluesByTeam}
+            requestsByTeam={gameState.requestsByTeam}
             onNavigateToMap={() => setActiveTab('MAP')}
             onLeaveAndLockConsole={() => {
               setActiveTab('MAP');

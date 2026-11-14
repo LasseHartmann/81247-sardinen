@@ -251,6 +251,92 @@ export function resolveLiveManhuntHiderCentroid(params: {
 }
 
 /**
+ * Ermittelt für den klassischen Sardinen-Modus die beste echte Verstecker-GPS-Position
+ * (aus `hiderPrivate.hiderLocations` bzw. lokalem Hider-Fix), OHNE jemals blind auf den
+ * Safety-Point (Schloss Blutenburg) zurückzuspringen!
+ */
+export function resolveClassicHiderCandidateLocation(params: {
+  hiderPrivate: HiderPrivateState | null;
+  fallbackHiderFix?: GeoFix | null;
+  serverNowMs?: number;
+}): { lat: number; lng: number; accuracy: number } | null {
+  const { hiderPrivate, fallbackHiderFix, serverNowMs = Date.now() } = params;
+  const rawLocs = hiderPrivate?.hiderLocations ?? {};
+  const allFixes = Object.values(rawLocs).filter(
+    (f): f is GeoFix =>
+      Boolean(f) &&
+      typeof f.lat === 'number' &&
+      Number.isFinite(f.lat) &&
+      typeof f.lng === 'number' &&
+      Number.isFinite(f.lng)
+  );
+
+  // 1. Frische gespeicherte Hider-Fixes (<= 2 Min.) mitteln
+  const freshFixes = allFixes.filter(
+    (f) =>
+      typeof f.timestamp === 'number' &&
+      Number.isFinite(f.timestamp) &&
+      serverNowMs - f.timestamp <= MANHUNT_LIVE_FIX_MAX_AGE_MS
+  );
+  if (freshFixes.length > 0) {
+    const sumLat = freshFixes.reduce((acc, f) => acc + f.lat, 0);
+    const sumLng = freshFixes.reduce((acc, f) => acc + f.lng, 0);
+    const avgAcc =
+      freshFixes.reduce(
+        (acc, f) => acc + (Number.isFinite(f.accuracy) ? f.accuracy : 15),
+        0
+      ) / freshFixes.length;
+    return {
+      lat: sumLat / freshFixes.length,
+      lng: sumLng / freshFixes.length,
+      accuracy: Math.max(5, Math.round(avgAcc)),
+    };
+  }
+
+  // 2. Lokaler GPS-Fix eines Hiders (sofern dieser Tab selbst ein Hider ist)
+  if (
+    fallbackHiderFix &&
+    typeof fallbackHiderFix.lat === 'number' &&
+    Number.isFinite(fallbackHiderFix.lat) &&
+    typeof fallbackHiderFix.lng === 'number' &&
+    Number.isFinite(fallbackHiderFix.lng)
+  ) {
+    return {
+      lat: fallbackHiderFix.lat,
+      lng: fallbackHiderFix.lng,
+      accuracy: Math.max(5, Math.round(fallbackHiderFix.accuracy || 15)),
+    };
+  }
+
+  // 3. Letzte bekannte Hider-Position aus `hiderPrivate.hiderLocations`
+  if (allFixes.length > 0) {
+    const newestTs = Math.max(
+      ...allFixes.map((f) =>
+        typeof f.timestamp === 'number' && Number.isFinite(f.timestamp)
+          ? f.timestamp
+          : 0
+      )
+    );
+    const recent = allFixes.filter((f) => (f.timestamp ?? 0) >= newestTs - 60_000);
+    const chosen = recent.length > 0 ? recent : allFixes;
+    const sumLat = chosen.reduce((acc, f) => acc + f.lat, 0);
+    const sumLng = chosen.reduce((acc, f) => acc + f.lng, 0);
+    const avgAcc =
+      chosen.reduce(
+        (acc, f) => acc + (Number.isFinite(f.accuracy) ? f.accuracy : 20),
+        0
+      ) / chosen.length;
+    return {
+      lat: sumLat / chosen.length,
+      lng: sumLng / chosen.length,
+      accuracy: Math.max(8, Math.round(avgAcc)),
+    };
+  }
+
+  return null;
+}
+
+/**
  * Fixiert den geheimen Anchor Point der Verstecker und berechnet einmalig
  * alle 5 Inside-Out-Radar-Stufen unter `/state/hiderPrivate`.
  */
@@ -535,10 +621,13 @@ export async function executeControllerTick(
         }
       }
 
+      const shouldClearManhuntRadar =
+        pingStatus.dueStageId === null && publicState.radarCircle !== null;
       const needsSearchStartInit =
         manhuntDuePhase !== 'HIDING' && publicState.searchStartTimestamp === null;
       const needsPhaseUpdate = manhuntDuePhase !== publicState.currentPhase;
-      const needsRadarUpdate = nextRadarToPublish !== null;
+      const needsRadarUpdate =
+        nextRadarToPublish !== null || shouldClearManhuntRadar;
 
       if (needsSearchStartInit || needsPhaseUpdate || needsRadarUpdate) {
         await adapter.patchControllerPublicTransition({
@@ -550,32 +639,33 @@ export async function executeControllerTick(
                 anchorLocked: false,
               }
             : {}),
-          ...(needsRadarUpdate ? { radarCircle: nextRadarToPublish } : {}),
+          ...(needsRadarUpdate
+            ? { radarCircle: shouldClearManhuntRadar ? null : nextRadarToPublish }
+            : {}),
         });
       }
     } else {
-      // Automatische Fixierung des Anchor Points ab Ende der Versteckzeit, falls noch nicht manuell fixiert
+      // Automatische Fixierung des Anchor Points ab Ende der Versteckzeit anhand echter Verstecker-GPS-Daten
+      // (NIEMALS blind auf Schloss Blutenburg springen, falls gerade noch kein Hider-Fix vorliegt!)
       if (duePhase !== 'HIDING' && !hiderPrivate.anchorPoint) {
-        const candidate: LatLng = fallbackHiderFix
-          ? { lat: fallbackHiderFix.lat, lng: fallbackHiderFix.lng }
-          : snapPointIntoPlayArea(
-              {
-                lat: publicState.safetyPoint.lat,
-                lng: publicState.safetyPoint.lng,
-              },
-              publicState.playArea.polygon
-            );
-        hiderPrivate = await lockHiderAnchorAndGenerateRadar({
-          adapter,
-          uid: controllerUid,
-          targetLocation: candidate,
-          accuracy: fallbackHiderFix?.accuracy ?? 15,
+        const candidateFix = resolveClassicHiderCandidateLocation({
+          hiderPrivate,
+          fallbackHiderFix,
           serverNowMs,
-          publicState,
-          currentHiderPrivate: hiderPrivate,
-          startSearchImmediately: false,
-          rng,
         });
+        if (candidateFix) {
+          hiderPrivate = await lockHiderAnchorAndGenerateRadar({
+            adapter,
+            uid: controllerUid,
+            targetLocation: { lat: candidateFix.lat, lng: candidateFix.lng },
+            accuracy: candidateFix.accuracy,
+            serverNowMs,
+            publicState,
+            currentHiderPrivate: hiderPrivate,
+            startSearchImmediately: false,
+            rng,
+          });
+        }
       } else if (
         hiderPrivate.anchorPoint &&
         hiderPrivate.radarStages.length === 5
@@ -609,23 +699,32 @@ export async function executeControllerTick(
         serverNowMs
       );
 
+      const hasAnchorLocked = Boolean(hiderPrivate.anchorPoint);
       const needsSearchStartInit =
         duePhase !== 'HIDING' && publicState.searchStartTimestamp === null;
       const needsPhaseUpdate = duePhase !== publicState.currentPhase;
+      const needsAnchorFlagSync =
+        duePhase !== 'HIDING' && publicState.anchorLocked !== hasAnchorLocked;
       const needsRadarUpdate =
-        dueRadar !== null &&
-        dueRadar.stage !== (publicState.radarCircle?.stage ?? null);
+        (dueRadar?.stage ?? null) !== (publicState.radarCircle?.stage ?? null);
 
-      if (needsSearchStartInit || needsPhaseUpdate || needsRadarUpdate) {
+      if (
+        needsSearchStartInit ||
+        needsPhaseUpdate ||
+        needsAnchorFlagSync ||
+        needsRadarUpdate
+      ) {
         await adapter.patchControllerPublicTransition({
           ...(needsPhaseUpdate ? { currentPhase: duePhase } : {}),
           ...(needsSearchStartInit
             ? {
                 searchStartTimestamp: serverNowMs,
                 pausedBeforeSearchMs: publicState.totalPausedMs,
-                anchorLocked: true,
+                anchorLocked: hasAnchorLocked,
               }
-            : {}),
+            : needsAnchorFlagSync
+              ? { anchorLocked: hasAnchorLocked }
+              : {}),
           ...(needsRadarUpdate ? { radarCircle: dueRadar } : {}),
         });
       }

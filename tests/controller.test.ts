@@ -643,4 +643,106 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
     expect(afterLastKnown!.lastPing?.source).toBe('LAST_KNOWN_GPS');
     expect(afterLastKnown!.lastPing?.lastFixAgeMs).toBe(8 * 60_000);
   });
+
+  it('springt im klassischen Modus niemals auf Schloss Blutenburg zurück, bewahrt den Anchor bei Reload und unterstützt das Vor-/Zurückspulen der Spielzeit', async () => {
+    const t0 = 1_701_000_000_000;
+    const demo = createDemoStore({ inMemoryOnly: true, initialNowMs: t0 });
+    const { adapter } = demo;
+    const s0 = demo.getSnapshot();
+
+    await adapter.savePublicStateByHost({
+      ...s0.state.public,
+      gameMode: 'CLASSIC',
+      status: 'RUNNING',
+      currentPhase: 'OPEN_SEARCH',
+      gameStartTimestamp: t0,
+      searchStartTimestamp: t0 + 15 * 60_000,
+      anchorLocked: false,
+      radarCircle: null,
+    });
+
+    // 1. Wenn weder Hider-Locations noch ein lokaler Hider-Fix vorliegen (z.B. Sucher-Host hält Lease kurz nach Reload),
+    // darf der Anchor NIEMALS auf den Safety-Point (Schloss Blutenburg: 48.1632, 11.4572) springen!
+    await executeControllerTick({
+      adapter,
+      controllerUid: 'demo_uid_lasse',
+      serverNowMs: t0 + 16 * 60_000,
+      publicState: demo.getSnapshot().state.public,
+      hiderPrivate: demo.getSnapshot().state.hiderPrivate,
+      teamsPublic: {},
+      teamLocations: {},
+      requestsByTeam: {},
+      catchRequests: {},
+      fallbackHiderFix: null,
+    });
+    expect(demo.getSnapshot().state.hiderPrivate.anchorPoint).toBeNull();
+
+    // 2. Sobald eine echte Hider-Position in hiderPrivate.hiderLocations vorliegt, fixiert der Controller exakt dort!
+    const realHidingSpot = { lat: 48.1695, lng: 11.4712 };
+    await adapter.writeHiderLocationPrivate('demo_uid_linus', {
+      lat: realHidingSpot.lat,
+      lng: realHidingSpot.lng,
+      accuracy: 7,
+      timestamp: t0 + 16 * 60_000,
+    });
+
+    await executeControllerTick({
+      adapter,
+      controllerUid: 'demo_uid_lasse',
+      serverNowMs: t0 + 16 * 60_000 + 1000,
+      publicState: demo.getSnapshot().state.public,
+      hiderPrivate: demo.getSnapshot().state.hiderPrivate,
+      teamsPublic: {},
+      teamLocations: {},
+      requestsByTeam: {},
+      catchRequests: {},
+      fallbackHiderFix: null,
+    });
+
+    const lockedAnchor = demo.getSnapshot().state.hiderPrivate.anchorPoint;
+    expect(lockedAnchor).not.toBeNull();
+    expect(lockedAnchor!.lat).toBeCloseTo(realHidingSpot.lat, 4);
+    expect(lockedAnchor!.lng).toBeCloseTo(realHidingSpot.lng, 4);
+
+    // 3. initializeDefaultLobbyIfNeeded darf einen bestehenden Anchor bei Reload niemals überschreiben
+    await adapter.initializeDefaultLobbyIfNeeded(
+      s0.state.public,
+      {},
+      { qrSecret: 'new_secret', shortCode: 'NEWCOD' }
+    );
+    expect(demo.getSnapshot().state.hiderPrivate.anchorPoint).toEqual(
+      lockedAnchor
+    );
+
+    // 4. Vorspulen auf Minute 31 veröffentlicht Radar-Stufe 1 (800m); Zurückspulen auf Minute 20 blendet den Kreis wieder aus!
+    await executeControllerTick({
+      adapter,
+      controllerUid: 'demo_uid_lasse',
+      serverNowMs: t0 + 31 * 60_000,
+      publicState: demo.getSnapshot().state.public,
+      hiderPrivate: demo.getSnapshot().state.hiderPrivate,
+      teamsPublic: {},
+      teamLocations: {},
+      requestsByTeam: {},
+      catchRequests: {},
+      fallbackHiderFix: null,
+    });
+    expect(demo.getSnapshot().state.public.currentPhase).toBe('RADAR_1');
+    expect(demo.getSnapshot().state.public.radarCircle?.stage).toBe(1);
+
+    await executeControllerTick({
+      adapter,
+      controllerUid: 'demo_uid_lasse',
+      serverNowMs: t0 + 20 * 60_000,
+      publicState: demo.getSnapshot().state.public,
+      hiderPrivate: demo.getSnapshot().state.hiderPrivate,
+      teamsPublic: {},
+      teamLocations: {},
+      requestsByTeam: {},
+      catchRequests: {},
+      fallbackHiderFix: null,
+    });
+    expect(demo.getSnapshot().state.public.currentPhase).toBe('OPEN_SEARCH');
+    expect(demo.getSnapshot().state.public.radarCircle).toBeNull();
+  });
 });

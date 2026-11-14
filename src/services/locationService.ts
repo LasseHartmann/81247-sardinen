@@ -117,8 +117,10 @@ export class SeekerBeaconBroadcaster {
 }
 
 /**
- * Synchronisiert im Manhunt-Modus gedrosselt (6s / 25m) die Live-Position der beweglichen
- * Verstecker ausschließlich in `/state/hiderPrivate/hiderLocations/{uid}` (für aktive Sucher unlesbar!).
+ * Synchronisiert gedrosselt (6s / 25m) die Live-Position der Verstecker ausschließlich in
+ * `/state/hiderPrivate/hiderLocations/{uid}` (für aktive Sucher unlesbar!).
+ * Im Manhunt-Modus dient dies für die beweglichen Zonen-Pings; im klassischen Modus als
+ * echte Verstecker-Rückfallposition bei vorzeitigem Suchstart oder Seiten-Reload.
  */
 export class HiderPrivateBroadcaster {
   private lastSentPoint: LatLng | null = null;
@@ -139,14 +141,15 @@ export class HiderPrivateBroadcaster {
   }): Promise<boolean> {
     const { adapter, member, team, gameMode, gameActive, fix } = params;
 
-    const isInSardinePack = Boolean(
+    const canWritePrivateFix = Boolean(
       member &&
         member.enabled &&
-        (member.side === 'HIDER' || team?.status === 'JOINED_SARDINES')
+        (member.side === 'HIDER' ||
+          (gameMode === 'MANHUNT' && team?.status === 'JOINED_SARDINES'))
     );
 
-    if (gameMode !== 'MANHUNT' || !gameActive || !member || !isInSardinePack || !fix) {
-      if (!gameActive || gameMode !== 'MANHUNT') {
+    if (!gameActive || !member || !canWritePrivateFix || !fix) {
+      if (!gameActive) {
         this.reset();
       }
       return false;
@@ -170,12 +173,14 @@ export class HiderPrivateBroadcaster {
     };
     this.lastSentAtMs = nowMs;
 
-    await adapter.writeHiderLocationPrivate(member.uid, {
-      lat: decision.roundedLat,
-      lng: decision.roundedLng,
-      accuracy: Math.round(fix.accuracy),
-      timestamp: nowMs,
-    });
+    await adapter
+      .writeHiderLocationPrivate(member.uid, {
+        lat: decision.roundedLat,
+        lng: decision.roundedLng,
+        accuracy: Math.round(fix.accuracy),
+        timestamp: nowMs,
+      })
+      .catch(() => {});
     return true;
   }
 }

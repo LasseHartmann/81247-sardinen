@@ -18,6 +18,7 @@ import { getFirebaseClients, isFirebaseConfigured } from '../config/firebase';
 import {
   createDefaultTeams,
   DEFAULT_PLAY_AREA_FEATURE,
+  DEFAULT_RADAR_SCHEDULE,
   GAME_ID,
   isLegacyPlaceholderPlayArea,
   MEDIA_AUTO_EXPIRE_MS,
@@ -116,7 +117,8 @@ export interface DatabaseAdapter {
   subscribePublicState(cb: (state: PublicGameState | null) => void): UnsubscribeFn;
   initializeDefaultLobbyIfNeeded(
     defaultState: PublicGameState,
-    defaultTeams: Record<string, TeamPublic>
+    defaultTeams: Record<string, TeamPublic>,
+    defaultSecrets?: { qrSecret: string; shortCode: string }
   ): Promise<void>;
   savePublicStateByHost(state: PublicGameState): Promise<void>;
   patchControllerPublicTransition(patch: ControllerPublicPatch): Promise<void>;
@@ -337,6 +339,20 @@ export function filterOnlineEnabledMembers(
   const deduped = deduplicateEnabledMembers(members, presence, options);
   return deduped.filter((m) =>
     isPlayerOnline(m.playerId, members, presence, ownUid)
+  );
+}
+
+/**
+ * Liefert alle aktivierten Mitglieder des Verstecker-Teams (`side === 'HIDER'`),
+ * unabhängig davon, ob sie aktuell online oder offline sind (exkl. Overview, Sucher & Unassigned).
+ * Nur diese Spieler müssen sich in der Lobby bereitmachen.
+ */
+export function getRequiredReadyHiderMembers(
+  members: Record<string, MemberRecord>,
+  presence: Record<string, Record<string, PresenceSession>>
+): MemberRecord[] {
+  return deduplicateEnabledMembers(members, presence).filter(
+    (m) => m.side === 'HIDER'
   );
 }
 
@@ -980,11 +996,46 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
               }
             : val.playArea;
 
+          const rawSched = val.radarSchedule;
+          const normalizedSchedule = {
+            hidingDurationMs:
+              typeof rawSched?.hidingDurationMs === 'number' &&
+              Number.isFinite(rawSched.hidingDurationMs)
+                ? rawSched.hidingDurationMs
+                : DEFAULT_RADAR_SCHEDULE.hidingDurationMs,
+            stage1Ms:
+              typeof rawSched?.stage1Ms === 'number' &&
+              Number.isFinite(rawSched.stage1Ms)
+                ? rawSched.stage1Ms
+                : DEFAULT_RADAR_SCHEDULE.stage1Ms,
+            stage2Ms:
+              typeof rawSched?.stage2Ms === 'number' &&
+              Number.isFinite(rawSched.stage2Ms)
+                ? rawSched.stage2Ms
+                : DEFAULT_RADAR_SCHEDULE.stage2Ms,
+            stage3Ms:
+              typeof rawSched?.stage3Ms === 'number' &&
+              Number.isFinite(rawSched.stage3Ms)
+                ? rawSched.stage3Ms
+                : DEFAULT_RADAR_SCHEDULE.stage3Ms,
+            stage4Ms:
+              typeof rawSched?.stage4Ms === 'number' &&
+              Number.isFinite(rawSched.stage4Ms)
+                ? rawSched.stage4Ms
+                : DEFAULT_RADAR_SCHEDULE.stage4Ms,
+            stage5Ms:
+              typeof rawSched?.stage5Ms === 'number' &&
+              Number.isFinite(rawSched.stage5Ms)
+                ? rawSched.stage5Ms
+                : DEFAULT_RADAR_SCHEDULE.stage5Ms,
+          };
+
           cb({
             ...val,
             gameMode: val.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
             classicSearchDurationMs: val.classicSearchDurationMs,
             manhuntShrinkDurationMs: val.manhuntShrinkDurationMs,
+            radarSchedule: normalizedSchedule,
             status: val.status === 'EMERGENCY_STOP' ? 'LOBBY' : val.status,
             playArea: upgradedPlayArea,
             pausedAt: val.pausedAt ?? null,
@@ -1005,13 +1056,34 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       );
     },
 
-    async initializeDefaultLobbyIfNeeded(defaultState, defaultTeams): Promise<void> {
+    async initializeDefaultLobbyIfNeeded(
+      defaultState,
+      defaultTeams,
+      defaultSecrets
+    ): Promise<void> {
       const stateSnap = await get(ref(db, `${ROOT_PATH}/state/public`));
       if (!stateSnap.exists()) {
         await set(
           ref(db, `${ROOT_PATH}/state/public`),
           stripUndefinedDeep(defaultState)
         );
+      }
+      if (defaultSecrets) {
+        const privSnap = await get(ref(db, `${ROOT_PATH}/state/hiderPrivate`)).catch(
+          () => null
+        );
+        if (privSnap && !privSnap.exists()) {
+          await set(
+            ref(db, `${ROOT_PATH}/state/hiderPrivate`),
+            stripUndefinedDeep({
+              anchorPoint: null,
+              radarStages: [],
+              qrSecret: defaultSecrets.qrSecret,
+              shortCode: defaultSecrets.shortCode,
+              hiderLocations: {},
+            })
+          );
+        }
       }
       for (const [teamId, team] of Object.entries(defaultTeams)) {
         const teamSnap = await get(ref(db, `${ROOT_PATH}/teams/${teamId}/public`));

@@ -427,27 +427,25 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   const allEnabledMembers = deduplicateEnabledMembers(members, presence);
   const requiredHiderMembers = getRequiredReadyHiderMembers(members, presence);
 
-  // Für die Spielerliste in der Lobby: Alle Verstecker (auch offline) + alle online verbundenen übrigen Spieler
-  const lobbyDisplayMembers = [
-    ...requiredHiderMembers,
-    ...onlineMemberList.filter((m) => m.side !== 'HIDER'),
-  ];
+  // Für die Spielerliste & Teams in der Lobby: Alle aktivierten Spieler (online wie offline), damit auch Offline-Spieler eingeteilt werden können
+  const lobbyDisplayMembers = [...allEnabledMembers].sort((a, b) => {
+    const aOn = isPlayerOnline(a.playerId, members, presence, ownMember.uid);
+    const bOn = isPlayerOnline(b.playerId, members, presence, ownMember.uid);
+    if (aOn !== bOn) return aOn ? -1 : 1;
+    return a.name.localeCompare(b.name, 'de');
+  });
 
   const readySet = new Set(readyPlayerIds);
   const isOwnReady = readySet.has(ownMember.playerId);
 
-  const seekerPool =
-    onlineMemberList.some((m) => m.side === 'SEEKER' && Boolean(m.teamId))
-      ? onlineMemberList
-      : allEnabledMembers;
-  const seekerMembers = seekerPool.filter(
+  const seekerMembers = allEnabledMembers.filter(
     (m) => m.side === 'SEEKER' && Boolean(m.teamId)
   );
 
-  // Besetzte Teams anhand der aktuellen Zuweisungen ermitteln (nur Teams mit mindestens 1 Person!)
+  // Besetzte Teams anhand der aktuellen Zuweisungen ermitteln (inkl. zugewiesener Offline-Spieler!)
   const occupiedTeams = TEAM_PALETTE.map((palette) => {
     const pub = teamsPublic[palette.id];
-    const assignedNames = seekerPool
+    const assignedNames = allEnabledMembers
       .filter((m) => m.side === 'SEEKER' && m.teamId === palette.id)
       .map((m) => m.name);
     return {

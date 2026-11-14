@@ -288,12 +288,7 @@ export function useGameState(
     const allSeekers = deduplicateEnabledMembers(members, presence).filter(
       (m) => m.side === 'SEEKER' && Boolean(m.teamId)
     );
-    const onlineSeekers = onlineList.filter(
-      (m) => m.side === 'SEEKER' && Boolean(m.teamId)
-    );
-    const activeSeekers =
-      onlineSeekers.length > 0 ? onlineSeekers : allSeekers;
-    if (activeSeekers.length === 0) return;
+    if (allSeekers.length === 0) return;
 
     const roundReadyToken = `${publicState.sessionId}:${activeHiderLock.logoutGen}`;
     if (autoStartedTokenRef.current === roundReadyToken) return;
@@ -307,7 +302,7 @@ export function useGameState(
       : onlineReadyHiders[0]?.playerId === ownMember.playerId;
     const delayMs = isPrimaryStarter ? 150 : 1400;
 
-    const starterMemberPool = [...requiredHiders, ...activeSeekers];
+    const starterMemberPool = [...requiredHiders, ...allSeekers];
 
     const timerId = setTimeout(() => {
       if (autoStartedTokenRef.current === roundReadyToken) return;

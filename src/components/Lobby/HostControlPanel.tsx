@@ -36,7 +36,6 @@ import {
 import { HardwareKnob } from '../Common/HardwareKnob';
 import {
   deduplicateEnabledMembers,
-  filterOnlineEnabledMembers,
   getRequiredReadyHiderMembers,
   isPlayerOnline,
   type DatabaseAdapter,
@@ -168,26 +167,14 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   }, [adapter, publicState.status]);
 
   const enabledMembers = deduplicateEnabledMembers(members, presence);
-  const onlineMembers = filterOnlineEnabledMembers(
-    members,
-    presence,
-    ownMember.uid
-  );
   const requiredHiderMembers = getRequiredReadyHiderMembers(members, presence);
-  const lobbyEditableMembers = [
-    ...requiredHiderMembers,
-    ...onlineMembers.filter((m) => m.side !== 'HIDER'),
-  ];
-  const activeGroupMembers =
-    publicState.status === 'LOBBY' ? lobbyEditableMembers : enabledMembers;
-  const offlineLobbyMembers =
-    publicState.status === 'LOBBY'
-      ? enabledMembers.filter(
-          (m) =>
-            m.side !== 'HIDER' &&
-            !isPlayerOnline(m.playerId, members, presence, ownMember.uid)
-        )
-      : [];
+  // Alle aktivierten Spieler (online wie offline) können jederzeit einem Team zugewiesen werden
+  const activeGroupMembers = [...enabledMembers].sort((a, b) => {
+    const aOnline = isPlayerOnline(a.playerId, members, presence, ownMember.uid);
+    const bOnline = isPlayerOnline(b.playerId, members, presence, ownMember.uid);
+    if (aOnline !== bOnline) return aOnline ? -1 : 1;
+    return a.name.localeCompare(b.name, 'de');
+  });
 
   const readySet = new Set(readyPlayerIds);
   const readyCount = requiredHiderMembers.filter((m) =>
@@ -203,14 +190,8 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     const preservedShortCode =
       hiderPrivate?.shortCode?.trim() || fallbackSecrets.shortCode;
 
-    const seekerSource = onlineMembers.some(
-      (m) => m.side === 'SEEKER' && Boolean(m.teamId)
-    )
-      ? onlineMembers
-      : enabledMembers;
-
     const nextTeams = createDefaultTeams();
-    for (const m of seekerSource) {
+    for (const m of enabledMembers) {
       if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
         if (!nextTeams[m.teamId].memberPlayerIds.includes(m.playerId)) {
           nextTeams[m.teamId].memberPlayerIds.push(m.playerId);
@@ -1255,34 +1236,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 </div>
               );
             })}
-
-            {offlineLobbyMembers.length > 0 && (
-              <div className="cmf-well space-y-1.5 p-2.5 text-xs text-[var(--text-muted)]">
-                <span className="font-tech text-[10px] font-bold tracking-wider uppercase block">
-                  Aktuell offline (vor Start nicht in Gruppen & ohne Bereit-Pflicht):
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {offlineLobbyMembers.map((m) => (
-                    <span
-                      key={m.uid}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-white/60 px-2.5 py-1 text-[11px] text-[var(--text-muted)]"
-                    >
-                      <span className="h-2 w-2 rounded-full bg-[#9AA4AE]" />
-                      <span>{m.name}</span>
-                      <button
-                        type="button"
-                        data-testid={`kick-player-${m.playerId}`}
-                        onClick={() => void handleKickMember(m)}
-                        title={`${m.name} entfernen`}
-                        className="ml-1 font-tech text-[10px] font-bold text-[var(--cmf-orange)] uppercase hover:underline"
-                      >
-                        [X]
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Teams-Anzeige: zeigt ausschließlich Teams an, in denen jemand drinnen ist! */}

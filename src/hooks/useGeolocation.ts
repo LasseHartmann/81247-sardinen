@@ -6,9 +6,13 @@ import {
   LEASH_RETURN_COUNTDOWN_MS,
   MAP_DEFAULT_CENTER,
 } from '../config/gameConfig';
+import { isPointInPlayArea, snapPointIntoPlayArea } from '../geo/boundary';
 import { distanceMeters } from '../geo/distance';
 import type { DatabaseAdapter } from '../services/databaseAdapter';
-import { SeekerBeaconBroadcaster } from '../services/locationService';
+import {
+  HiderPrivateBroadcaster,
+  SeekerBeaconBroadcaster,
+} from '../services/locationService';
 import type {
   AnchorPoint,
   GeoFix,
@@ -77,6 +81,7 @@ export function useGeolocation(params: UseGeolocationParams): {
   });
 
   const broadcasterRef = useRef(new SeekerBeaconBroadcaster());
+  const hiderBroadcasterRef = useRef(new HiderPrivateBroadcaster());
 
   const canUseManualClicks = Boolean(
     adapter.mode === 'demo' || publicState?.allowTestClicks
@@ -219,24 +224,206 @@ export function useGeolocation(params: UseGeolocationParams): {
     });
   }, []);
 
-  // Gedrosseltes Senden für Sucher-Beacon (6s / 5m)
+  // Gedrosseltes Senden für Sucher-Beacon (6s / 25m) sowie privater Verstecker-Sync im Manhunt-Modus
   useEffect(() => {
-    const gameActive = Boolean(
+    const isRoundRunningOrPaused = Boolean(
       publicState &&
-        (publicState.status === 'RUNNING' || publicState.status === 'PAUSED') &&
-        publicState.currentPhase !== 'HIDING'
+        (publicState.status === 'RUNNING' || publicState.status === 'PAUSED')
+    );
+    const seekerGameActive = Boolean(
+      isRoundRunningOrPaused && publicState?.currentPhase !== 'HIDING'
     );
     void broadcasterRef.current.maybePublishFix({
       adapter,
       member: ownMember,
       team: ownTeam,
-      gameActive,
+      gameActive: seekerGameActive,
+      fix: currentFix,
+    });
+
+    void hiderBroadcasterRef.current.maybePublishFix({
+      adapter,
+      member: ownMember,
+      gameMode: publicState?.gameMode ?? 'CLASSIC',
+      gameActive: isRoundRunningOrPaused,
       fix: currentFix,
     });
   }, [adapter, ownMember, ownTeam, publicState, currentFix]);
 
-  // Lokale 50-Meter-Versteck-Leash (ab OPEN_SEARCH für Verstecker — NIEMALS Koordinaten senden!)
+  // Lokale 50-Meter-Versteck-Leash (Klassisch) bzw. Aktive-Zonen-Überwachung mit 60s-Frist (Manhunt)
   useEffect(() => {
+    const isManhunt = (publicState?.gameMode ?? 'CLASSIC') === 'MANHUNT';
+
+    if (isManhunt) {
+      const isActiveManhuntHider = Boolean(
+        ownMember?.enabled &&
+          ownMember.side === 'HIDER' &&
+          publicState?.status === 'RUNNING' &&
+          publicState.currentPhase !== 'LOBBY' &&
+          currentFix
+      );
+
+      const zoneKey = publicState?.sessionId
+        ? `sardinen_manhunt_zone_${publicState.sessionId}`
+        : null;
+
+      if (!isActiveManhuntHider || !publicState || !currentFix) {
+        consecutiveViolationsRef.current = 0;
+        violationStartedAtMsRef.current = null;
+        setLeashState({
+          distanceFromAnchorMeters: null,
+          consecutiveOutsideCount: 0,
+          warningActive: false,
+          countdownSecondsLeft: null,
+          publicAlertTriggered: Boolean(publicState?.leashAlertActive),
+        });
+        return;
+      }
+
+      if (
+        zoneKey &&
+        violationStartedAtMsRef.current === null &&
+        typeof window !== 'undefined'
+      ) {
+        try {
+          const raw = window.sessionStorage.getItem(zoneKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as {
+              startedAt?: number;
+              violations?: number;
+            };
+            if (
+              typeof parsed.startedAt === 'number' &&
+              Number.isFinite(parsed.startedAt)
+            ) {
+              violationStartedAtMsRef.current = parsed.startedAt;
+              consecutiveViolationsRef.current = Math.max(
+                LEASH_CONSECUTIVE_VIOLATIONS,
+                parsed.violations ?? LEASH_CONSECUTIVE_VIOLATIONS
+              );
+            }
+          }
+        } catch {
+          // Ignoriere Speicherfehler
+        }
+      }
+
+      const activeCircle = publicState.radarCircle;
+      const outsideRadarMeters = activeCircle
+        ? Math.max(
+            0,
+            distanceMeters(activeCircle.center, currentFix) -
+              activeCircle.radiusMeters
+          )
+        : 0;
+      const insidePlayPoly = isPointInPlayArea(
+        currentFix,
+        publicState.playArea.polygon
+      );
+      const outsidePolyMeters = insidePlayPoly
+        ? 0
+        : Math.max(
+            1,
+            distanceMeters(
+              snapPointIntoPlayArea(currentFix, publicState.playArea.polygon),
+              currentFix
+            )
+          );
+      const outsideMeters = Math.max(outsideRadarMeters, outsidePolyMeters);
+      const isOutsideActiveZone = outsideMeters > 0;
+      const isAccurateFix =
+        currentFix.accuracy <= LEASH_REQUIRED_ACCURACY_METERS;
+      const isClearlyOutside = outsideMeters > currentFix.accuracy;
+
+      if (isOutsideActiveZone && (isAccurateFix || isClearlyOutside)) {
+        consecutiveViolationsRef.current += 1;
+        if (
+          (consecutiveViolationsRef.current >= LEASH_CONSECUTIVE_VIOLATIONS ||
+            isClearlyOutside ||
+            gpsStatus === 'MANUAL_TEST' ||
+            Boolean(publicState.leashAlertActive)) &&
+          violationStartedAtMsRef.current === null
+        ) {
+          violationStartedAtMsRef.current = publicState.leashAlertActive
+            ? adapter.getServerNow() - LEASH_RETURN_COUNTDOWN_MS
+            : adapter.getServerNow();
+        }
+        if (
+          zoneKey &&
+          violationStartedAtMsRef.current !== null &&
+          typeof window !== 'undefined'
+        ) {
+          try {
+            window.sessionStorage.setItem(
+              zoneKey,
+              JSON.stringify({
+                startedAt: violationStartedAtMsRef.current,
+                violations: consecutiveViolationsRef.current,
+              })
+            );
+          } catch {
+            // Ignoriere Speicherfehler
+          }
+        }
+      } else if (!isOutsideActiveZone) {
+        consecutiveViolationsRef.current = 0;
+        violationStartedAtMsRef.current = null;
+        if (zoneKey && typeof window !== 'undefined') {
+          try {
+            window.sessionStorage.removeItem(zoneKey);
+          } catch {
+            // Ignoriere Speicherfehler
+          }
+        }
+        if (publicState.leashAlertActive) {
+          void adapter.patchControllerPublicTransition({
+            leashAlertActive: false,
+          });
+        }
+      }
+
+      const updateZoneCountdown = () => {
+        const startedAt = violationStartedAtMsRef.current;
+        if (startedAt === null) {
+          setLeashState({
+            distanceFromAnchorMeters:
+              outsideMeters > 0 ? Math.round(outsideMeters) : 0,
+            consecutiveOutsideCount: consecutiveViolationsRef.current,
+            warningActive: false,
+            countdownSecondsLeft: null,
+            publicAlertTriggered: Boolean(publicState.leashAlertActive),
+          });
+          return;
+        }
+
+        const elapsedViolationMs = adapter.getServerNow() - startedAt;
+        const remainingMs = Math.max(
+          0,
+          LEASH_RETURN_COUNTDOWN_MS - elapsedViolationMs
+        );
+        const secondsLeft = Math.ceil(remainingMs / 1000);
+
+        if (remainingMs <= 0 && !publicState.leashAlertActive) {
+          void adapter.patchControllerPublicTransition({
+            leashAlertActive: true,
+          });
+        }
+
+        setLeashState({
+          distanceFromAnchorMeters: Math.max(1, Math.round(outsideMeters)),
+          consecutiveOutsideCount: consecutiveViolationsRef.current,
+          warningActive: true,
+          countdownSecondsLeft: secondsLeft,
+          publicAlertTriggered:
+            remainingMs <= 0 || Boolean(publicState.leashAlertActive),
+        });
+      };
+
+      updateZoneCountdown();
+      const interval = setInterval(updateZoneCountdown, 1000);
+      return () => clearInterval(interval);
+    }
+
     const isActiveHiderAfterLock = Boolean(
       ownMember?.enabled &&
         ownMember.side === 'HIDER' &&
@@ -388,9 +575,7 @@ export function useGeolocation(params: UseGeolocationParams): {
     adapter,
     ownMember?.enabled,
     ownMember?.side,
-    publicState?.status,
-    publicState?.currentPhase,
-    publicState?.leashAlertActive,
+    publicState,
     gpsStatus,
     anchorPoint,
     currentFix,

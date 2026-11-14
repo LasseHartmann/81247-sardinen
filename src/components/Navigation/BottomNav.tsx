@@ -6,6 +6,7 @@ export interface BottomNavProps {
   activeTab: BottomNavTab;
   onSelectTab: (tab: BottomNavTab) => void;
   showHostTab: boolean;
+  hideQuestionsTab?: boolean;
   hasActiveEmergency?: boolean;
   pendingQuestionsBadgeCount?: number;
   joinRequestsBadgeCount?: number;
@@ -15,6 +16,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   onSelectTab,
   showHostTab,
+  hideQuestionsTab = false,
   hasActiveEmergency = false,
   pendingQuestionsBadgeCount = 0,
   joinRequestsBadgeCount = 0,
@@ -30,12 +32,16 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       label: 'Karte',
       icon: <Compass className="h-5 w-5" />,
     },
-    {
-      id: 'QUESTIONS',
-      label: 'Hinweise',
-      icon: <HelpCircle className="h-5 w-5" />,
-      badge: pendingQuestionsBadgeCount,
-    },
+    ...(hideQuestionsTab
+      ? []
+      : [
+          {
+            id: 'QUESTIONS' as BottomNavTab,
+            label: 'Hinweise',
+            icon: <HelpCircle className="h-5 w-5" />,
+            badge: pendingQuestionsBadgeCount,
+          },
+        ]),
     {
       id: 'QR',
       label: 'QR / Catch',

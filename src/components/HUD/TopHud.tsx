@@ -56,6 +56,7 @@ export const TopHud: React.FC<TopHudProps> = ({
 }) => {
   const activePhase =
     publicState.status === 'LOBBY' ? 'LOBBY' : timer.computedPhase;
+  const isManhunt = (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT';
   const isRunning = publicState.status === 'RUNNING';
   const isPaused = publicState.status === 'PAUSED';
 
@@ -127,10 +128,18 @@ export const TopHud: React.FC<TopHudProps> = ({
             <Radar className="h-3 w-3 shrink-0 text-[var(--cmf-teal)] sm:h-3.5 sm:w-3.5" />
             <span className="truncate whitespace-nowrap">
               {activePhase === 'LOBBY'
-                ? 'Lobby'
+                ? isManhunt
+                  ? 'Lobby • Manhunt'
+                  : 'Lobby'
                 : timer.nextStageRemainingMs !== null
-                  ? `Tipp in ${formatDurationClock(timer.nextStageRemainingMs)}`
-                  : '25m Radar'}
+                  ? isManhunt
+                    ? activePhase === 'HIDING'
+                      ? `Jagd in ${formatDurationClock(timer.nextStageRemainingMs)}`
+                      : `Zone in ${formatDurationClock(timer.nextStageRemainingMs)}`
+                    : `Tipp in ${formatDurationClock(timer.nextStageRemainingMs)}`
+                  : isManhunt
+                    ? '150m Zone'
+                    : '25m Radar'}
             </span>
           </div>
         </div>
@@ -145,7 +154,7 @@ export const TopHud: React.FC<TopHudProps> = ({
               >
                 SARDINEN
               </div>
-            ) : (
+            ) : !isManhunt ? (
               <div
                 title="Aufgelaufene Hinweis-Strafzeit / Zeitbonus deines Teams"
                 className={`rounded-lg px-1.5 py-1 text-[10px] font-bold tracking-wide uppercase sm:px-2 sm:text-[11px] ${
@@ -165,7 +174,7 @@ export const TopHud: React.FC<TopHudProps> = ({
                   {formatPenaltyMinutes(ownTeam.penaltyMs)}
                 </span>
               </div>
-            ))}
+            ) : null)}
 
           <div
             title="GPS-Status & Genauigkeit"

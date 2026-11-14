@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest';
+import {
+  buildManhuntRadarSchedule,
+  DEFAULT_PLAY_AREA_FEATURE,
+  MANHUNT_RADAR_RADII,
+} from '../src/config/gameConfig';
 import { destinationPoint, distanceMeters } from '../src/geo/distance';
 import {
+  computeNextManhuntZoneCircle,
   DEFAULT_RADAR_RADII,
   generateInsideOutRadarStages,
   getDueRadarCircle,
+  getDueRadarStageId,
   getPhaseForElapsedMs,
   verifyRadarStageInvariants,
 } from '../src/geo/radar';
-import type { RadarSchedule } from '../src/types/game';
+import type { RadarSchedule, RadarStageId } from '../src/types/game';
 
 const STANDARD_SCHEDULE: RadarSchedule = {
   hidingDurationMs: 10 * 60_000,
@@ -102,5 +109,87 @@ describe('Inside-Out Schrumpf-Radar (500-Trial Monte-Carlo & Phasenlogik)', () =
     const endgameCircle = getDueRadarCircle(52 * 60_000, stages);
     expect(endgameCircle?.stage).toBe(5);
     expect(endgameCircle?.radiusMeters).toBe(25);
+  });
+
+  it('berechnet den Manhunt-Schrumpfplan exakt über die Host-Schrumpfdauer bis zur 150-m-Zone', () => {
+    const schedDefault = buildManhuntRadarSchedule(5, 30);
+    expect(schedDefault.hidingDurationMs).toBe(5 * 60_000);
+    expect(schedDefault.stage1Ms).toBe(11 * 60_000);
+    expect(schedDefault.stage2Ms).toBe(17 * 60_000);
+    expect(schedDefault.stage3Ms).toBe(23 * 60_000);
+    expect(schedDefault.stage4Ms).toBe(29 * 60_000);
+    expect(schedDefault.stage5Ms).toBe(35 * 60_000);
+
+    expect(getDueRadarStageId(10 * 60_000 + 59_999, schedDefault)).toBeNull();
+    expect(getDueRadarStageId(11 * 60_000, schedDefault)).toBe(1);
+    expect(getDueRadarStageId(23 * 60_000, schedDefault)).toBe(3);
+    expect(getDueRadarStageId(35 * 60_000, schedDefault)).toBe(5);
+
+    const schedFast = buildManhuntRadarSchedule(0, 20);
+    expect(schedFast.hidingDurationMs).toBe(0);
+    expect(schedFast.stage1Ms).toBe(4 * 60_000);
+    expect(schedFast.stage5Ms).toBe(20 * 60_000);
+
+    const schedMax = buildManhuntRadarSchedule(30, 80);
+    expect(schedMax.hidingDurationMs).toBe(30 * 60_000);
+    expect(schedMax.stage1Ms).toBe(46 * 60_000);
+    expect(schedMax.stage5Ms).toBe(110 * 60_000);
+  });
+
+  it('hält bewegliche Manhunt-Verstecker in 500 Läufen (inkl. Rand-Grenzfall) ausnahmslos im geschachtelten Folge-Kreis', () => {
+    const rng = createSeededRng(2026_1114);
+    const stageIds: RadarStageId[] = [1, 2, 3, 4, 5];
+    let nonZeroOffsetStages = 0;
+
+    for (let trial = 0; trial < 500; trial++) {
+      let hiderPos = {
+        lat: 48.155 + rng() * 0.025,
+        lng: 11.45 + rng() * 0.035,
+      };
+      let prevCircle = null;
+
+      for (const stage of stageIds) {
+        const nextRadius = MANHUNT_RADAR_RADII[stage];
+
+        // Bei vorherigem Kreis bewegen sich die Verstecker innerhalb der aktuellen Zone weiter;
+        // in jedem 5. Lauf testen wir explizit Verstecker direkt am äußersten Rand (R_prev - 0.05 m)!
+        if (prevCircle) {
+          const walkRatio = trial % 5 === 0 ? 0.9999 : rng() * 0.95;
+          const walkDist = Math.max(0, prevCircle.radiusMeters * walkRatio - 0.05);
+          const walkBearing = rng() * 360;
+          hiderPos = destinationPoint(prevCircle.center, walkDist, walkBearing);
+          expect(distanceMeters(hiderPos, prevCircle.center)).toBeLessThanOrEqual(
+            prevCircle.radiusMeters + 0.05
+          );
+        }
+
+        const nextCircle = computeNextManhuntZoneCircle({
+          stage,
+          nextRadiusMeters: nextRadius,
+          hiderPosition: hiderPos,
+          previousCircle: prevCircle,
+          playArea: DEFAULT_PLAY_AREA_FEATURE,
+          publishedAt: stage * 60_000,
+          rng,
+        });
+
+        // 1. Verstecker werden NIEMALS aus ihrer aktuellen Position gedrängt
+        const distHiderToNext = distanceMeters(hiderPos, nextCircle.center);
+        expect(distHiderToNext).toBeLessThanOrEqual(nextRadius + 0.08);
+        if (distHiderToNext > 1) nonZeroOffsetStages++;
+
+        // 2. Neuer Kreis liegt monoton geschachtelt im vorherigen Kreis
+        if (prevCircle) {
+          const centerShift = distanceMeters(nextCircle.center, prevCircle.center);
+          expect(centerShift + nextCircle.radiusMeters).toBeLessThanOrEqual(
+            prevCircle.radiusMeters + 0.08
+          );
+        }
+
+        prevCircle = nextCircle;
+      }
+    }
+
+    expect(nonZeroOffsetStages).toBeGreaterThan(2000);
   });
 });

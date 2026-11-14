@@ -727,7 +727,24 @@ export function createDemoStore(options?: {
 
     async saveHiderPrivate(priv): Promise<void> {
       writeTree((t) => {
-        t.state.hiderPrivate = structuredClone(priv);
+        const prevLocs = t.state.hiderPrivate?.hiderLocations ?? {};
+        t.state.hiderPrivate = {
+          ...structuredClone(priv),
+          hiderLocations:
+            priv.hiderLocations !== undefined
+              ? structuredClone(priv.hiderLocations)
+              : structuredClone(prevLocs),
+        };
+      });
+    },
+
+    async writeHiderLocationPrivate(uid, fix): Promise<void> {
+      writeTree((t) => {
+        if (!t.state.hiderPrivate) return;
+        if (!t.state.hiderPrivate.hiderLocations) {
+          t.state.hiderPrivate.hiderLocations = {};
+        }
+        t.state.hiderPrivate.hiderLocations[uid] = structuredClone(fix);
       });
     },
 
@@ -1024,6 +1041,7 @@ export function createDemoStore(options?: {
           radarStages: t.state.hiderPrivate?.radarStages ?? [],
           qrSecret: cleanPassword,
           shortCode: cleanPassword,
+          hiderLocations: t.state.hiderPrivate?.hiderLocations ?? {},
         };
         t.state.public.hiderLock = structuredClone(lock);
         if (!t.presence[uid]) t.presence[uid] = {};
@@ -1133,6 +1151,7 @@ export function createDemoStore(options?: {
           radarStages: [],
           qrSecret: currentHiderPrivate?.qrSecret?.trim() || fallback.qrSecret,
           shortCode: currentHiderPrivate?.shortCode?.trim() || fallback.shortCode,
+          hiderLocations: {},
         };
 
         for (const [id, pub] of Object.entries(nextTeams)) {
@@ -1157,12 +1176,15 @@ export function createDemoStore(options?: {
           activeTeamIds: occupiedTeamIds,
         };
 
+        const immediateOpenSearch =
+          (t.state.public.radarSchedule?.hidingDurationMs ?? 0) <= 0;
+
         t.state.public = {
           ...t.state.public,
           status: 'RUNNING',
-          currentPhase: 'HIDING',
+          currentPhase: immediateOpenSearch ? 'OPEN_SEARCH' : 'HIDING',
           gameStartTimestamp: nowMs,
-          searchStartTimestamp: null,
+          searchStartTimestamp: immediateOpenSearch ? nowMs : null,
           pausedAt: null,
           totalPausedMs: 0,
           pausedBeforeSearchMs: 0,

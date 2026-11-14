@@ -105,6 +105,12 @@
             "hiderLock": {
               ".read": "auth != null",
               ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')"
+            },
+            "gameMode": {
+              ".validate": "!newData.exists() || newData.val() === 'CLASSIC' || newData.val() === 'MANHUNT'"
+            },
+            "manhuntShrinkDurationMs": {
+              ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 60000)"
             }
           },
           "controller": {

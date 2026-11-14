@@ -2,6 +2,8 @@ import type { Feature, FeatureCollection, Polygon } from 'geojson';
 
 export type PlayerSide = 'HIDER' | 'SEEKER' | 'UNASSIGNED';
 
+export type GameMode = 'CLASSIC' | 'MANHUNT';
+
 export type GameStatus =
   | 'LOBBY'
   | 'RUNNING'
@@ -166,6 +168,8 @@ export interface RadarSchedule {
 export interface PublicGameState {
   status: GameStatus;
   currentPhase: GamePhase;
+  gameMode?: GameMode;
+  manhuntShrinkDurationMs?: number;
   gameStartTimestamp: number | null;
   searchStartTimestamp: number | null;
   pausedAt: number | null;
@@ -196,6 +200,7 @@ export interface HiderPrivateState {
   radarStages: RadarStageSecret[];
   qrSecret: string;
   shortCode: string;
+  hiderLocations?: Record<string, GeoFix>;
 }
 
 export type QuestionType =

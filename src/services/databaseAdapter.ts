@@ -129,6 +129,7 @@ export interface DatabaseAdapter {
 
   subscribeHiderPrivate(cb: (priv: HiderPrivateState | null) => void): UnsubscribeFn;
   saveHiderPrivate(priv: HiderPrivateState): Promise<void>;
+  writeHiderLocationPrivate(uid: string, fix: GeoFix): Promise<void>;
 
   subscribeTeamPublic(teamId: string, cb: (team: TeamPublic | null) => void): UnsubscribeFn;
   saveTeamPublic(teamId: string, team: TeamPublic): Promise<void>;
@@ -893,6 +894,8 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
           cb({
             ...val,
+            gameMode: val.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
+            manhuntShrinkDurationMs: val.manhuntShrinkDurationMs,
             status: val.status === 'EMERGENCY_STOP' ? 'LOBBY' : val.status,
             playArea: upgradedPlayArea,
             pausedAt: val.pausedAt ?? null,
@@ -987,6 +990,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
             radarStages: val.radarStages ?? [],
             qrSecret: val.qrSecret ?? '',
             shortCode: val.shortCode ?? '',
+            hiderLocations: val.hiderLocations ?? {},
           });
         },
         () => cb(null)
@@ -994,9 +998,22 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async saveHiderPrivate(priv): Promise<void> {
+      const payload: Record<string, unknown> = {
+        anchorPoint: priv.anchorPoint ?? null,
+        radarStages: stripUndefinedDeep(priv.radarStages ?? []),
+        qrSecret: priv.qrSecret,
+        shortCode: priv.shortCode,
+      };
+      if (priv.hiderLocations !== undefined) {
+        payload.hiderLocations = stripUndefinedDeep(priv.hiderLocations);
+      }
+      await update(ref(db, `${ROOT_PATH}/state/hiderPrivate`), payload);
+    },
+
+    async writeHiderLocationPrivate(uid, fix): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/state/hiderPrivate`),
-        stripUndefinedDeep(priv)
+        ref(db, `${ROOT_PATH}/state/hiderPrivate/hiderLocations/${uid}`),
+        stripUndefinedDeep(fix)
       );
     },
 
@@ -1378,6 +1395,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           radarStages: existingPriv?.radarStages ?? [],
           qrSecret: cleanPassword,
           shortCode: cleanPassword,
+          hiderLocations: existingPriv?.hiderLocations ?? {},
         })
       );
 
@@ -1547,6 +1565,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           radarStages: [],
           qrSecret: preservedSecret,
           shortCode: preservedShortCode,
+          hiderLocations: {},
         })
       );
 
@@ -1578,12 +1597,17 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         })
       );
 
+      const immediateOpenSearch =
+        (publicState.radarSchedule?.hidingDurationMs ?? 0) <= 0;
+      const initialPhase = immediateOpenSearch ? 'OPEN_SEARCH' : 'HIDING';
+      const initialSearchStart = immediateOpenSearch ? nowMs : null;
+
       try {
         await update(ref(db, `${ROOT_PATH}/state/public`), {
           status: 'RUNNING',
-          currentPhase: 'HIDING',
+          currentPhase: initialPhase,
           gameStartTimestamp: nowMs,
-          searchStartTimestamp: null,
+          searchStartTimestamp: initialSearchStart,
           pausedAt: null,
           totalPausedMs: 0,
           pausedBeforeSearchMs: 0,
@@ -1596,8 +1620,8 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         // Fallback auf die strikt erlaubten Controller-Felder
         await update(ref(db, `${ROOT_PATH}/state/public`), {
           status: 'RUNNING',
-          currentPhase: 'HIDING',
-          searchStartTimestamp: null,
+          currentPhase: initialPhase,
+          searchStartTimestamp: initialSearchStart,
           pausedBeforeSearchMs: 0,
           anchorLocked: false,
           radarCircle: null,

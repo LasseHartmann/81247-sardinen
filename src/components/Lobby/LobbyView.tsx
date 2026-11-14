@@ -301,6 +301,7 @@ export interface LobbyStatusCardProps {
 }
 
 export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
+  publicState,
   ownMember,
   members,
   presence,
@@ -312,6 +313,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   onOpenHostTab,
   onLogout,
 }) => {
+  const isManhunt = (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT';
   // Vor Rundenbeginn zählen für Gruppen & „Bereit"-Check ausschließlich aktuell online verbundene Spieler!
   const memberList = filterOnlineEnabledMembers(
     members,
@@ -409,6 +411,11 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
             <span className="font-industrial truncate text-sm text-[var(--text-main)]">
               Lobby • {ownMember.name}
             </span>
+            {isManhunt && (
+              <span className="cmf-badge-orange shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
+                Manhunt
+              </span>
+            )}
             {hasPasswordSet ? (
               <span className="cmf-badge-teal shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
                 Bereit {readyCount}/{memberList.length}
@@ -447,7 +454,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
               </div>
               <div>
                 <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                  LOBBY // SEKTOR 81247
+                  LOBBY // SEKTOR 81247 // {isManhunt ? 'MANHUNT' : 'KLASSISCH'}
                 </span>
                 <h2 className="font-industrial flex items-center gap-2 text-base sm:text-lg text-[var(--text-main)]">
                   <span>Hallo {ownMember.name}!</span>

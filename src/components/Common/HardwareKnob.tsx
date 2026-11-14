@@ -352,21 +352,21 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
       </span>
 
       {/* Obere Telemetrie-Leiste im Nothing OS Stil */}
-      <div className="flex items-center justify-between gap-2 border-b border-dashed border-[var(--shell-border)] px-3 pb-2">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="flex items-start justify-between gap-2 border-b border-dashed border-[var(--shell-border)] px-2.5 pb-2">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
           <span
-            className={`h-2 w-2 shrink-0 rounded-full transition-colors ${
+            className={`mt-1 h-2 w-2 shrink-0 rounded-full transition-colors ${
               isDragging
                 ? 'bg-[var(--nothing-red)] shadow-[0_0_8px_#D71921]'
                 : 'bg-[var(--cmf-orange)]'
             }`}
           />
-          <span className="truncate font-tech text-[10px] font-bold tracking-[0.12em] text-[var(--text-main)] uppercase">
+          <span className="font-tech text-[10px] font-bold leading-snug tracking-[0.06em] break-words text-[var(--text-main)] uppercase">
             {label}
           </span>
         </div>
-        <span className="shrink-0 rounded border border-[var(--shell-border)] bg-white/60 px-1.5 py-0.5 font-tech text-[9px] font-bold tracking-widest text-[var(--text-muted)] uppercase">
-          {wrapAround ? 'NTH // AZIMUTH 360°' : `NTH // DIAL Δ${stepBtnLabel}`}
+        <span className="shrink-0 rounded border border-[var(--shell-border)] bg-white/60 px-1.5 py-0.5 font-tech text-[9px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+          {wrapAround ? '360°' : `Δ${stepBtnLabel}`}
         </span>
       </div>
 

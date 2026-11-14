@@ -1,3 +1,4 @@
+import type { Feature, Polygon } from 'geojson';
 import type {
   GamePhase,
   LatLng,
@@ -6,7 +7,8 @@ import type {
   RadarStageId,
   RadarStageSecret,
 } from '../types/game';
-import { destinationPoint, distanceMeters } from './distance';
+import { isPointInPlayArea } from './boundary';
+import { bearingDegrees, destinationPoint, distanceMeters } from './distance';
 
 export const DEFAULT_RADAR_RADII: Record<RadarStageId, number> = {
   1: 800,
@@ -171,6 +173,219 @@ export function getDueRadarCircle(
     stage: current.stage,
     radiusMeters: current.radiusMeters,
     center: { lat: current.center.lat, lng: current.center.lng },
+    publishedAt,
+  };
+}
+
+/**
+ * Bestimmt die aktuell fällige Radar-/Zonen-Stufe (1..5) allein anhand des Zeitplans.
+ */
+export function getDueRadarStageId(
+  elapsedNetMs: number,
+  schedule: RadarSchedule
+): RadarStageId | null {
+  if (elapsedNetMs >= schedule.stage5Ms) return 5;
+  if (elapsedNetMs >= schedule.stage4Ms) return 4;
+  if (elapsedNetMs >= schedule.stage3Ms) return 3;
+  if (elapsedNetMs >= schedule.stage2Ms) return 2;
+  if (elapsedNetMs >= schedule.stage1Ms) return 1;
+  return null;
+}
+
+export const MANHUNT_COMFORT_SHIFT_FACTOR = 0.7;
+
+export interface ComputeNextManhuntZoneParams {
+  hiderPosition: LatLng;
+  stage: RadarStageId;
+  nextRadiusMeters: number;
+  previousCircle: { center: LatLng; radiusMeters: number } | null;
+  playArea?: Feature<Polygon> | null;
+  publishedAt?: number;
+  rng?: () => number;
+}
+
+/**
+ * Berechnet dynamisch die nächste Manhunt-Schrumpfzone um die aktuelle Live-Position `H(t)` der Verstecker:
+ *
+ * Mathematische Garantien:
+ * 1. Verstecker werden NIEMALS aus ihrem Bereich gedrängt: `dist(H(t), C_next) < R_next`
+ *    (bevorzugt `<= 0.70 * R_next`, sodass mind. 30 % Puffer in alle Richtungen bleiben).
+ * 2. Zufälliger Off-Center-Versatz: `C_next` liegt zufällig versetzt um `H(t)`, sodass Sucher
+ *    nicht einfach ins Zentrum des neuen Kreises laufen können.
+ * 3. Monotone Verschachtelung: Liegt `H(t)` im vorherigen Kreis `(C_prev, R_prev)`, gilt strikt
+ *    `dist(C_next, C_prev) + R_next <= R_prev`, sodass die orange Ausschlusszone niemals zurückspringt.
+ */
+export function computeNextManhuntZoneCircle(
+  params: ComputeNextManhuntZoneParams
+): PublishedRadarCircle {
+  const {
+    hiderPosition,
+    stage,
+    nextRadiusMeters,
+    previousCircle,
+    playArea = null,
+    publishedAt,
+    rng = defaultSecureRandom,
+  } = params;
+
+  const comfortMaxDist = MANHUNT_COMFORT_SHIFT_FACTOR * nextRadiusMeters;
+
+  // Fall 1: Erste Schrumpfstufe (kein vorheriger Kreis aktiv)
+  if (!previousCircle || previousCircle.radiusMeters <= nextRadiusMeters) {
+    let fallbackCandidate: LatLng | null = null;
+    for (let i = 0; i < 40; i++) {
+      const u = clampUnit(rng());
+      const theta = clampUnit(rng()) * 360;
+      const d = Math.sqrt(u) * comfortMaxDist;
+      const candidate = destinationPoint(hiderPosition, d, theta);
+      if (!fallbackCandidate) fallbackCandidate = candidate;
+      if (!playArea || isPointInPlayArea(candidate, playArea)) {
+        return {
+          stage,
+          radiusMeters: nextRadiusMeters,
+          center: candidate,
+          publishedAt,
+        };
+      }
+    }
+    return {
+      stage,
+      radiusMeters: nextRadiusMeters,
+      center: fallbackCandidate ?? {
+        lat: hiderPosition.lat,
+        lng: hiderPosition.lng,
+      },
+      publishedAt,
+    };
+  }
+
+  // Fall 2: Folge-Schrumpfstufe mit vorherigem Kreis (C_prev, R_prev)
+  const prevCenter = previousCircle.center;
+  const maxShiftFromPrev = Math.max(
+    0,
+    previousCircle.radiusMeters - nextRadiusMeters
+  );
+  const distHiderToPrev = distanceMeters(hiderPosition, prevCenter);
+
+  // 2a. Falls Hider kurzzeitig außerhalb des alten Kreises waren:
+  // Halte Hider garantiert im neuen Kreis (<= 0.70 * R_next) und ziehe Richtung C_prev.
+  if (distHiderToPrev > previousCircle.radiusMeters) {
+    const bearingToPrev = bearingDegrees(hiderPosition, prevCenter);
+    const pullDist = Math.min(comfortMaxDist, distHiderToPrev);
+    const jitterDeg = (clampUnit(rng()) - 0.5) * 24;
+    const pulled = destinationPoint(
+      hiderPosition,
+      pullDist * (0.85 + 0.15 * clampUnit(rng())),
+      (bearingToPrev + jitterDeg + 360) % 360
+    );
+    return {
+      stage,
+      radiusMeters: nextRadiusMeters,
+      center: pulled,
+      publishedAt,
+    };
+  }
+
+  // 2b. Normalfall: Hider sind innerhalb von C_prev (distHiderToPrev <= R_prev).
+  // Schnittlinse Disk(H, 0.70 * R_next) ∩ Disk(C_prev, R_prev - R_next) per Rejection-Sampling prüfen.
+  const nestedMarginMeters = Math.max(0, maxShiftFromPrev - 0.25);
+  let validOutsidePlayArea: LatLng | null = null;
+
+  for (let i = 0; i < 64; i++) {
+    const u = clampUnit(rng());
+    const theta = clampUnit(rng()) * 360;
+    const d = Math.sqrt(u) * comfortMaxDist;
+    const candidate = destinationPoint(hiderPosition, d, theta);
+    if (distanceMeters(candidate, prevCenter) <= nestedMarginMeters) {
+      if (!playArea || isPointInPlayArea(candidate, playArea)) {
+        return {
+          stage,
+          radiusMeters: nextRadiusMeters,
+          center: candidate,
+          publishedAt,
+        };
+      }
+      if (!validOutsidePlayArea) {
+        validOutsidePlayArea = candidate;
+      }
+    }
+  }
+
+  if (validOutsidePlayArea) {
+    return {
+      stage,
+      radiusMeters: nextRadiusMeters,
+      center: validOutsidePlayArea,
+      publishedAt,
+    };
+  }
+
+  // 2c. Analytischer Linsen-Fallback (wenn Hider nah am Außenrand von C_prev stehen,
+  // sodass dist(H, C_prev) - maxShiftFromPrev > 0.70 * R_next, aber <= R_next gilt):
+  // Entlang der Verbindungslinie H -> C_prev existiert wegen dist(H, C_prev) <= R_prev
+  // IMMER ein gültiges Intervall [dMin, dMax] mit dMin <= dMax < R_next!
+  if (distHiderToPrev < 0.01) {
+    return {
+      stage,
+      radiusMeters: nextRadiusMeters,
+      center: { lat: prevCenter.lat, lng: prevCenter.lng },
+      publishedAt,
+    };
+  }
+
+  const bearingToPrev = bearingDegrees(hiderPosition, prevCenter);
+  const safeHiderLimit = Math.max(
+    0.5,
+    Math.min(nextRadiusMeters - 0.5, distHiderToPrev - maxShiftFromPrev + 25)
+  );
+  const dMin = Math.max(0, distHiderToPrev - nestedMarginMeters);
+  const dMax = Math.min(
+    Math.max(dMin, safeHiderLimit),
+    distHiderToPrev + nestedMarginMeters,
+    nextRadiusMeters - 0.25
+  );
+
+  // Wähle zufälligen Punkt im zulässigen Segment + leichten seitlichen Winkel-Jitter, sofern er in der Linse bleibt
+  const baseDist =
+    dMax > dMin ? dMin + clampUnit(rng()) * (dMax - dMin) : dMin;
+
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const maxAngleJitter = attempt < 12 ? 18 * (1 - attempt / 12) : 0;
+    const jitter = (clampUnit(rng()) - 0.5) * 2 * maxAngleJitter;
+    const cand = destinationPoint(
+      hiderPosition,
+      baseDist,
+      (bearingToPrev + jitter + 360) % 360
+    );
+    if (
+      distanceMeters(hiderPosition, cand) <= nextRadiusMeters - 0.1 &&
+      distanceMeters(cand, prevCenter) <= maxShiftFromPrev - 0.05
+    ) {
+      return {
+        stage,
+        radiusMeters: nextRadiusMeters,
+        center: cand,
+        publishedAt,
+      };
+    }
+  }
+
+  // Exakter Punkt auf der Verbindungsstrecke H -> C_prev (garantiert beide Ungleichungen per Dreiecksungleichung)
+  const fallbackMaxFromPrev =
+    distHiderToPrev > previousCircle.radiusMeters - 0.5
+      ? maxShiftFromPrev
+      : nestedMarginMeters;
+  const exactDistFromPrev = Math.min(distHiderToPrev, fallbackMaxFromPrev);
+  const bearingFromPrevToHider = bearingDegrees(prevCenter, hiderPosition);
+  const exactCenter = destinationPoint(
+    prevCenter,
+    exactDistFromPrev,
+    bearingFromPrevToHider
+  );
+  return {
+    stage,
+    radiusMeters: nextRadiusMeters,
+    center: exactCenter,
     publishedAt,
   };
 }

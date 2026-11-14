@@ -13,9 +13,12 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import {
+  buildManhuntRadarSchedule,
   buildRadarScheduleForHidingMinutes,
   createDefaultPublicState,
   createDefaultTeams,
+  DEFAULT_MANHUNT_HIDING_MINUTES,
+  DEFAULT_MANHUNT_SHRINK_MINUTES,
   TEAM_PALETTE,
 } from '../../config/gameConfig';
 import { HardwareKnob } from '../Common/HardwareKnob';
@@ -28,6 +31,7 @@ import {
 import { generateRandomId, generateSessionSecrets } from '../../services/qrService';
 import type {
   ClueRecord,
+  GameMode,
   HiderLoginLock,
   HiderPrivateState,
   JoinRequest,
@@ -37,7 +41,11 @@ import type {
   PublicGameState,
   TeamPublic,
 } from '../../types/game';
-import { formatDurationClock, formatPenaltyMinutes } from '../../utils/formatting';
+import {
+  computeNetElapsedMs,
+  formatDurationClock,
+  formatPenaltyMinutes,
+} from '../../utils/formatting';
 
 export interface HostControlPanelProps {
   adapter: DatabaseAdapter;
@@ -70,10 +78,45 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   onNavigateToMap,
   onLeaveAndLockConsole,
 }) => {
-  const [hidingMinInput, setHidingMinInput] = useState(() => {
+  const selectedMode: GameMode =
+    publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC';
+  const isManhunt = selectedMode === 'MANHUNT';
+
+  const [classicHidingMin, setClassicHidingMin] = useState(() => {
+    if (publicState.gameMode === 'MANHUNT') return 20;
     const mins = Math.round(publicState.radarSchedule.hidingDurationMs / 60_000);
     return Math.min(55, Math.max(5, Math.round(mins / 5) * 5));
   });
+
+  const [manhuntHeadStartMin, setManhuntHeadStartMin] = useState(() => {
+    if (publicState.gameMode !== 'MANHUNT') return DEFAULT_MANHUNT_HIDING_MINUTES;
+    const mins = Math.round(publicState.radarSchedule.hidingDurationMs / 60_000);
+    return Math.min(30, Math.max(0, mins));
+  });
+
+  const [manhuntShrinkMin, setManhuntShrinkMin] = useState(() => {
+    const rawShrinkMs =
+      publicState.manhuntShrinkDurationMs ??
+      DEFAULT_MANHUNT_SHRINK_MINUTES * 60_000;
+    const mins = Math.round(rawShrinkMs / 60_000);
+    return Math.min(80, Math.max(10, Math.round(mins / 5) * 5));
+  });
+
+  const handleSelectGameMode = (nextMode: GameMode) => {
+    if (nextMode === selectedMode) return;
+    const nextSchedule =
+      nextMode === 'MANHUNT'
+        ? buildManhuntRadarSchedule(manhuntHeadStartMin, manhuntShrinkMin)
+        : buildRadarScheduleForHidingMinutes(classicHidingMin);
+    void adapter
+      .savePublicStateByHost({
+        ...publicState,
+        gameMode: nextMode,
+        manhuntShrinkDurationMs: manhuntShrinkMin * 60_000,
+        radarSchedule: nextSchedule,
+      })
+      .catch(() => {});
+  };
 
   const openRequests = Object.values(joinRequests).sort(
     (a, b) => a.requestedAt - b.requestedAt
@@ -123,52 +166,40 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       .filter((t) => t.memberPlayerIds.length > 0)
       .map((t) => t.id);
 
-    await adapter.resetRoundByHost(
-      {
-        ...publicState,
-        status: 'RUNNING',
-        currentPhase: 'HIDING',
-        gameStartTimestamp: now,
-        searchStartTimestamp: null,
-        pausedAt: null,
-        totalPausedMs: 0,
-        pausedBeforeSearchMs: 0,
-        anchorLocked: false,
-        radarCircle: null,
-        emergencyStopReason: null,
-        leashAlertActive: false,
-        activeTeamIds: occupiedTeamIds,
-        hiderLock: activeHiderLock,
-        radarSchedule: buildRadarScheduleForHidingMinutes(hidingMinInput),
-      },
-      nextTeams,
-      {
-        anchorPoint: null,
-        radarStages: [],
-        qrSecret: preservedQrSecret,
-        shortCode: preservedShortCode,
-      }
-    );
+    const activeSchedule = isManhunt
+      ? buildManhuntRadarSchedule(manhuntHeadStartMin, manhuntShrinkMin)
+      : buildRadarScheduleForHidingMinutes(classicHidingMin);
+    const immediateOpenSearch = activeSchedule.hidingDurationMs <= 0;
+
+    const nextPublicState: PublicGameState = {
+      ...publicState,
+      gameMode: selectedMode,
+      manhuntShrinkDurationMs: manhuntShrinkMin * 60_000,
+      status: 'RUNNING',
+      currentPhase: immediateOpenSearch ? 'OPEN_SEARCH' : 'HIDING',
+      gameStartTimestamp: now,
+      searchStartTimestamp: immediateOpenSearch ? now : null,
+      pausedAt: null,
+      totalPausedMs: 0,
+      pausedBeforeSearchMs: 0,
+      anchorLocked: false,
+      radarCircle: null,
+      emergencyStopReason: null,
+      leashAlertActive: false,
+      activeTeamIds: occupiedTeamIds,
+      hiderLock: activeHiderLock,
+      radarSchedule: activeSchedule,
+    };
+
+    await adapter.resetRoundByHost(nextPublicState, nextTeams, {
+      anchorPoint: null,
+      radarStages: [],
+      qrSecret: preservedQrSecret,
+      shortCode: preservedShortCode,
+      hiderLocations: {},
+    });
     if (activeHiderLock) {
-      await adapter
-        .savePublicStateByHost({
-          ...publicState,
-          status: 'RUNNING',
-          currentPhase: 'HIDING',
-          gameStartTimestamp: now,
-          searchStartTimestamp: null,
-          pausedAt: null,
-          totalPausedMs: 0,
-          pausedBeforeSearchMs: 0,
-          anchorLocked: false,
-          radarCircle: null,
-          emergencyStopReason: null,
-          leashAlertActive: false,
-          activeTeamIds: occupiedTeamIds,
-          hiderLock: activeHiderLock,
-          radarSchedule: buildRadarScheduleForHidingMinutes(hidingMinInput),
-        })
-        .catch(() => {});
+      await adapter.savePublicStateByHost(nextPublicState).catch(() => {});
     }
     onNavigateToMap();
   };
@@ -194,6 +225,27 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
 
   const handleForceStartOpenSearch = async () => {
     const now = adapter.getServerNow();
+    if (isManhunt) {
+      const currentNetMs = computeNetElapsedMs(publicState, now);
+      const shrinkDurationMs = manhuntShrinkMin * 60_000;
+      await adapter.savePublicStateByHost({
+        ...publicState,
+        currentPhase: 'OPEN_SEARCH',
+        searchStartTimestamp: publicState.searchStartTimestamp ?? now,
+        pausedBeforeSearchMs: publicState.totalPausedMs,
+        anchorLocked: false,
+        radarSchedule: {
+          hidingDurationMs: currentNetMs,
+          stage1Ms: currentNetMs + Math.round((shrinkDurationMs * 1) / 5),
+          stage2Ms: currentNetMs + Math.round((shrinkDurationMs * 2) / 5),
+          stage3Ms: currentNetMs + Math.round((shrinkDurationMs * 3) / 5),
+          stage4Ms: currentNetMs + Math.round((shrinkDurationMs * 4) / 5),
+          stage5Ms: currentNetMs + shrinkDurationMs,
+        },
+      });
+      return;
+    }
+
     await adapter.savePublicStateByHost({
       ...publicState,
       currentPhase: 'OPEN_SEARCH',
@@ -211,6 +263,11 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       publicState.playArea
     );
     resetPublic.allowTestClicks = publicState.allowTestClicks;
+    resetPublic.gameMode = selectedMode;
+    resetPublic.manhuntShrinkDurationMs = manhuntShrinkMin * 60_000;
+    resetPublic.radarSchedule = isManhunt
+      ? buildManhuntRadarSchedule(manhuntHeadStartMin, manhuntShrinkMin)
+      : buildRadarScheduleForHidingMinutes(classicHidingMin);
 
     const resetTeams = createDefaultTeams();
     for (const m of enabledMembers) {
@@ -226,6 +283,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       radarStages: [],
       qrSecret: secrets.qrSecret,
       shortCode: secrets.shortCode,
+      hiderLocations: {},
     });
   };
 
@@ -352,33 +410,155 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </section>
         )}
 
-        {/* 2. Rundenstart, Bereitschafts-Status, Pause & Reset */}
+        {/* 2. Rundenstart, Spielmodus, Bereitschafts-Status, Pause & Reset */}
         <section className="cmf-module p-4 sm:p-5 space-y-3.5">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
               Systemsteuerung
             </h3>
+            <span
+              className={`rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase ${
+                isManhunt ? 'cmf-badge-orange' : 'cmf-badge-teal'
+              }`}
+            >
+              MODUS // {isManhunt ? 'MANHUNT' : 'KLASSISCH'}
+            </span>
           </div>
 
-          <HardwareKnob
-            label="VERSTECKZEIT (STANDARD 20 MIN)"
-            ariaLabel="Versteckzeit in Minuten"
-            dataTestId="hiding-time-knob"
-            value={hidingMinInput}
-            min={5}
-            max={55}
-            step={5}
-            unit=" Min."
-            onChange={(nextMin) => {
-              setHidingMinInput(nextMin);
-              void adapter
-                .savePublicStateByHost({
-                  ...publicState,
-                  radarSchedule: buildRadarScheduleForHidingMinutes(nextMin),
-                })
-                .catch(() => {});
-            }}
-          />
+          {/* Spielmodus-Umschalter (Klassisch vs. Manhunt) */}
+          <div className="space-y-2">
+            <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+              Spielmodus wählen
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                data-testid="mode-select-classic"
+                disabled={
+                  publicState.status !== 'LOBBY' &&
+                  publicState.status !== 'FINISHED'
+                }
+                onClick={() => handleSelectGameMode('CLASSIC')}
+                className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
+                  !isManhunt
+                    ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
+                    : 'cmf-well opacity-80 hover:opacity-100'
+                } disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                <span className="font-dot text-xs font-bold uppercase">
+                  Klassisch (Sardinen)
+                </span>
+                <span className="text-[11px] leading-snug opacity-80">
+                  Festes Versteck (50 m) • Hinweis-Fragen • Endspiel-Radar
+                </span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="mode-select-manhunt"
+                disabled={
+                  publicState.status !== 'LOBBY' &&
+                  publicState.status !== 'FINISHED'
+                }
+                onClick={() => handleSelectGameMode('MANHUNT')}
+                className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
+                  isManhunt
+                    ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
+                    : 'cmf-well opacity-80 hover:opacity-100'
+                } disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                <span className="font-dot text-xs font-bold uppercase">
+                  Manhunt
+                </span>
+                <span className="text-[11px] leading-snug opacity-80">
+                  Verstecker in Bewegung • Sardinen-Rudel • Dynamische Schrumpf-Zone
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {!isManhunt ? (
+            <HardwareKnob
+              label="VERSTECKZEIT (STANDARD 20 MIN)"
+              ariaLabel="Versteckzeit in Minuten"
+              dataTestId="hiding-time-knob"
+              value={classicHidingMin}
+              min={5}
+              max={55}
+              step={5}
+              unit=" Min."
+              onChange={(nextMin) => {
+                setClassicHidingMin(nextMin);
+                void adapter
+                  .savePublicStateByHost({
+                    ...publicState,
+                    gameMode: 'CLASSIC',
+                    radarSchedule: buildRadarScheduleForHidingMinutes(nextMin),
+                  })
+                  .catch(() => {});
+              }}
+            />
+          ) : (
+            <div className="space-y-2.5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <HardwareKnob
+                  label="VORSPRUNG VERSTECKER (STD. 5 MIN)"
+                  ariaLabel="Vorsprung der Verstecker in Minuten"
+                  dataTestId="hiding-time-knob"
+                  value={manhuntHeadStartMin}
+                  min={0}
+                  max={30}
+                  step={1}
+                  unit=" Min."
+                  onChange={(nextHeadStart) => {
+                    setManhuntHeadStartMin(nextHeadStart);
+                    void adapter
+                      .savePublicStateByHost({
+                        ...publicState,
+                        gameMode: 'MANHUNT',
+                        manhuntShrinkDurationMs: manhuntShrinkMin * 60_000,
+                        radarSchedule: buildManhuntRadarSchedule(
+                          nextHeadStart,
+                          manhuntShrinkMin
+                        ),
+                      })
+                      .catch(() => {});
+                  }}
+                />
+
+                <HardwareKnob
+                  label="SCHRUMPFDAUER BIS 150M (STD. 30 MIN)"
+                  ariaLabel="Gesamtdauer bis zur kleinsten Zone in Minuten"
+                  dataTestId="manhunt-shrink-time-knob"
+                  value={manhuntShrinkMin}
+                  min={10}
+                  max={80}
+                  step={5}
+                  unit=" Min."
+                  onChange={(nextShrinkMin) => {
+                    setManhuntShrinkMin(nextShrinkMin);
+                    void adapter
+                      .savePublicStateByHost({
+                        ...publicState,
+                        gameMode: 'MANHUNT',
+                        manhuntShrinkDurationMs: nextShrinkMin * 60_000,
+                        radarSchedule: buildManhuntRadarSchedule(
+                          manhuntHeadStartMin,
+                          nextShrinkMin
+                        ),
+                      })
+                      .catch(() => {});
+                  }}
+                />
+              </div>
+
+              <div className="cmf-well px-3.5 py-2 text-center font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                5 SCHRUMPFSTUFEN (ALLE{' '}
+                {formatDurationClock(Math.round((manhuntShrinkMin * 60_000) / 5))}
+                ): 1200M → 800M → 500M → 300M → 150M
+              </div>
+            </div>
+          )}
 
           {/* OLED Status- & Bereitschafts-Anzeige */}
           <div className="cmf-oled flex flex-wrap items-center justify-between gap-3 p-3.5">
@@ -455,7 +635,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                     className="cmf-btn-primary font-dot inline-flex min-h-[48px] w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
                   >
                     <FastForward className="h-4 w-4" />
-                    Offene Suche sofort freigeben
+                    {isManhunt
+                      ? 'Jagd sofort freigeben'
+                      : 'Offene Suche sofort freigeben'}
                   </button>
                 )}
               </>
@@ -671,8 +853,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </div>
         </section>
 
-        {/* 4b. Gekaufte Tipps verwalten / Rückgängig machen */}
-        {(() => {
+        {/* 4b. Gekaufte Tipps verwalten / Rückgängig machen (nur im klassischen Modus) */}
+        {!isManhunt &&
+          (() => {
           const allRoundClues = Object.values(cluesByTeam)
             .flatMap((teamMap) => Object.values(teamMap ?? {}))
             .filter((c) => c.sessionId === publicState.sessionId)

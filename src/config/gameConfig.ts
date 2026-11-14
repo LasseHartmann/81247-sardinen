@@ -4,6 +4,7 @@ import type {
   PublicGameState,
   QuestionType,
   RadarSchedule,
+  RadarStageId,
   SafetyPoint,
   TeamPublic,
 } from '../types/game';
@@ -55,6 +56,17 @@ export const DEFAULT_RADAR_SCHEDULE: RadarSchedule = {
   stage5Ms: 55 * 60_000, // 55:00 -> 25m
 };
 
+export const DEFAULT_MANHUNT_HIDING_MINUTES = 5;
+export const DEFAULT_MANHUNT_SHRINK_MINUTES = 30;
+
+export const MANHUNT_RADAR_RADII: Record<RadarStageId, number> = {
+  1: 1200,
+  2: 800,
+  3: 500,
+  4: 300,
+  5: 150,
+};
+
 export function buildRadarScheduleForHidingMinutes(
   hidingMinutes: number
 ): RadarSchedule {
@@ -67,6 +79,30 @@ export function buildRadarScheduleForHidingMinutes(
     stage3Ms: hidingDurationMs + 25 * 60_000,
     stage4Ms: hidingDurationMs + 30 * 60_000,
     stage5Ms: hidingDurationMs + 35 * 60_000,
+  };
+}
+
+/**
+ * Erzeugt den Manhunt-Schrumpfplan:
+ * Nach `headStartMinutes` (0..30 Min.) startet die Jagd auf dem vollen 81247-Gebiet
+ * und schrumpft in 5 gleichmäßigen Schritten innerhalb von `totalShrinkMinutes` (10..80 Min.)
+ * auf die kleinste Zone (1200 m -> 800 m -> 500 m -> 300 m -> 150 m).
+ */
+export function buildManhuntRadarSchedule(
+  headStartMinutes: number,
+  totalShrinkMinutes = DEFAULT_MANHUNT_SHRINK_MINUTES
+): RadarSchedule {
+  const clampedHeadStart = Math.min(30, Math.max(0, Math.round(headStartMinutes)));
+  const clampedShrinkMin = Math.min(80, Math.max(10, Math.round(totalShrinkMinutes)));
+  const hidingDurationMs = clampedHeadStart * 60_000;
+  const shrinkDurationMs = clampedShrinkMin * 60_000;
+  return {
+    hidingDurationMs,
+    stage1Ms: hidingDurationMs + Math.round((shrinkDurationMs * 1) / 5),
+    stage2Ms: hidingDurationMs + Math.round((shrinkDurationMs * 2) / 5),
+    stage3Ms: hidingDurationMs + Math.round((shrinkDurationMs * 3) / 5),
+    stage4Ms: hidingDurationMs + Math.round((shrinkDurationMs * 4) / 5),
+    stage5Ms: hidingDurationMs + shrinkDurationMs,
   };
 }
 
@@ -170,6 +206,8 @@ export function createDefaultPublicState(
   return {
     status: 'LOBBY',
     currentPhase: 'LOBBY',
+    gameMode: 'CLASSIC',
+    manhuntShrinkDurationMs: DEFAULT_MANHUNT_SHRINK_MINUTES * 60_000,
     gameStartTimestamp: null,
     searchStartTimestamp: null,
     pausedAt: null,

@@ -2,12 +2,14 @@ import React from 'react';
 import { AlertOctagon } from 'lucide-react';
 import { LEASH_RADIUS_METERS } from '../../config/gameConfig';
 import type { LeashMonitorState } from '../../hooks/useGeolocation';
+import type { GameMode } from '../../types/game';
 
 export interface LeashWarningBannerProps {
   isOwnSideHider: boolean;
   leashState: LeashMonitorState;
   publicLeashAlertActive: boolean;
   isOutsidePlayArea?: boolean;
+  gameMode?: GameMode;
 }
 
 export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
@@ -15,7 +17,9 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
   leashState,
   publicLeashAlertActive,
   isOutsidePlayArea = false,
+  gameMode = 'CLASSIC',
 }) => {
+  const isManhunt = gameMode === 'MANHUNT';
   const showHiderLeashBanner = isOwnSideHider && leashState.warningActive;
   const showPublicLeashBanner = !isOwnSideHider && publicLeashAlertActive;
 
@@ -38,7 +42,7 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
         </div>
       )}
 
-      {/* 2. Signal-Orange Vollbreiten-Warnbanner für Verstecker beim Verlassen des 50m-Verstecks */}
+      {/* 2. Signal-Orange Vollbreiten-Warnbanner für Verstecker beim Verlassen des 50m-Verstecks bzw. der aktiven Zone */}
       {showHiderLeashBanner && (
         <div
           role="alert"
@@ -50,13 +54,19 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
               <AlertOctagon className="h-5 w-5 shrink-0 animate-pulse" />
               <div>
                 <p className="font-dot text-sm font-bold tracking-wider uppercase">
-                  ACHTUNG: Zurück ins {LEASH_RADIUS_METERS}m-Versteck!
+                  {isManhunt
+                    ? 'ACHTUNG: Zurück in die aktive Zone!'
+                    : `ACHTUNG: Zurück ins ${LEASH_RADIUS_METERS}m-Versteck!`}
                 </p>
                 <p className="font-tech text-[11px] text-white/90">
-                  ABWEICHUNG: ~{leashState.distanceFromAnchorMeters ?? `>${LEASH_RADIUS_METERS}`}M
+                  {isManhunt
+                    ? `AUSSERHALB: ~${leashState.distanceFromAnchorMeters ?? 1}M`
+                    : `ABWEICHUNG: ~${leashState.distanceFromAnchorMeters ?? `>${LEASH_RADIUS_METERS}`}M`}
                   {leashState.publicAlertTriggered
                     ? ' // ALLE TEAMS WURDEN INFORMIERT'
-                    : ' // SOFORT IN DEN RADIUS ZURÜCKKEHREN'}
+                    : isManhunt
+                      ? ' // SOFORT IN DEN AKTIVEN RING ZURÜCKKEHREN'
+                      : ' // SOFORT IN DEN RADIUS ZURÜCKKEHREN'}
                 </p>
               </div>
             </div>
@@ -76,7 +86,9 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
           role="status"
           className="cmf-alert-slide w-full border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-4 py-2 text-center font-tech text-[11px] font-bold tracking-wide text-[var(--cmf-orange)] uppercase"
         >
-          WARNUNG // Die Verstecker haben ihren {LEASH_RADIUS_METERS}m-Versteckradius vorübergehend verlassen!
+          {isManhunt
+            ? 'WARNUNG // Die Verstecker haben die aktive Zone vorübergehend verlassen!'
+            : `WARNUNG // Die Verstecker haben ihren ${LEASH_RADIUS_METERS}m-Versteckradius vorübergehend verlassen!`}
         </div>
       )}
     </div>

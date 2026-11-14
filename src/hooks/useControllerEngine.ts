@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   CONTROLLER_HEARTBEAT_INTERVAL_MS,
   CONTROLLER_LEASE_TTL_MS,
+  MANHUNT_RADAR_RADII,
   MEDIA_AUTO_EXPIRE_MS,
   MEDIA_REFUND_MS,
   MEDIA_RESPONSE_TIMEOUT_NET_MS,
@@ -13,8 +14,10 @@ import {
   type OsmEnvironmentData,
 } from '../geo/clueGeometry';
 import {
+  computeNextManhuntZoneCircle,
   generateInsideOutRadarStages,
   getDueRadarCircle,
+  getDueRadarStageId,
   getPhaseForElapsedMs,
 } from '../geo/radar';
 import type { DatabaseAdapter } from '../services/databaseAdapter';
@@ -32,6 +35,8 @@ import type {
   LeaderboardEntry,
   MemberRecord,
   PublicGameState,
+  RadarStageId,
+  RadarStageSecret,
   TeamLocation,
   TeamPublic,
 } from '../types/game';
@@ -52,9 +57,55 @@ export interface ControllerTickContext {
   requestsByTeam: Record<string, Record<string, ClueRequest>>;
   catchRequests: Record<string, CatchRequest>;
   fallbackHiderFix?: GeoFix | null;
+  rng?: () => number;
   osmFetcher?: (
     playArea: PublicGameState['playArea']['polygon']
   ) => Promise<OsmEnvironmentData>;
+}
+
+/**
+ * Ermittelt im Manhunt-Modus den aktuellen Live-Schwerpunkt aller Verstecker aus `hiderPrivate.hiderLocations`.
+ */
+export function resolveLiveManhuntHiderCentroid(params: {
+  hiderPrivate: HiderPrivateState;
+  fallbackHiderFix?: GeoFix | null;
+  publicState: PublicGameState;
+}): LatLng {
+  const { hiderPrivate, fallbackHiderFix, publicState } = params;
+  const fixes = Object.values(hiderPrivate.hiderLocations ?? {}).filter(
+    (f): f is GeoFix =>
+      Boolean(
+        f &&
+          typeof f.lat === 'number' &&
+          Number.isFinite(f.lat) &&
+          typeof f.lng === 'number' &&
+          Number.isFinite(f.lng)
+      )
+  );
+
+  if (fixes.length > 0) {
+    const sumLat = fixes.reduce((acc, f) => acc + f.lat, 0);
+    const sumLng = fixes.reduce((acc, f) => acc + f.lng, 0);
+    return {
+      lat: sumLat / fixes.length,
+      lng: sumLng / fixes.length,
+    };
+  }
+
+  if (fallbackHiderFix) {
+    return {
+      lat: fallbackHiderFix.lat,
+      lng: fallbackHiderFix.lng,
+    };
+  }
+
+  return snapPointIntoPlayArea(
+    {
+      lat: publicState.safetyPoint.lat,
+      lng: publicState.safetyPoint.lng,
+    },
+    publicState.playArea.polygon
+  );
 }
 
 /**
@@ -147,10 +198,12 @@ export async function executeControllerTick(
     requestsByTeam,
     catchRequests,
     fallbackHiderFix,
+    rng,
     osmFetcher = fetchOsmEnvironment81247,
   } = ctx;
 
   let hiderPrivate = ctx.hiderPrivate;
+  const isManhunt = (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT';
 
   if (
     publicState.status === 'LOBBY' ||
@@ -176,59 +229,167 @@ export async function executeControllerTick(
         ? publicState.currentPhase
         : rawDuePhase;
 
-    // Automatische Fixierung des Anchor Points ab 10:00, falls noch nicht manuell fixiert
-    if (duePhase !== 'HIDING' && !hiderPrivate.anchorPoint) {
-      const candidate: LatLng = fallbackHiderFix
-        ? { lat: fallbackHiderFix.lat, lng: fallbackHiderFix.lng }
-        : snapPointIntoPlayArea(
-            {
-              lat: publicState.safetyPoint.lat,
-              lng: publicState.safetyPoint.lng,
-            },
-            publicState.playArea.polygon
+    if (isManhunt) {
+      // Im Manhunt-Modus gibt es keinen statischen Anchor Point; jede fällige Schrumpfstufe wird
+      // live um die aktuelle Position der Verstecker berechnet und verschachtelt gespeichert.
+      const dueStageId = getDueRadarStageId(
+        netElapsedMs,
+        publicState.radarSchedule
+      );
+      if (dueStageId !== null) {
+        const stageMap = new Map<RadarStageId, RadarStageSecret>();
+        for (const s of hiderPrivate.radarStages ?? []) {
+          stageMap.set(s.stage, s);
+        }
+
+        const triggerMap: Record<RadarStageId, number> = {
+          1: publicState.radarSchedule.stage1Ms,
+          2: publicState.radarSchedule.stage2Ms,
+          3: publicState.radarSchedule.stage3Ms,
+          4: publicState.radarSchedule.stage4Ms,
+          5: publicState.radarSchedule.stage5Ms,
+        };
+
+        let mutatedStages = false;
+        const liveHiderPos = resolveLiveManhuntHiderCentroid({
+          hiderPrivate,
+          fallbackHiderFix,
+          publicState,
+        });
+
+        for (let st = 1; st <= dueStageId; st++) {
+          const stageId = st as RadarStageId;
+          if (!stageMap.has(stageId)) {
+            const prevSecret =
+              stageId > 1
+                ? (stageMap.get((stageId - 1) as RadarStageId) ?? null)
+                : null;
+            const prevCircle = prevSecret
+              ? {
+                  center: prevSecret.center,
+                  radiusMeters: prevSecret.radiusMeters,
+                }
+              : publicState.radarCircle &&
+                  publicState.radarCircle.stage < stageId
+                ? {
+                    center: publicState.radarCircle.center,
+                    radiusMeters: publicState.radarCircle.radiusMeters,
+                  }
+                : null;
+
+            const computed = computeNextManhuntZoneCircle({
+              hiderPosition: liveHiderPos,
+              stage: stageId,
+              nextRadiusMeters: MANHUNT_RADAR_RADII[stageId],
+              previousCircle: prevCircle,
+              playArea: publicState.playArea.polygon,
+              publishedAt: serverNowMs,
+              rng,
+            });
+
+            stageMap.set(stageId, {
+              stage: stageId,
+              radiusMeters: computed.radiusMeters,
+              center: computed.center,
+              triggerElapsedMs: triggerMap[stageId],
+            });
+            mutatedStages = true;
+          }
+        }
+
+        if (mutatedStages) {
+          const orderedStages = Array.from(stageMap.values()).sort(
+            (a, b) => a.stage - b.stage
           );
-      hiderPrivate = await lockHiderAnchorAndGenerateRadar({
-        adapter,
-        uid: controllerUid,
-        targetLocation: candidate,
-        accuracy: fallbackHiderFix?.accuracy ?? 15,
-        serverNowMs,
-        publicState,
-        currentHiderPrivate: hiderPrivate,
-        startSearchImmediately: false,
-      });
-    }
+          hiderPrivate = {
+            ...hiderPrivate,
+            radarStages: orderedStages,
+          };
+          await adapter.saveHiderPrivate(hiderPrivate);
+        }
+      }
 
-    const dueRadar = getDueRadarCircle(
-      netElapsedMs,
-      hiderPrivate.radarStages,
-      serverNowMs
-    );
+      const dueRadar = getDueRadarCircle(
+        netElapsedMs,
+        hiderPrivate.radarStages,
+        serverNowMs
+      );
+      const needsSearchStartInit =
+        duePhase !== 'HIDING' && publicState.searchStartTimestamp === null;
+      const needsPhaseUpdate = duePhase !== publicState.currentPhase;
+      const needsRadarUpdate =
+        dueRadar !== null &&
+        dueRadar.stage !== (publicState.radarCircle?.stage ?? null);
 
-    const needsSearchStartInit =
-      duePhase !== 'HIDING' && publicState.searchStartTimestamp === null;
-    const needsPhaseUpdate = duePhase !== publicState.currentPhase;
-    const needsRadarUpdate =
-      dueRadar !== null &&
-      dueRadar.stage !== (publicState.radarCircle?.stage ?? null);
+      if (needsSearchStartInit || needsPhaseUpdate || needsRadarUpdate) {
+        await adapter.patchControllerPublicTransition({
+          ...(needsPhaseUpdate ? { currentPhase: duePhase } : {}),
+          ...(needsSearchStartInit
+            ? {
+                searchStartTimestamp: serverNowMs,
+                pausedBeforeSearchMs: publicState.totalPausedMs,
+                anchorLocked: false,
+              }
+            : {}),
+          ...(needsRadarUpdate ? { radarCircle: dueRadar } : {}),
+        });
+      }
+    } else {
+      // Automatische Fixierung des Anchor Points ab Ende der Versteckzeit, falls noch nicht manuell fixiert
+      if (duePhase !== 'HIDING' && !hiderPrivate.anchorPoint) {
+        const candidate: LatLng = fallbackHiderFix
+          ? { lat: fallbackHiderFix.lat, lng: fallbackHiderFix.lng }
+          : snapPointIntoPlayArea(
+              {
+                lat: publicState.safetyPoint.lat,
+                lng: publicState.safetyPoint.lng,
+              },
+              publicState.playArea.polygon
+            );
+        hiderPrivate = await lockHiderAnchorAndGenerateRadar({
+          adapter,
+          uid: controllerUid,
+          targetLocation: candidate,
+          accuracy: fallbackHiderFix?.accuracy ?? 15,
+          serverNowMs,
+          publicState,
+          currentHiderPrivate: hiderPrivate,
+          startSearchImmediately: false,
+          rng,
+        });
+      }
 
-    if (needsSearchStartInit || needsPhaseUpdate || needsRadarUpdate) {
-      await adapter.patchControllerPublicTransition({
-        ...(needsPhaseUpdate ? { currentPhase: duePhase } : {}),
-        ...(needsSearchStartInit
-          ? {
-              searchStartTimestamp: serverNowMs,
-              pausedBeforeSearchMs: publicState.totalPausedMs,
-              anchorLocked: true,
-            }
-          : {}),
-        ...(needsRadarUpdate ? { radarCircle: dueRadar } : {}),
-      });
+      const dueRadar = getDueRadarCircle(
+        netElapsedMs,
+        hiderPrivate.radarStages,
+        serverNowMs
+      );
+
+      const needsSearchStartInit =
+        duePhase !== 'HIDING' && publicState.searchStartTimestamp === null;
+      const needsPhaseUpdate = duePhase !== publicState.currentPhase;
+      const needsRadarUpdate =
+        dueRadar !== null &&
+        dueRadar.stage !== (publicState.radarCircle?.stage ?? null);
+
+      if (needsSearchStartInit || needsPhaseUpdate || needsRadarUpdate) {
+        await adapter.patchControllerPublicTransition({
+          ...(needsPhaseUpdate ? { currentPhase: duePhase } : {}),
+          ...(needsSearchStartInit
+            ? {
+                searchStartTimestamp: serverNowMs,
+                pausedBeforeSearchMs: publicState.totalPausedMs,
+                anchorLocked: true,
+              }
+            : {}),
+          ...(needsRadarUpdate ? { radarCircle: dueRadar } : {}),
+        });
+      }
     }
   }
 
-  // 2. Hinweis-Anfragen verarbeiten (sofern Anchor Point vorhanden und nicht pausiert)
-  if (isRunningUnpaused && hiderPrivate.anchorPoint) {
+  // 2. Hinweis-Anfragen verarbeiten (nur im klassischen Modus, sofern Anchor Point vorhanden und nicht pausiert)
+  if (!isManhunt && isRunningUnpaused && hiderPrivate.anchorPoint) {
     const anchor = hiderPrivate.anchorPoint;
 
     for (const [teamId, teamReqs] of Object.entries(requestsByTeam)) {
@@ -347,6 +508,7 @@ export async function executeControllerTick(
   }
 
   // 3. Catch-Anfragen validieren
+  const caughtTeamIdsInThisTick = new Set<string>();
   for (const catchReq of Object.values(catchRequests)) {
     if (catchReq.status !== 'PENDING') continue;
 
@@ -386,6 +548,8 @@ export async function executeControllerTick(
       continue;
     }
 
+    caughtTeamIdsInThisTick.add(team.id);
+
     const searchStart =
       publicState.searchStartTimestamp ??
       publicState.gameStartTimestamp ??
@@ -423,7 +587,8 @@ export async function executeControllerTick(
     if (
       populatedTeams.length > 0 &&
       populatedTeams.every(
-        (t) => t.id === team.id || t.status === 'JOINED_SARDINES'
+        (t) =>
+          caughtTeamIdsInThisTick.has(t.id) || t.status === 'JOINED_SARDINES'
       )
     ) {
       await adapter.patchControllerPublicTransition({
@@ -716,7 +881,8 @@ export function useControllerEngine(params: UseControllerEngineParams): {
       teamLocations: cur.teamLocations,
       requestsByTeam: cur.requestsByTeam,
       catchRequests: cur.catchRequests,
-      fallbackHiderFix: cur.ownGeoFix,
+      fallbackHiderFix:
+        cur.ownMember.side === 'HIDER' ? cur.ownGeoFix : null,
     }).finally(() => {
       isBusyRef.current = false;
     });

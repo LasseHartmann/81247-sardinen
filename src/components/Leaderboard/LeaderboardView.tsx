@@ -1,6 +1,6 @@
 import React from 'react';
 import { Trophy, Clock, AlertCircle, Users } from 'lucide-react';
-import type { LeaderboardEntry, TeamPublic } from '../../types/game';
+import type { GameMode, LeaderboardEntry, TeamPublic } from '../../types/game';
 import {
   formatDurationClock,
   formatPenaltyMinutes,
@@ -11,13 +11,16 @@ export interface LeaderboardViewProps {
   leaderboard: Record<string, LeaderboardEntry>;
   teamsPublic: Record<string, TeamPublic>;
   activeTeamIds?: string[];
+  gameMode?: GameMode;
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   leaderboard,
   teamsPublic,
   activeTeamIds,
+  gameMode = 'CLASSIC',
 }) => {
+  const isManhunt = gameMode === 'MANHUNT';
   const activeSet = activeTeamIds ? new Set(activeTeamIds) : null;
   const ranked = sortLeaderboardEntries(
     Object.values(leaderboard).filter((e) => {
@@ -44,13 +47,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
           </div>
           <div>
             <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              TELEMETRIE // WERTUNG
+              TELEMETRIE // WERTUNG {isManhunt ? '// MANHUNT' : ''}
             </span>
             <h2 className="font-dot text-lg text-[var(--text-main)] sm:text-xl">
               Offizielle Rangliste — 81247
             </h2>
             <p className="text-xs text-[var(--text-muted)]">
-              Gesamtzeit = Netto-Suchzeit (ab 10:00) + gültige Hinweis-Strafzeiten
+              {isManhunt
+                ? 'Wertung nach Netto-Jagdzeit bis zum Fang der Verstecker'
+                : 'Gesamtzeit = Netto-Suchzeit + gültige Hinweis-Strafzeiten'}
             </p>
           </div>
         </div>
@@ -101,14 +106,16 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                           </span>
                         </div>
                         <span className="font-tech text-[11px] font-medium text-[var(--cmf-teal)] uppercase">
-                          BEI DEN SARDINEN // {entry.clueCount} HINWEISE
+                          {isManhunt
+                            ? 'BEIM SARDINEN-RUDEL'
+                            : `BEI DEN SARDINEN // ${entry.clueCount} HINWEISE`}
                         </span>
                       </div>
                     </div>
 
                     <div className="cmf-oled px-3.5 py-2 text-right">
                       <span className="font-tech block text-[9px] font-bold tracking-wider text-[#9AA4AE] uppercase">
-                        GESAMTZEIT
+                        {isManhunt ? 'FANGZEIT' : 'GESAMTZEIT'}
                       </span>
                       <span className="font-dot text-lg text-[#F8FAFC]">
                         {formatDurationClock(entry.totalTimeMs)}
@@ -116,38 +123,40 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-2 border-t cmf-divider pt-3 text-xs">
-                    <div className="cmf-well flex items-center justify-between px-3 py-1.5">
-                      <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
-                        <Clock className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                        Netto:
-                      </span>
-                      <strong className="font-tech text-[var(--text-main)]">
-                        {formatDurationClock(entry.searchTimeMs)}
-                      </strong>
-                    </div>
-                    <div className="cmf-well flex items-center justify-between px-3 py-1.5">
-                      <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
-                        <AlertCircle
-                          className={`h-3.5 w-3.5 ${
+                  {!isManhunt && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 border-t cmf-divider pt-3 text-xs">
+                      <div className="cmf-well flex items-center justify-between px-3 py-1.5">
+                        <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
+                          <Clock className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                          Netto:
+                        </span>
+                        <strong className="font-tech text-[var(--text-main)]">
+                          {formatDurationClock(entry.searchTimeMs)}
+                        </strong>
+                      </div>
+                      <div className="cmf-well flex items-center justify-between px-3 py-1.5">
+                        <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
+                          <AlertCircle
+                            className={`h-3.5 w-3.5 ${
+                              entry.penaltyMs < 0
+                                ? 'text-[var(--cmf-teal)]'
+                                : 'text-[var(--cmf-orange)]'
+                            }`}
+                          />
+                          {entry.penaltyMs < 0 ? 'Zeitbonus:' : 'Strafzeit:'}
+                        </span>
+                        <strong
+                          className={`font-tech ${
                             entry.penaltyMs < 0
                               ? 'text-[var(--cmf-teal)]'
                               : 'text-[var(--cmf-orange)]'
                           }`}
-                        />
-                        {entry.penaltyMs < 0 ? 'Zeitbonus:' : 'Strafzeit:'}
-                      </span>
-                      <strong
-                        className={`font-tech ${
-                          entry.penaltyMs < 0
-                            ? 'text-[var(--cmf-teal)]'
-                            : 'text-[var(--cmf-orange)]'
-                        }`}
-                      >
-                        {formatPenaltyMinutes(entry.penaltyMs)}
-                      </strong>
+                        >
+                          {formatPenaltyMinutes(entry.penaltyMs)}
+                        </strong>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -178,18 +187,20 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     [{team.memberPlayerIds.length} SPIELER]
                   </span>
                 </div>
-                <div className="flex items-center gap-2.5">
-                  <span className="font-tech text-[11px] text-[var(--text-muted)] uppercase">
-                    HINWEISE: <strong className="text-[var(--text-main)]">{team.clueCount}</strong>
-                  </span>
-                  <span
-                    className={`rounded-md px-2 py-0.5 text-[11px] font-bold uppercase ${
-                      team.penaltyMs > 0 ? 'cmf-badge-orange' : 'cmf-badge-teal'
-                    }`}
-                  >
-                    {formatPenaltyMinutes(team.penaltyMs)}
-                  </span>
-                </div>
+                {!isManhunt && (
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-tech text-[11px] text-[var(--text-muted)] uppercase">
+                      HINWEISE: <strong className="text-[var(--text-main)]">{team.clueCount}</strong>
+                    </span>
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-[11px] font-bold uppercase ${
+                        team.penaltyMs > 0 ? 'cmf-badge-orange' : 'cmf-badge-teal'
+                      }`}
+                    >
+                      {formatPenaltyMinutes(team.penaltyMs)}
+                    </span>
+                  </div>
+                )}
               </div>
             ))}
           </div>

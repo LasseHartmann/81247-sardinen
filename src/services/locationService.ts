@@ -4,7 +4,13 @@ import {
 } from '../config/gameConfig';
 import { distanceMeters, roundCoord5 } from '../geo/distance';
 import type { DatabaseAdapter } from './databaseAdapter';
-import type { GeoFix, LatLng, MemberRecord, TeamPublic } from '../types/game';
+import type {
+  GameMode,
+  GeoFix,
+  LatLng,
+  MemberRecord,
+  TeamPublic,
+} from '../types/game';
 
 export interface ThrottleDecision {
   shouldSend: boolean;
@@ -101,6 +107,70 @@ export class SeekerBeaconBroadcaster {
     this.lastSentAtMs = nowMs;
 
     await adapter.writeTeamMemberFixAveraged(team.id, member.playerId, member.uid, {
+      lat: decision.roundedLat,
+      lng: decision.roundedLng,
+      accuracy: Math.round(fix.accuracy),
+      timestamp: nowMs,
+    });
+    return true;
+  }
+}
+
+/**
+ * Synchronisiert im Manhunt-Modus gedrosselt (6s / 25m) die Live-Position der beweglichen
+ * Verstecker ausschließlich in `/state/hiderPrivate/hiderLocations/{uid}` (für aktive Sucher unlesbar!).
+ */
+export class HiderPrivateBroadcaster {
+  private lastSentPoint: LatLng | null = null;
+  private lastSentAtMs = 0;
+
+  reset(): void {
+    this.lastSentPoint = null;
+    this.lastSentAtMs = 0;
+  }
+
+  async maybePublishFix(params: {
+    adapter: DatabaseAdapter;
+    member: MemberRecord | null;
+    gameMode: GameMode;
+    gameActive: boolean;
+    fix: GeoFix | null;
+  }): Promise<boolean> {
+    const { adapter, member, gameMode, gameActive, fix } = params;
+
+    if (
+      gameMode !== 'MANHUNT' ||
+      !gameActive ||
+      !member ||
+      !member.enabled ||
+      member.side !== 'HIDER' ||
+      !fix
+    ) {
+      if (!gameActive || gameMode !== 'MANHUNT') {
+        this.reset();
+      }
+      return false;
+    }
+
+    const nowMs = adapter.getServerNow();
+    const decision = evaluateLocationThrottle({
+      nextFix: fix,
+      lastSentPoint: this.lastSentPoint,
+      lastSentAtMs: this.lastSentAtMs,
+      nowMs,
+    });
+
+    if (!decision.shouldSend) {
+      return false;
+    }
+
+    this.lastSentPoint = {
+      lat: decision.roundedLat,
+      lng: decision.roundedLng,
+    };
+    this.lastSentAtMs = nowMs;
+
+    await adapter.writeHiderLocationPrivate(member.uid, {
       lat: decision.roundedLat,
       lng: decision.roundedLng,
       accuracy: Math.round(fix.accuracy),

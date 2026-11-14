@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { buildManhuntRadarSchedule, MANHUNT_RADAR_RADII } from '../src/config/gameConfig';
 import { createDemoStore } from '../src/demo/demoStore';
+import { distanceMeters } from '../src/geo/distance';
 import {
   executeControllerTick,
   lockHiderAnchorAndGenerateRadar,
@@ -397,5 +399,167 @@ describe('Controller-Engine: Idempotenz, 120s-Netto-Timeout, Rückerstattung & C
 
     // Andere Teams suchen weiter (Spiel noch RUNNING)
     expect(after.state.public.status).toBe('RUNNING');
+  });
+
+  it('steuert den Manhunt-Lebenszyklus ohne Anker-Lock mit dynamischen Zonen-Schrumpfstufen (1200..150 m) bis zum Sardinen-Catch aller Teams', async () => {
+    const t0 = 1_700_500_000_000;
+    const demo = createDemoStore({ inMemoryOnly: true, initialNowMs: t0 });
+    const { adapter } = demo;
+    const s0 = demo.getSnapshot();
+
+    // Manhunt: 5 Min. Vorsprung, 25 Min. Schrumpfdauer (Stufen bei Netto 10, 15, 20, 25, 30 Min.)
+    const manhuntSchedule = buildManhuntRadarSchedule(5, 25);
+    await adapter.savePublicStateByHost({
+      ...s0.state.public,
+      gameMode: 'MANHUNT',
+      manhuntShrinkDurationMs: 25 * 60_000,
+      radarSchedule: manhuntSchedule,
+      status: 'RUNNING',
+      currentPhase: 'HIDING',
+      gameStartTimestamp: t0,
+      searchStartTimestamp: null,
+      anchorLocked: false,
+      radarCircle: null,
+    });
+
+    const runTickAt = async (nowMs: number) => {
+      const snap = demo.getSnapshot();
+      await executeControllerTick({
+        adapter,
+        controllerUid: 'demo_uid_lasse',
+        serverNowMs: nowMs,
+        publicState: snap.state.public,
+        hiderPrivate: snap.state.hiderPrivate,
+        teamsPublic: Object.fromEntries(
+          Object.entries(snap.teams).map(([k, v]) => [k, v.public])
+        ),
+        teamLocations: Object.fromEntries(
+          Object.entries(snap.teams).map(([k, v]) => [k, v.location])
+        ),
+        requestsByTeam: snap.requests,
+        catchRequests: snap.catchRequests,
+      });
+    };
+
+    // 1. Verstecker bewegen sich während des Vorsprungs frei
+    await adapter.writeHiderLocationPrivate('demo_uid_lasse', {
+      lat: 48.1645,
+      lng: 11.459,
+      accuracy: 7,
+      timestamp: t0 + 4 * 60_000,
+    });
+
+    // 2. Bei Netto 05:00 startet die Jagd OHNE statischen Anker-Lock!
+    await runTickAt(t0 + 5 * 60_000);
+    let snap = demo.getSnapshot();
+    expect(snap.state.public.currentPhase).toBe('OPEN_SEARCH');
+    expect(snap.state.public.searchStartTimestamp).toBe(t0 + 5 * 60_000);
+    expect(snap.state.public.anchorLocked).toBe(false);
+    expect(snap.state.hiderPrivate.anchorPoint).toBeNull();
+    expect(snap.state.public.radarCircle).toBeNull();
+
+    // 3. Verstecker laufen weiter durch Obermenzing; jede der 5 Stufen schrumpft live um ihre Position
+    const roamPath = [
+      { stage: 1 as const, min: 10, lat: 48.1662, lng: 11.4624 },
+      { stage: 2 as const, min: 15, lat: 48.1675, lng: 11.4642 },
+      { stage: 3 as const, min: 20, lat: 48.1681, lng: 11.4651 },
+      { stage: 4 as const, min: 25, lat: 48.1684, lng: 11.4655 },
+      { stage: 5 as const, min: 30, lat: 48.1685, lng: 11.4657 },
+    ];
+
+    let prevPublished = null;
+    for (const step of roamPath) {
+      const nowMs = t0 + step.min * 60_000;
+      await adapter.writeHiderLocationPrivate('demo_uid_lasse', {
+        lat: step.lat,
+        lng: step.lng,
+        accuracy: 6,
+        timestamp: nowMs - 2000,
+      });
+
+      // Falls Verstecker knapp außerhalb des bisherigen Kreises gewählt wären, ziehe Testpunkt in Kreis:
+      if (
+        prevPublished &&
+        distanceMeters({ lat: step.lat, lng: step.lng }, prevPublished.center) >
+          prevPublished.radiusMeters - 20
+      ) {
+        await adapter.writeHiderLocationPrivate('demo_uid_lasse', {
+          lat: prevPublished.center.lat,
+          lng: prevPublished.center.lng,
+          accuracy: 6,
+          timestamp: nowMs - 1000,
+        });
+      }
+
+      const hiderLive =
+        demo.getSnapshot().state.hiderPrivate.hiderLocations?.['demo_uid_lasse']!;
+
+      // Doppelter Tick prüft Idempotenz (kein Neu-Auswürfeln derselben Stufe!)
+      await runTickAt(nowMs);
+      const firstCircle = demo.getSnapshot().state.public.radarCircle;
+      await runTickAt(nowMs + 1500);
+      const secondCircle = demo.getSnapshot().state.public.radarCircle;
+
+      expect(firstCircle).not.toBeNull();
+      expect(secondCircle).toEqual(firstCircle);
+      expect(firstCircle!.stage).toBe(step.stage);
+      expect(firstCircle!.radiusMeters).toBe(MANHUNT_RADAR_RADII[step.stage]);
+      expect(distanceMeters(hiderLive, firstCircle!.center)).toBeLessThanOrEqual(
+        firstCircle!.radiusMeters + 0.1
+      );
+
+      if (prevPublished) {
+        expect(
+          distanceMeters(firstCircle!.center, prevPublished.center) +
+            firstCircle!.radiusMeters
+        ).toBeLessThanOrEqual(prevPublished.radiusMeters + 0.1);
+      }
+      prevPublished = firstCircle;
+    }
+
+    // 4. Sardinen-Mechanik: Alle aktiven Sucher-Teams scannen nacheinander den QR-Code -> FINISHED
+    snap = demo.getSnapshot();
+    const activeTeamIds = Object.values(snap.teams)
+      .filter(
+        (t) =>
+          t.public.memberPlayerIds.length > 0 && t.public.status === 'ACTIVE'
+      )
+      .map((t) => t.public.id);
+    expect(activeTeamIds.length).toBeGreaterThanOrEqual(2);
+
+    // Erstes Team findet das Rudel bei Minute 31 -> JOINED_SARDINES, Spiel läuft weiter
+    await adapter.submitCatchRequest({
+      id: 'mh_catch_1',
+      teamId: activeTeamIds[0],
+      submittedByUid: 'demo_uid_thomas',
+      sessionId: snap.state.public.sessionId,
+      codeOrSecret: snap.state.hiderPrivate.qrSecret,
+      status: 'PENDING',
+      createdAt: t0 + 31 * 60_000,
+    });
+    await runTickAt(t0 + 31 * 60_000);
+    expect(demo.getSnapshot().teams[activeTeamIds[0]].public.status).toBe(
+      'JOINED_SARDINES'
+    );
+    expect(demo.getSnapshot().state.public.status).toBe('RUNNING');
+    expect(demo.getSnapshot().leaderboard[activeTeamIds[0]].penaltyMs).toBe(0);
+    expect(demo.getSnapshot().leaderboard[activeTeamIds[0]].searchTimeMs).toBe(
+      26 * 60_000
+    );
+
+    // Restliche Teams schließen sich dem Sardinen-Rudel an -> Spiel endet automatisch auf FINISHED
+    for (let i = 1; i < activeTeamIds.length; i++) {
+      await adapter.submitCatchRequest({
+        id: `mh_catch_${i + 1}`,
+        teamId: activeTeamIds[i],
+        submittedByUid: `demo_uid_team_${i + 1}`,
+        sessionId: snap.state.public.sessionId,
+        codeOrSecret: snap.state.hiderPrivate.shortCode,
+        status: 'PENDING',
+        createdAt: t0 + (32 + i) * 60_000,
+      });
+    }
+    await runTickAt(t0 + 35 * 60_000);
+    expect(demo.getSnapshot().state.public.status).toBe('FINISHED');
   });
 });

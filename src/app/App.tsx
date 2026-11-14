@@ -166,6 +166,17 @@ export const App: React.FC = () => {
     setHiddenClueIds(new Set());
   }, [publicState?.sessionId]);
 
+  useEffect(() => {
+    if (publicState?.gameMode === 'MANHUNT') {
+      if (activeTab === 'QUESTIONS') {
+        setActiveTab('MAP');
+      }
+      if (activePreviewQuestion !== null) {
+        setActivePreviewQuestion(null);
+      }
+    }
+  }, [publicState?.gameMode, activeTab, activePreviewQuestion]);
+
   const [bootAdminModalOpen, setBootAdminModalOpen] = useState(false);
   const [bootAdminCode, setBootAdminCode] = useState('');
   const [bootAdminErr, setBootAdminErr] = useState<string | null>(null);
@@ -648,16 +659,20 @@ export const App: React.FC = () => {
     }
   };
 
+  const isManhunt = (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT';
+
   const effectivePhase =
     publicState.status === 'LOBBY' ? 'LOBBY' : timer.computedPhase;
 
   const canRehideWhileTimerActive =
+    !isManhunt &&
     publicState.status !== 'LOBBY' &&
     ownMember.side === 'HIDER' &&
     effectivePhase === 'HIDING' &&
     timer.hidingRemainingMs > 0;
 
   const showHiderAnchorPanel =
+    !isManhunt &&
     publicState.status !== 'LOBBY' &&
     ownMember.side === 'HIDER' &&
     (!hiderPrivate?.anchorPoint || (isRehidingAnchor && canRehideWhileTimerActive));
@@ -671,7 +686,7 @@ export const App: React.FC = () => {
   const showQuickSardineFab =
     publicState.status !== 'LOBBY' &&
     isSardineDashboardView &&
-    Boolean(hiderPrivate?.anchorPoint) &&
+    (isManhunt || Boolean(hiderPrivate?.anchorPoint)) &&
     !showHiderAnchorPanel;
 
   const hasMapBottomDock = Boolean(
@@ -732,12 +747,13 @@ export const App: React.FC = () => {
         onUnlockAdmin={handleUnlockAndEnterConsole}
       />
 
-      {/* 50-Meter-Versteck-Leash & Gebiets-Warnbanner */}
+      {/* 50-Meter-Versteck-Leash / Aktive-Zone & Gebiets-Warnbanner */}
       <LeashWarningBanner
         isOwnSideHider={ownMember.side === 'HIDER'}
         leashState={geo.leashState}
         publicLeashAlertActive={publicState.leashAlertActive}
         isOutsidePlayArea={isOutsidePlayArea}
+        gameMode={publicState.gameMode ?? 'CLASSIC'}
       />
 
       {/* Hauptbereich */}
@@ -762,17 +778,20 @@ export const App: React.FC = () => {
             }
             anchorGpsOrigin={geo.currentFix}
             isOwnSideHider={isSardineDashboardView}
-            anchorPoint={hiderPrivate?.anchorPoint ?? null}
-            showAnchorAndLeash={Boolean(
-              isSardineDashboardView || (!isActiveSeeker && ownMember.isHost)
-            )}
+            anchorPoint={isManhunt ? null : (hiderPrivate?.anchorPoint ?? null)}
+            showAnchorAndLeash={
+              !isManhunt &&
+              Boolean(
+                isSardineDashboardView || (!isActiveSeeker && ownMember.isHost)
+              )
+            }
             publishedRadar={publicState.radarCircle}
             visibleTeamLocations={visibleMapTeamLocations}
             teamsPublic={gameState.teamsPublic}
             activeTeamIds={activeRoundTeamIds}
-            clues={visibleMapClues}
+            clues={isManhunt ? [] : visibleMapClues}
             hiddenClueIds={hiddenClueIds}
-            activePreviewQuestion={activePreviewQuestion}
+            activePreviewQuestion={isManhunt ? null : activePreviewQuestion}
             coneBearingDeg={coneBearingDeg}
             selectedRadius={selectedRadius}
             thermoPointA={thermoPointA}
@@ -789,7 +808,8 @@ export const App: React.FC = () => {
           {/* Obere schlanke Status-Pills & Verstecker-Teamfilter auf der Karte */}
           {(canUseMapClicks ||
             isJoinedSardines ||
-            (isSardineDashboardView &&
+            (!isManhunt &&
+              isSardineDashboardView &&
               publicState.status !== 'LOBBY' &&
               roundSeekerTeamsForFilter.length > 0)) && (
             <div className="pointer-events-none absolute top-2.5 right-2.5 left-2.5 z-[400] flex flex-col gap-1.5">
@@ -832,13 +852,18 @@ export const App: React.FC = () => {
                   {isJoinedSardines && (
                     <div className="cmf-oled pointer-events-auto inline-flex items-center gap-2 px-3 py-1.5 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
                       <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
-                      <span>Verstecker-Team // HQ & QR aktiv</span>
+                      <span>
+                        {isManhunt
+                          ? 'Sardinen-Rudel // Mitlaufen & QR aktiv'
+                          : 'Verstecker-Team // HQ & QR aktiv'}
+                      </span>
                     </div>
                   )}
                 </div>
               )}
 
-              {isSardineDashboardView &&
+              {!isManhunt &&
+                isSardineDashboardView &&
                 publicState.status !== 'LOBBY' &&
                 roundSeekerTeamsForFilter.length > 0 && (
                   <div
@@ -1050,10 +1075,14 @@ export const App: React.FC = () => {
                       </div>
                       <div className="min-w-0 text-left">
                         <span className="block truncate font-industrial text-sm text-[var(--text-main)]">
-                          Sardinen verstecken sich ...
+                          {isManhunt
+                            ? 'Verstecker laufen sich frei ...'
+                            : 'Sardinen verstecken sich ...'}
                         </span>
                         <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
-                          Verteilt euch in 81247!
+                          {isManhunt
+                            ? 'Macht euch bereit für die Jagd!'
+                            : 'Verteilt euch in 81247!'}
                         </span>
                       </div>
                     </div>
@@ -1074,8 +1103,9 @@ export const App: React.FC = () => {
                   Keine Verstecker-Bewegungen sichtbar. Ziehe diese Karte nach unten, um das 81247-Gebiet frei zu erkunden!
                 </p>
                 <p className="mt-2 font-tech text-[10px] tracking-wider text-[var(--text-muted)] uppercase">
-                  OFFENE SUCHE & HINWEISE STARTEN BEI{' '}
-                  {formatDurationClock(publicState.radarSchedule.hidingDurationMs)}
+                  {isManhunt
+                    ? `JAGD & SCHRUMPF-ZONE STARTEN BEI ${formatDurationClock(publicState.radarSchedule.hidingDurationMs)}`
+                    : `OFFENE SUCHE & HINWEISE STARTEN BEI ${formatDurationClock(publicState.radarSchedule.hidingDurationMs)}`}
                 </p>
               </PhysicsBottomSheet>
             )}
@@ -1230,39 +1260,54 @@ export const App: React.FC = () => {
 
             {/* 5. Schnellzugriff „Versteck neu wählen“ & „Sardinen-QR-Code zeigen“ */}
             {showQuickSardineFab && (
-              <div className="cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg items-center justify-end gap-2">
-                {canRehideWhileTimerActive && (
-                  <button
-                    type="button"
-                    data-testid="rehide-anchor-btn"
-                    onClick={() => {
-                      setAnchorFeedbackError(null);
-                      setIsRehidingAnchor(true);
-                      setHiderAnchorCollapsed(false);
-                    }}
-                    className="cmf-btn-active font-tech inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-bold uppercase shadow-lg"
-                  >
-                    <RotateCcw className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
-                    <span>Neu verstecken</span>
-                  </button>
+              <div className="cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg items-center justify-between gap-2">
+                {isManhunt ? (
+                  <div className="cmf-oled flex min-h-[48px] items-center gap-2 px-3.5 py-2 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--cmf-orange)]" />
+                    <span>
+                      {publicState.radarCircle
+                        ? `AKTIVE ZONE: ${publicState.radarCircle.radiusMeters} M`
+                        : 'MANHUNT // FREI IN 81247'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="hidden sm:block" />
                 )}
 
-                <button
-                  type="button"
-                  data-testid="quick-show-sardinen-qr-btn"
-                  onClick={() => setActiveTab('QR')}
-                  className="cmf-btn-primary font-dot inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold shadow-lg"
-                >
-                  <QrCode className="h-4 w-4 shrink-0" />
-                  <span>QR-Code zeigen</span>
-                </button>
+                <div className="flex flex-1 sm:flex-initial items-center justify-end gap-2">
+                  {canRehideWhileTimerActive && (
+                    <button
+                      type="button"
+                      data-testid="rehide-anchor-btn"
+                      onClick={() => {
+                        setAnchorFeedbackError(null);
+                        setIsRehidingAnchor(true);
+                        setHiderAnchorCollapsed(false);
+                      }}
+                      className="cmf-btn-active font-tech inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-bold uppercase shadow-lg"
+                    >
+                      <RotateCcw className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+                      <span>Neu verstecken</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    data-testid="quick-show-sardinen-qr-btn"
+                    onClick={() => setActiveTab('QR')}
+                    className="cmf-btn-primary font-dot inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold shadow-lg"
+                  >
+                    <QrCode className="h-4 w-4 shrink-0" />
+                    <span>QR-Code zeigen</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
 
         {/* TAB 2: HINWEIS-MENÜ & VERLAUF */}
-        {activeTab === 'QUESTIONS' && (
+        {!isManhunt && activeTab === 'QUESTIONS' && (
           <QuestionMenu
             adapter={adapter}
             publicState={publicState}
@@ -1327,6 +1372,7 @@ export const App: React.FC = () => {
             leaderboard={gameState.leaderboard}
             teamsPublic={gameState.teamsPublic}
             activeTeamIds={activeRoundTeamIds}
+            gameMode={publicState.gameMode ?? 'CLASSIC'}
           />
         )}
 
@@ -1353,8 +1399,8 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* Schwebendes Antwortfenster für offene Kategorie-4-Fotoanfragen (für alle Mitglieder der Verstecker-Gruppe) */}
-      {isSardineDashboardView && (
+      {/* Schwebendes Antwortfenster für offene Kategorie-4-Fotoanfragen (nur im klassischen Modus) */}
+      {!isManhunt && isSardineDashboardView && (
         <HiderMediaResponseModal
           adapter={adapter}
           openRequests={openHiderMediaRequests}
@@ -1372,8 +1418,9 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         showHostTab={showHostTab}
+        hideQuestionsTab={isManhunt}
         hasActiveEmergency={hasActiveEmergency}
-        pendingQuestionsBadgeCount={openHiderMediaRequests.length}
+        pendingQuestionsBadgeCount={isManhunt ? 0 : openHiderMediaRequests.length}
         joinRequestsBadgeCount={Object.keys(gameState.joinRequests).length}
       />
     </div>

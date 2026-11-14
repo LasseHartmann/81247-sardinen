@@ -1,7 +1,22 @@
 import * as turf from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
+import { DEFAULT_PLAY_AREA_FEATURE } from '../config/gameConfig';
 import type { LatLng } from '../types/game';
 import { distanceMeters } from './distance';
+
+/**
+ * Prüft, ob ein Punkt innerhalb oder auf dem Rand des offiziellen 81247-Gebiets liegt.
+ */
+export function isPointInOfficial81247(pt: LatLng): boolean {
+  return isPointInPlayArea(pt, DEFAULT_PLAY_AREA_FEATURE);
+}
+
+/**
+ * Zieht einen Punkt bei Bedarf in das offizielle 81247-Gebiet hinein.
+ */
+export function snapPointIntoOfficial81247(pt: LatLng): LatLng {
+  return snapPointIntoPlayArea(pt, DEFAULT_PLAY_AREA_FEATURE);
+}
 
 /**
  * Prüft, ob ein Punkt innerhalb oder auf dem Rand des bestätigten Spielpolygons liegt.

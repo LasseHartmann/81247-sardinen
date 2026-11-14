@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Anchor,
   CheckCircle2,
@@ -20,6 +20,14 @@ import {
 import {
   ANCHOR_ACCURACY_WARNING_METERS,
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
+  buildCustomCirclePlayAreaState,
+  clampPlayAreaCircleRadius,
+  DEFAULT_PLAY_AREA_CIRCLE_CENTER,
+  DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS,
+  DEFAULT_PLAY_AREA_FEATURE,
+  PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
+  PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
+  PLAY_AREA_CIRCLE_STEP_METERS,
   TEAM_PALETTE,
   THERMOMETER_MIN_DISTANCE_METERS,
 } from '../config/gameConfig';
@@ -30,7 +38,9 @@ import {
   isOverviewMember,
 } from '../config/players';
 import {
+  isPointInOfficial81247,
   isPointInPlayArea,
+  snapPointIntoOfficial81247,
   validateManualAnchorSelection,
 } from '../geo/boundary';
 import { destinationPoint, distanceMeters } from '../geo/distance';
@@ -58,6 +68,7 @@ import type {
 } from '../types/game';
 import { formatDurationClock, getQuestionLabelDe } from '../utils/formatting';
 import { EmergencyMessageBanner } from '../components/Common/EmergencyMessageBanner';
+import { HardwareKnob } from '../components/Common/HardwareKnob';
 import { PhysicsBottomSheet } from '../components/Common/PhysicsBottomSheet';
 import { StatusBanners } from '../components/Common/StatusBanners';
 import { LeashWarningBanner } from '../components/HUD/LeashWarningBanner';
@@ -169,6 +180,18 @@ export const App: React.FC = () => {
   const [seekerHidingMinimized, setSeekerHidingMinimized] = useState(true);
   const [hiderAnchorCollapsed, setHiderAnchorCollapsed] = useState(true);
   const [hiderFilterTeamId, setHiderFilterTeamId] = useState<string>('NONE');
+  const [circlePickError, setCirclePickError] = useState<string | null>(null);
+  const [circleEditorCollapsed, setCircleEditorCollapsed] = useState(false);
+
+  const latestPublicStateRef = useRef(publicState);
+  latestPublicStateRef.current = publicState;
+
+  useEffect(() => {
+    if (activeTab !== 'MAP' && mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE') {
+      setMapClickMode({ kind: 'NONE' });
+      setCirclePickError(null);
+    }
+  }, [activeTab, mapClickMode.kind]);
 
   useEffect(() => {
     setHiderFilterTeamId('NONE');
@@ -547,7 +570,50 @@ export const App: React.FC = () => {
           )
       : [];
 
+  const currentCircleCenter =
+    publicState.playArea.circle?.center ?? DEFAULT_PLAY_AREA_CIRCLE_CENTER;
+  const currentCircleRadius = clampPlayAreaCircleRadius(
+    publicState.playArea.circle?.radiusMeters ??
+      DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
+  );
+
+  const updateCirclePlayArea = async (
+    nextCenter: LatLng,
+    nextRadiusMeters: number
+  ) => {
+    const latestPublic = latestPublicStateRef.current;
+    if (!ownMember.isHost || !latestPublic) return;
+    const snappedCenter = snapPointIntoOfficial81247(nextCenter);
+    await adapter
+      .savePublicStateByHost({
+        ...latestPublic,
+        playArea: buildCustomCirclePlayAreaState({
+          center: snappedCenter,
+          radiusMeters: nextRadiusMeters,
+          confirmedByUid: ownMember.uid,
+          nowMs: adapter.getServerNow(),
+        }),
+      })
+      .catch(() => {});
+  };
+
   const handleMapCoordinateClick = (pt: LatLng) => {
+    if (mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE') {
+      if (!ownMember.isHost) return;
+      if (!isPointInOfficial81247(pt)) {
+        setCirclePickError(
+          'Der Kreismittelpunkt muss innerhalb von 81247 liegen!'
+        );
+        return;
+      }
+      setCirclePickError(null);
+      const latestRadius = clampPlayAreaCircleRadius(
+        latestPublicStateRef.current?.playArea.circle?.radiusMeters ??
+          DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
+      );
+      void updateCirclePlayArea(pt, latestRadius);
+      return;
+    }
     if (mapClickMode.kind === 'PICK_ANCHOR_POINT') {
       const check = validateManualAnchorSelection({
         candidate: pt,
@@ -738,26 +804,33 @@ export const App: React.FC = () => {
     effectivePhase === 'HIDING' &&
     timer.hidingRemainingMs > 0;
 
+  const isEditingCircleOnMap =
+    mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE' && Boolean(ownMember.isHost);
+
   const showHiderAnchorPanel =
+    !isEditingCircleOnMap &&
     !isManhunt &&
     publicState.status !== 'LOBBY' &&
     ownMember.side === 'HIDER' &&
     (!hiderPrivate?.anchorPoint || (isRehidingAnchor && canRehideWhileTimerActive));
 
   const showSeekerHidingCard =
+    !isEditingCircleOnMap &&
     publicState.status !== 'LOBBY' &&
     effectivePhase === 'HIDING' &&
     ownMember.side === 'SEEKER' &&
     !isJoinedSardines;
 
   const showQuickSardineFab =
+    !isEditingCircleOnMap &&
     publicState.status !== 'LOBBY' &&
     isSardineDashboardView &&
     (isManhunt || Boolean(hiderPrivate?.anchorPoint)) &&
     !showHiderAnchorPanel;
 
   const hasMapBottomDock = Boolean(
-    publicState.status === 'LOBBY' ||
+    isEditingCircleOnMap ||
+      publicState.status === 'LOBBY' ||
       activePreviewQuestion ||
       showSeekerHidingCard ||
       showHiderAnchorPanel ||
@@ -834,6 +907,25 @@ export const App: React.FC = () => {
           <GameMap
             playArea={publicState.playArea.polygon}
             playAreaConfirmed={publicState.playArea.confirmed}
+            official81247Boundary={DEFAULT_PLAY_AREA_FEATURE}
+            circlePlayAreaCenter={currentCircleCenter}
+            onChangeCirclePlayAreaCenter={(pt) => {
+              if (!ownMember.isHost) return;
+              const inside = isPointInOfficial81247(pt);
+              setCirclePickError(
+                inside
+                  ? null
+                  : 'An die 81247-Grenze angepasst (Mittelpunkt bleibt in 81247).'
+              );
+              const latestRadius = clampPlayAreaCircleRadius(
+                latestPublicStateRef.current?.playArea.circle?.radiusMeters ??
+                  DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
+              );
+              void updateCirclePlayArea(
+                snapPointIntoOfficial81247(pt),
+                latestRadius
+              );
+            }}
             ownFix={
               isOverviewAccount && !canUseMapClicks
                 ? null
@@ -1240,8 +1332,120 @@ export const App: React.FC = () => {
               </div>
             )}
 
+            {/* 1b. Admin Kreis-Spielfeld-Editor direkt auf der Karte (inkl. 100m-Knob) */}
+            {isEditingCircleOnMap && (
+              <PhysicsBottomSheet
+                collapsed={circleEditorCollapsed}
+                onCollapsedChange={setCircleEditorCollapsed}
+                allowBodyDrag={false}
+                maxWidthClass="max-w-lg"
+                bodyClassName="p-3.5 pt-2.5 sm:p-4 sm:pt-3 space-y-3"
+                header={
+                  <div
+                    data-testid="map-circle-playarea-editor"
+                    className="flex w-full items-center justify-between gap-2"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Crosshair className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+                      <div className="min-w-0 text-left">
+                        <span className="block truncate font-industrial text-sm text-[var(--text-main)]">
+                          Kreis-Spielfeld in 81247
+                        </span>
+                        <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
+                          Tippe in 81247 oder ziehe Pin M
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className="cmf-oled px-2.5 py-1 font-dot text-xs text-[var(--cmf-amber)]">
+                        {currentCircleRadius} M
+                      </span>
+                      <button
+                        type="button"
+                        data-testid="finish-circle-map-picker-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCirclePickError(null);
+                          setMapClickMode({ kind: 'NONE' });
+                        }}
+                        className="cmf-btn-primary font-dot min-h-[34px] px-3 py-1 text-[11px] font-bold"
+                      >
+                        Fertig
+                      </button>
+                      {circleEditorCollapsed ? (
+                        <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
+                      )}
+                    </div>
+                  </div>
+                }
+              >
+                {circlePickError && (
+                  <div className="cmf-badge-orange cmf-shake rounded-xl p-2.5 text-xs font-semibold">
+                    {circlePickError}
+                  </div>
+                )}
+
+                <HardwareKnob
+                  label="KREIS-RADIUS (100M SCHRITTE)"
+                  ariaLabel="Kreis-Radius auf der Karte in 100m Schritten"
+                  dataTestId="map-circle-radius-knob"
+                  value={currentCircleRadius}
+                  min={PLAY_AREA_CIRCLE_MIN_RADIUS_METERS}
+                  max={PLAY_AREA_CIRCLE_MAX_RADIUS_METERS}
+                  step={PLAY_AREA_CIRCLE_STEP_METERS}
+                  unit=" m"
+                  onChange={(nextRadius) => {
+                    const latestCenter =
+                      latestPublicStateRef.current?.playArea.circle?.center ??
+                      currentCircleCenter;
+                    void updateCirclePlayArea(latestCenter, nextRadius);
+                  }}
+                />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={
+                      !geo.currentFix || !isPointInOfficial81247(geo.currentFix)
+                    }
+                    onClick={() => {
+                      if (!geo.currentFix) return;
+                      if (!isPointInOfficial81247(geo.currentFix)) {
+                        setCirclePickError(
+                          'Dein GPS liegt aktuell außerhalb von 81247.'
+                        );
+                        return;
+                      }
+                      setCirclePickError(null);
+                      void updateCirclePlayArea(
+                        { lat: geo.currentFix.lat, lng: geo.currentFix.lng },
+                        currentCircleRadius
+                      );
+                    }}
+                    className="cmf-btn-secondary font-tech min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase disabled:opacity-40"
+                  >
+                    Mitte = Mein GPS
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCirclePickError(null);
+                      setMapClickMode({ kind: 'NONE' });
+                      setActiveTab('HOST');
+                    }}
+                    className="cmf-btn-secondary font-tech min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase"
+                  >
+                    Zurück zur Konsole
+                  </button>
+                </div>
+              </PhysicsBottomSheet>
+            )}
+
             {/* 2. Einklappbares Lobby-Bottom-Sheet in der Daumenzone */}
-            {publicState.status === 'LOBBY' && (
+            {publicState.status === 'LOBBY' && !isEditingCircleOnMap && (
               <LobbyStatusCard
                 publicState={publicState}
                 ownMember={ownMember}
@@ -1638,6 +1842,23 @@ export const App: React.FC = () => {
             cluesByTeam={gameState.cluesByTeam}
             requestsByTeam={gameState.requestsByTeam}
             onNavigateToMap={() => setActiveTab('MAP')}
+            onOpenCircleMapEditor={() => {
+              if (publicState.playArea.shapeType !== 'CUSTOM_CIRCLE') {
+                void updateCirclePlayArea(
+                  currentCircleCenter,
+                  currentCircleRadius
+                );
+              }
+              setCirclePickError(null);
+              setCircleEditorCollapsed(false);
+              setActivePreviewQuestion(null);
+              setMapClickMode({
+                kind: 'PICK_PLAY_AREA_CIRCLE',
+                label:
+                  'Tippe innerhalb von 81247 oder ziehe Pin M, um den Kreis zu platzieren',
+              });
+              setActiveTab('MAP');
+            }}
             onLeaveAndLockConsole={() => {
               setActiveTab('MAP');
               void lockAdminConsole();

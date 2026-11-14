@@ -1,6 +1,9 @@
 import type { Feature, Polygon } from 'geojson';
+import * as turf from '@turf/turf';
 import defaultPlayAreaJson from './playArea.geojson';
 import type {
+  LatLng,
+  PlayAreaState,
   PublicGameState,
   QuestionType,
   RadarSchedule,
@@ -22,10 +25,87 @@ export const LEGACY_PLACEHOLDER_AREA_NAME =
 export const DEFAULT_PLAY_AREA_FEATURE =
   defaultPlayAreaJson as unknown as Feature<Polygon>;
 
+export const PLAY_AREA_CIRCLE_MIN_RADIUS_METERS = 100;
+export const PLAY_AREA_CIRCLE_MAX_RADIUS_METERS = 2500;
+export const PLAY_AREA_CIRCLE_STEP_METERS = 100;
+export const DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS = 800;
+export const DEFAULT_PLAY_AREA_CIRCLE_CENTER: LatLng = {
+  lat: MAP_DEFAULT_CENTER[0],
+  lng: MAP_DEFAULT_CENTER[1],
+};
+
+export function clampPlayAreaCircleRadius(radiusMeters: number): number {
+  const safe = Number.isFinite(radiusMeters)
+    ? radiusMeters
+    : DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS;
+  const stepped =
+    Math.round(safe / PLAY_AREA_CIRCLE_STEP_METERS) *
+    PLAY_AREA_CIRCLE_STEP_METERS;
+  return Math.min(
+    PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
+    Math.max(PLAY_AREA_CIRCLE_MIN_RADIUS_METERS, stepped)
+  );
+}
+
+export function buildCirclePlayAreaPolygon(
+  center: LatLng,
+  radiusMeters: number
+): Feature<Polygon> {
+  const clampedRadius = clampPlayAreaCircleRadius(radiusMeters);
+  return turf.circle([center.lng, center.lat], clampedRadius, {
+    steps: 72,
+    units: 'meters',
+    properties: {
+      name: `81247 Kreis-Spielfeld (${clampedRadius} m)`,
+    },
+  });
+}
+
+export function buildOfficial81247PlayAreaState(
+  confirmedByUid = 'osm_official_81247',
+  nowMs = Date.now()
+): PlayAreaState {
+  return {
+    polygon: structuredClone(DEFAULT_PLAY_AREA_FEATURE),
+    confirmed: true,
+    confirmedAt: nowMs,
+    confirmedByUid,
+    name: OFFICIAL_81247_AREA_NAME,
+    shapeType: 'OFFICIAL_81247',
+    circle: null,
+  };
+}
+
+export function buildCustomCirclePlayAreaState(params: {
+  center: LatLng;
+  radiusMeters: number;
+  confirmedByUid: string;
+  nowMs?: number;
+}): PlayAreaState {
+  const clampedRadius = clampPlayAreaCircleRadius(params.radiusMeters);
+  const roundedCenter: LatLng = {
+    lat: Math.round(params.center.lat * 100_000) / 100_000,
+    lng: Math.round(params.center.lng * 100_000) / 100_000,
+  };
+  return {
+    polygon: buildCirclePlayAreaPolygon(roundedCenter, clampedRadius),
+    confirmed: true,
+    confirmedAt: params.nowMs ?? Date.now(),
+    confirmedByUid: params.confirmedByUid,
+    name: `Kreis-Spielfeld in 81247 (${clampedRadius} m)`,
+    shapeType: 'CUSTOM_CIRCLE',
+    circle: {
+      center: roundedCenter,
+      radiusMeters: clampedRadius,
+    },
+  };
+}
+
 export function isLegacyPlaceholderPlayArea(
   playArea: PublicGameState['playArea'] | null | undefined
 ): boolean {
   if (!playArea || !playArea.polygon) return true;
+  if (playArea.shapeType === 'CUSTOM_CIRCLE') return false;
   if (playArea.name === LEGACY_PLACEHOLDER_AREA_NAME) return true;
   const ringLen = playArea.polygon.geometry?.coordinates?.[0]?.length ?? 0;
   // Altes Platzhalter-Polygon aus der Erstinitialisierung hatte nur 9 Eckpunkte (10 Ring-Koordinaten)

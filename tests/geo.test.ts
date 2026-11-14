@@ -3,8 +3,15 @@ import type { Feature, Polygon } from 'geojson';
 import { describe, expect, it } from 'vitest';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
+  buildCustomCirclePlayAreaState,
+  buildOfficial81247PlayAreaState,
+  clampPlayAreaCircleRadius,
+  createDefaultPublicState,
   DEFAULT_PLAY_AREA_FEATURE,
+  isLegacyPlaceholderPlayArea,
   LEASH_RADIUS_METERS,
+  PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
+  PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
 } from '../src/config/gameConfig';
 import {
   FALLBACK_GREEN_POLYGONS_81247,
@@ -16,8 +23,10 @@ import {
 import {
   buildPolygonFromVertices,
   extractPolygonVertices,
+  isPointInOfficial81247,
   isPointInPlayArea,
   isValidPlayAreaPolygon,
+  snapPointIntoOfficial81247,
   validateManualAnchorSelection,
 } from '../src/geo/boundary';
 import {
@@ -458,5 +467,59 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
       maxDistanceMeters: ANCHOR_MANUAL_ADJUST_MAX_METERS,
     });
     expect(outsideZone.valid).toBe(false);
+  });
+
+  it('erstellt ein gültiges Kreis-Spielfeld in 100m-Schritten innerhalb von 81247 und behält es über Runden-Resets bei', () => {
+    expect(clampPlayAreaCircleRadius(25)).toBe(PLAY_AREA_CIRCLE_MIN_RADIUS_METERS);
+    expect(clampPlayAreaCircleRadius(100)).toBe(100);
+    expect(clampPlayAreaCircleRadius(549)).toBe(500);
+    expect(clampPlayAreaCircleRadius(550)).toBe(600);
+    expect(clampPlayAreaCircleRadius(9999)).toBe(PLAY_AREA_CIRCLE_MAX_RADIUS_METERS);
+
+    const blutenburg = { lat: 48.1632, lng: 11.4572 };
+    expect(isPointInOfficial81247(blutenburg)).toBe(true);
+
+    const farOutside = { lat: 48.1, lng: 11.4 };
+    expect(isPointInOfficial81247(farOutside)).toBe(false);
+    const snapped = snapPointIntoOfficial81247(farOutside);
+    expect(isPointInOfficial81247(snapped)).toBe(true);
+
+    const circlePlayArea = buildCustomCirclePlayAreaState({
+      center: blutenburg,
+      radiusMeters: 400,
+      confirmedByUid: 'host-uid',
+      nowMs: 123456,
+    });
+
+    expect(circlePlayArea.shapeType).toBe('CUSTOM_CIRCLE');
+    expect(circlePlayArea.circle?.radiusMeters).toBe(400);
+    expect(isValidPlayAreaPolygon(circlePlayArea.polygon).valid).toBe(true);
+    expect(isLegacyPlaceholderPlayArea(circlePlayArea)).toBe(false);
+
+    // Mittelpunkt und 350m entfernter Punkt liegen im Kreis, 460m entfernter Punkt außerhalb
+    expect(isPointInPlayArea(blutenburg, circlePlayArea.polygon)).toBe(true);
+    expect(
+      isPointInPlayArea(
+        destinationPoint(blutenburg, 350, 90),
+        circlePlayArea.polygon
+      )
+    ).toBe(true);
+    expect(
+      isPointInPlayArea(
+        destinationPoint(blutenburg, 460, 90),
+        circlePlayArea.polygon
+      )
+    ).toBe(false);
+
+    // Runden-Reset übernimmt das Kreis-Spielfeld unverändert
+    const resetPub = createDefaultPublicState('session-test', circlePlayArea);
+    expect(resetPub.playArea.shapeType).toBe('CUSTOM_CIRCLE');
+    expect(resetPub.playArea.circle?.radiusMeters).toBe(400);
+
+    // Wechsel zurück auf offizielles 81247-Gebiet
+    const officialArea = buildOfficial81247PlayAreaState('host-uid', 200000);
+    expect(officialArea.shapeType).toBe('OFFICIAL_81247');
+    expect(officialArea.circle).toBeNull();
+    expect(isValidPlayAreaPolygon(officialArea.polygon).valid).toBe(true);
   });
 });

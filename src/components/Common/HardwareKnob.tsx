@@ -270,8 +270,20 @@ export const HardwareKnob: React.FC<HardwareKnobProps> = ({
       !wrapAround && (!options || options.length === 0) && step > 0
         ? Math.round((max - min) / step)
         : 0;
-    const count = wrapAround ? 36 : stepSpanCount === 10 ? 31 : 29;
-    const majorEvery = wrapAround ? 9 : stepSpanCount === 10 ? 3 : 7;
+    const count = wrapAround
+      ? 36
+      : stepSpanCount === 10
+        ? 31
+        : stepSpanCount === 24
+          ? 25
+          : 29;
+    const majorEvery = wrapAround
+      ? 9
+      : stepSpanCount === 10
+        ? 3
+        : stepSpanCount === 24
+          ? 6
+          : 7;
 
     const list: Array<{
       deg: number;

@@ -184,12 +184,21 @@ export interface PublishedRadarCircle {
   lastPing?: ManhuntPingInfo | null;
 }
 
+export type PlayAreaShapeType = 'OFFICIAL_81247' | 'CUSTOM_CIRCLE';
+
+export interface PlayAreaCircleConfig {
+  center: LatLng;
+  radiusMeters: number;
+}
+
 export interface PlayAreaState {
   polygon: Feature<Polygon>;
   confirmed: boolean;
   confirmedAt: number | null;
   confirmedByUid: string | null;
   name: string;
+  shapeType?: PlayAreaShapeType;
+  circle?: PlayAreaCircleConfig | null;
 }
 
 export interface SafetyPoint {

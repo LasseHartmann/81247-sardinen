@@ -12,22 +12,32 @@ import {
   Lock,
   CheckCircle2,
   Clock,
+  Crosshair,
 } from 'lucide-react';
 import {
+  buildCustomCirclePlayAreaState,
   buildManhuntRadarSchedule,
   buildManhuntRadarScheduleForHidingMs,
+  buildOfficial81247PlayAreaState,
   buildRadarScheduleForHidingMinutes,
   buildRadarScheduleForHidingMs,
+  clampPlayAreaCircleRadius,
   createDefaultPublicState,
   createDefaultTeams,
   DEFAULT_CLASSIC_HIDING_MINUTES,
   DEFAULT_CLASSIC_SEARCH_MINUTES,
   DEFAULT_MANHUNT_HIDING_MINUTES,
   DEFAULT_MANHUNT_SHRINK_MINUTES,
+  DEFAULT_PLAY_AREA_CIRCLE_CENTER,
+  DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS,
   getManhuntPingStatusAtElapsedMs,
   getQuestionPenaltyMs,
+  PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
+  PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
+  PLAY_AREA_CIRCLE_STEP_METERS,
   TEAM_PALETTE,
 } from '../../config/gameConfig';
+import { snapPointIntoOfficial81247 } from '../../geo/boundary';
 import { getDueRadarCircle, getPhaseForElapsedMs } from '../../geo/radar';
 import {
   lockHiderAnchorAndGenerateRadar,
@@ -76,6 +86,7 @@ export interface HostControlPanelProps {
   cluesByTeam?: Record<string, Record<string, ClueRecord>>;
   requestsByTeam?: Record<string, Record<string, ClueRequest>>;
   onNavigateToMap: () => void;
+  onOpenCircleMapEditor?: () => void;
   onLeaveAndLockConsole?: () => void;
 }
 
@@ -93,8 +104,43 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   cluesByTeam = {},
   requestsByTeam = {},
   onNavigateToMap,
+  onOpenCircleMapEditor,
   onLeaveAndLockConsole,
 }) => {
+  const isCirclePlayArea = publicState.playArea.shapeType === 'CUSTOM_CIRCLE';
+  const circleCenter =
+    publicState.playArea.circle?.center ?? DEFAULT_PLAY_AREA_CIRCLE_CENTER;
+  const circleRadiusMeters = clampPlayAreaCircleRadius(
+    publicState.playArea.circle?.radiusMeters ??
+      DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
+  );
+
+  const handleSelectOfficial81247Area = () => {
+    void adapter
+      .savePublicStateByHost({
+        ...publicState,
+        playArea: buildOfficial81247PlayAreaState(
+          ownMember.uid,
+          adapter.getServerNow()
+        ),
+      })
+      .catch(() => {});
+  };
+
+  const handleSelectOrResizeCircleArea = (nextRadiusMeters: number) => {
+    const snappedCenter = snapPointIntoOfficial81247(circleCenter);
+    void adapter
+      .savePublicStateByHost({
+        ...publicState,
+        playArea: buildCustomCirclePlayAreaState({
+          center: snappedCenter,
+          radiusMeters: nextRadiusMeters,
+          confirmedByUid: ownMember.uid,
+          nowMs: adapter.getServerNow(),
+        }),
+      })
+      .catch(() => {});
+  };
   const [selectedMode, setSelectedMode] = useState<GameMode>(() =>
     publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC'
   );
@@ -1101,6 +1147,126 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               Runde zurücksetzen
             </button>
           </div>
+        </section>
+
+        {/* 2b. Spielfeld / Kartengebiet (Ganzes 81247 oder frei platzierbarer Kreis mit 100m-Knob) */}
+        <section className="cmf-module p-4 sm:p-5 space-y-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
+            <div>
+              <h3 className="font-industrial text-base text-[var(--text-main)]">
+                Spielfeld / Kartengebiet
+              </h3>
+              <p className="text-xs text-[var(--text-muted)]">
+                Wechsle zwischen der kompletten 81247-Grenze und einem frei innerhalb von 81247 platzierbaren Kreis.
+              </p>
+            </div>
+            <span
+              className={`rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase ${
+                isCirclePlayArea ? 'cmf-badge-orange' : 'cmf-badge-teal'
+              }`}
+            >
+              {isCirclePlayArea
+                ? `KREIS // R=${circleRadiusMeters}M`
+                : 'GANZES 81247'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              data-testid="playarea-mode-81247"
+              onClick={handleSelectOfficial81247Area}
+              className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
+                !isCirclePlayArea
+                  ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
+                  : 'cmf-well opacity-80 hover:opacity-100'
+              }`}
+            >
+              <span className="font-dot text-xs font-bold uppercase">
+                Ganzes 81247-Gebiet
+              </span>
+              <span className="text-[11px] leading-snug opacity-80">
+                Offizielle PLZ-Grenze Obermenzing / Blutenburg / Pipping
+              </span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="playarea-mode-circle"
+              onClick={() => handleSelectOrResizeCircleArea(circleRadiusMeters)}
+              className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
+                isCirclePlayArea
+                  ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
+                  : 'cmf-well opacity-80 hover:opacity-100'
+              }`}
+            >
+              <span className="font-dot text-xs font-bold uppercase">
+                Kreis in 81247
+              </span>
+              <span className="text-[11px] leading-snug opacity-80">
+                Überall innerhalb von 81247 platzierbar • Größe in 100m-Schritten
+              </span>
+            </button>
+          </div>
+
+          {isCirclePlayArea && (
+            <div className="space-y-3 pt-1">
+              <div className="grid gap-3 sm:grid-cols-2 items-stretch">
+                <HardwareKnob
+                  label="KREIS-RADIUS (100M SCHRITTE)"
+                  ariaLabel="Kreis-Radius in Metern (100m Schritte)"
+                  dataTestId="playarea-circle-radius-knob"
+                  value={circleRadiusMeters}
+                  min={PLAY_AREA_CIRCLE_MIN_RADIUS_METERS}
+                  max={PLAY_AREA_CIRCLE_MAX_RADIUS_METERS}
+                  step={PLAY_AREA_CIRCLE_STEP_METERS}
+                  unit=" m"
+                  onChange={(nextRadius) =>
+                    handleSelectOrResizeCircleArea(nextRadius)
+                  }
+                />
+
+                <div className="cmf-well flex flex-col justify-between gap-3 p-3.5">
+                  <div className="space-y-1.5">
+                    <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                      AKTIVER KREIS IN 81247
+                    </span>
+                    <div className="cmf-oled flex items-center justify-between gap-2 px-3 py-2">
+                      <span className="font-dot text-base text-[#F8FAFC]">
+                        R = {circleRadiusMeters} M
+                      </span>
+                      <span className="font-tech text-[11px] font-bold text-[var(--cmf-amber)] uppercase">
+                        Ø {circleRadiusMeters * 2} M
+                      </span>
+                    </div>
+                    <p className="font-tech text-[11px] text-[var(--text-muted)]">
+                      MITTE: [{circleCenter.lat.toFixed(5)},{' '}
+                      {circleCenter.lng.toFixed(5)}]
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Tippe auf den Button unten, um den Mittelpunkt direkt auf der 81247-Karte anzutippen oder per Pin [M] zu ziehen.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    data-testid="open-circle-map-picker-btn"
+                    onClick={() => {
+                      if (onOpenCircleMapEditor) {
+                        onOpenCircleMapEditor();
+                      } else {
+                        onNavigateToMap();
+                      }
+                    }}
+                    className="cmf-btn-primary font-dot inline-flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
+                  >
+                    <Crosshair className="h-4 w-4 shrink-0" />
+                    <span>Kreis auf Karte platzieren / verschieben</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* 3. Indoor-Testmodus Schalter */}

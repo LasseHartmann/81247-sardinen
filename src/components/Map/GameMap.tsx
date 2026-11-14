@@ -44,13 +44,17 @@ export interface MapClickInteractionMode {
     | 'TEST_LOCATION'
     | 'PICK_ANCHOR_POINT'
     | 'PICK_THERMO_A'
-    | 'PICK_THERMO_B';
+    | 'PICK_THERMO_B'
+    | 'PICK_PLAY_AREA_CIRCLE';
   label?: string;
 }
 
 export interface GameMapProps {
   playArea: Feature<Polygon>;
   playAreaConfirmed: boolean;
+  official81247Boundary?: Feature<Polygon> | null;
+  circlePlayAreaCenter?: LatLng | null;
+  onChangeCirclePlayAreaCenter?: (pt: LatLng) => void;
   ownFix: GeoFix | null;
   anchorGpsOrigin?: LatLng | null;
   isOwnSideHider: boolean;
@@ -86,6 +90,9 @@ export interface GameMapProps {
 
 const GameMapInner: React.FC<GameMapProps> = ({
   playArea,
+  official81247Boundary = null,
+  circlePlayAreaCenter = null,
+  onChangeCirclePlayAreaCenter,
   ownFix,
   anchorGpsOrigin = null,
   isOwnSideHider,
@@ -147,6 +154,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
   onThermoARef.current = onChangeThermoPointA;
   const onThermoBRef = useRef(onChangeThermoPointB);
   onThermoBRef.current = onChangeThermoPointB;
+  const onCircleCenterRef = useRef(onChangeCirclePlayAreaCenter);
+  onCircleCenterRef.current = onChangeCirclePlayAreaCenter;
 
   const cluesSignature = clues.map((c) => c.id).join('|');
   const hiddenSignature = Array.from(hiddenClueIds).sort().join('|');
@@ -310,7 +319,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
 
   const hasFittedInitialBoundsRef = useRef(false);
 
-  // Initialer Kartenausschnitt auf das 81247-Gebiet
+  // Initialer Kartenausschnitt auf das 81247-Gebiet / Spielgebiet
   useEffect(() => {
     const map = mapRef.current;
     if (!map || hasFittedInitialBoundsRef.current) return;
@@ -318,9 +327,32 @@ const GameMapInner: React.FC<GameMapProps> = ({
     const bounds = tempPoly.getBounds();
     if (bounds.isValid()) {
       hasFittedInitialBoundsRef.current = true;
-      map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
+      map.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 });
     }
   }, [playArea]);
+
+  const prevClickKindRef = useRef(clickMode.kind);
+  useEffect(() => {
+    const prevKind = prevClickKindRef.current;
+    prevClickKindRef.current = clickMode.kind;
+    if (
+      clickMode.kind === 'PICK_PLAY_AREA_CIRCLE' &&
+      prevKind !== 'PICK_PLAY_AREA_CIRCLE'
+    ) {
+      const map = mapRef.current;
+      const refBoundary = official81247Boundary ?? playArea;
+      if (map && refBoundary) {
+        const bounds = L.geoJSON(refBoundary).getBounds();
+        if (bounds.isValid()) {
+          map.flyToBounds(bounds, {
+            padding: [28, 28],
+            maxZoom: 14,
+            duration: 0.4,
+          });
+        }
+      }
+    }
+  }, [clickMode.kind, official81247Boundary, playArea]);
 
   // 1. Einheitlicher möglicher Versteckbereich:
   //    - Nur die Grenze des noch möglichen Versteckbereichs wird gezeichnet.
@@ -492,6 +524,41 @@ const GameMapInner: React.FC<GameMapProps> = ({
         interactive: false,
       }).addTo(group);
     }
+
+    if (clickMode.kind === 'PICK_PLAY_AREA_CIRCLE') {
+      if (official81247Boundary) {
+        L.geoJSON(official81247Boundary, {
+          style: {
+            renderer,
+            color: '#00A896',
+            weight: 2.5,
+            dashArray: '7 5',
+            fillColor: '#00A896',
+            fillOpacity: 0.04,
+          },
+          interactive: false,
+        }).addTo(group);
+      }
+
+      if (circlePlayAreaCenter) {
+        const markerCenter = L.marker(
+          [circlePlayAreaCenter.lat, circlePlayAreaCenter.lng],
+          {
+            icon: createSelectionPinIcon('M', 'primary'),
+            draggable: Boolean(onCircleCenterRef.current),
+          }
+        )
+          .bindTooltip(
+            'KREIS-MITTELPUNKT [M] — Ziehen oder innerhalb von 81247 antippen'
+          )
+          .addTo(group);
+
+        markerCenter.on('dragend', () => {
+          const pos = markerCenter.getLatLng();
+          onCircleCenterRef.current?.({ lat: pos.lat, lng: pos.lng });
+        });
+      }
+    }
   }, [
     liveConePreview,
     activePreviewQuestion,
@@ -501,6 +568,9 @@ const GameMapInner: React.FC<GameMapProps> = ({
     thermoPointB,
     anchorPickLat,
     anchorPickLng,
+    clickMode.kind,
+    official81247Boundary,
+    circlePlayAreaCenter,
   ]);
 
   // 3. Eigene Position, autorisierte Team-Beacons sowie Hider-Anchor (in-place aktualisiert ohne Flackern!)
@@ -812,7 +882,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
     const tempPoly = L.geoJSON(playArea);
     const bounds = tempPoly.getBounds();
     if (bounds.isValid()) {
-      map.flyToBounds(bounds, { padding: [24, 24], maxZoom: 15, duration: 0.45 });
+      map.flyToBounds(bounds, { padding: [24, 24], maxZoom: 16, duration: 0.45 });
     }
   }, [playArea]);
 
@@ -910,6 +980,7 @@ export const GameMap = React.memo(GameMapInner, (prev, next) => {
   if (
     prev.playArea !== next.playArea ||
     prev.playAreaConfirmed !== next.playAreaConfirmed ||
+    prev.official81247Boundary !== next.official81247Boundary ||
     prev.isOwnSideHider !== next.isOwnSideHider ||
     prev.showAnchorAndLeash !== next.showAnchorAndLeash ||
     prev.activePreviewQuestion !== next.activePreviewQuestion ||
@@ -925,6 +996,10 @@ export const GameMap = React.memo(GameMapInner, (prev, next) => {
     prev.clickMode.kind !== next.clickMode.kind ||
     prev.clickMode.label !== next.clickMode.label
   ) {
+    return false;
+  }
+
+  if (!sameLatLng(prev.circlePlayAreaCenter, next.circlePlayAreaCenter)) {
     return false;
   }
 

@@ -109,6 +109,9 @@
             "gameMode": {
               ".validate": "!newData.exists() || newData.val() === 'CLASSIC' || newData.val() === 'MANHUNT'"
             },
+            "classicSearchDurationMs": {
+              ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 60000)"
+            },
             "manhuntShrinkDurationMs": {
               ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 60000)"
             }

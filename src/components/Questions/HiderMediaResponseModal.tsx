@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Camera, ChevronDown, ChevronUp, Users, XCircle, Clock } from 'lucide-react';
-import { MEDIA_RESPONSE_TIMEOUT_NET_MS } from '../../config/gameConfig';
+import {
+  getMediaRefundMs,
+  MEDIA_RESPONSE_TIMEOUT_NET_MS,
+} from '../../config/gameConfig';
 import {
   refundAndCompensateMediaRequest,
   submitHiderMediaResponse,
@@ -54,6 +57,11 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
   const req = openRequests[0];
   const team = teamsPublic[req.teamId];
   const isSelfie = req.questionType === 'MEDIA_SELFIE';
+  const refundMs =
+    req.penaltyMs > 0
+      ? req.penaltyMs * 2
+      : getMediaRefundMs(publicState.classicSearchDurationMs);
+  const refundMin = Math.round(refundMs / 60_000);
   const deadlineNet =
     req.mediaDeadlineNetElapsedMs ??
     (req.netElapsedAtRequestMs ?? netElapsedMs) + MEDIA_RESPONSE_TIMEOUT_NET_MS;
@@ -162,7 +170,7 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
         )}
 
         <p className="mt-2 font-tech text-[10px] text-[var(--text-muted)] uppercase">
-          5 Min. Zeit — sonst kriegt das Team -10 Min. + Gratis-Donut-Ring.
+          5 Min. Zeit — sonst kriegt das Team -{refundMin} Min. + Gratis-Donut-Ring.
         </p>
 
         {errorMsg && (
@@ -196,7 +204,7 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
             className="cmf-btn-secondary font-tech inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase"
           >
             <XCircle className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-            Ablehnen (-10 Min. für Sucher)
+            Ablehnen (-{refundMin} Min. für Sucher)
           </button>
         </div>
       </PhysicsBottomSheet>

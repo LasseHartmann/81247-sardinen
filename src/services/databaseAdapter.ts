@@ -497,6 +497,7 @@ export function extractRoundStartMeta(
   gameStartTimestamp: number;
   activeTeamIds: string[];
   gameMode?: PublicGameState['gameMode'];
+  classicSearchDurationMs?: number;
   manhuntShrinkDurationMs?: number;
   radarSchedule?: PublicGameState['radarSchedule'];
 } | null {
@@ -507,6 +508,7 @@ export function extractRoundStartMeta(
     gameStartTimestamp: number;
     activeTeamIds: string[];
     gameMode?: PublicGameState['gameMode'];
+    classicSearchDurationMs?: number;
     manhuntShrinkDurationMs?: number;
     radarSchedule?: PublicGameState['radarSchedule'];
   } | null = null;
@@ -526,6 +528,10 @@ export function extractRoundStartMeta(
             ? meta.activeTeamIds
             : TEAM_PALETTE.map((t) => t.id),
           gameMode: meta.gameMode === 'MANHUNT' ? 'MANHUNT' : meta.gameMode === 'CLASSIC' ? 'CLASSIC' : undefined,
+          classicSearchDurationMs:
+            typeof meta.classicSearchDurationMs === 'number'
+              ? meta.classicSearchDurationMs
+              : undefined,
           manhuntShrinkDurationMs:
             typeof meta.manhuntShrinkDurationMs === 'number'
               ? meta.manhuntShrinkDurationMs
@@ -977,6 +983,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           cb({
             ...val,
             gameMode: val.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
+            classicSearchDurationMs: val.classicSearchDurationMs,
             manhuntShrinkDurationMs: val.manhuntShrinkDurationMs,
             status: val.status === 'EMERGENCY_STOP' ? 'LOBBY' : val.status,
             playArea: upgradedPlayArea,
@@ -1293,7 +1300,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     async undoClueByHost(teamId, clue): Promise<void> {
       const appliedNetPenaltyMs =
         clue.refundedMs && clue.refundedMs > 0
-          ? 5 * 60_000 - clue.refundedMs
+          ? Math.round(clue.refundedMs / 2) - clue.refundedMs
           : clue.penaltyMs || 0;
 
       await remove(ref(db, `${ROOT_PATH}/clues/${teamId}/${clue.id}`));
@@ -1733,6 +1740,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           gameStartTimestamp: nowMs,
           activeTeamIds: occupiedTeamIds,
           gameMode: publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
+          classicSearchDurationMs: publicState.classicSearchDurationMs,
           manhuntShrinkDurationMs: publicState.manhuntShrinkDurationMs,
           radarSchedule: publicState.radarSchedule,
         })
@@ -1748,6 +1756,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           status: 'RUNNING',
           currentPhase: initialPhase,
           gameMode: publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
+          classicSearchDurationMs: publicState.classicSearchDurationMs ?? null,
           manhuntShrinkDurationMs: publicState.manhuntShrinkDurationMs ?? null,
           radarSchedule: stripUndefinedDeep(publicState.radarSchedule),
           gameStartTimestamp: nowMs,

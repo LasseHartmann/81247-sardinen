@@ -173,6 +173,9 @@ export function useGameState(
             fallbackMeta.gameMode === 'MANHUNT'
               ? 'MANHUNT'
               : 'CLASSIC',
+          classicSearchDurationMs:
+            fallbackMeta.classicSearchDurationMs ??
+            rawPublicState.classicSearchDurationMs,
           manhuntShrinkDurationMs:
             fallbackMeta.manhuntShrinkDurationMs ??
             rawPublicState.manhuntShrinkDurationMs,

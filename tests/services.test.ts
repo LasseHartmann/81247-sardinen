@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRadarScheduleForHidingMinutes,
+  CLASSIC_SEARCH_DURATION_STEPS_MINUTES,
+  DEFAULT_CLASSIC_SEARCH_MINUTES,
   DEFAULT_PLAY_AREA_FEATURE,
   DEFAULT_RADAR_SCHEDULE,
+  getMediaRefundMs,
   getQuestionPenaltyMs,
   isLegacyPlaceholderPlayArea,
   LEGACY_PLACEHOLDER_AREA_NAME,
@@ -108,7 +111,10 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     }
   });
 
-  it('berechnet die neuen Hinweis-Preise (Himmelsrichtung 15m, Thermometer 10m, Radar 15m, Foto 5m)', async () => {
+  it('berechnet die neuen Hinweis-Preise (Himmelsrichtung 15m, Thermometer 10m, Radar 15m, Foto 5m) und skaliert Radar-Stufen sowie Preise über die 5 Spielzeit-Stufen (30/45/60/75/90 Min.)', async () => {
+    expect(CLASSIC_SEARCH_DURATION_STEPS_MINUTES).toEqual([30, 45, 60, 75, 90]);
+    expect(DEFAULT_CLASSIC_SEARCH_MINUTES).toBe(45);
+
     expect(getQuestionPenaltyMs('SPLIT_NS')).toBe(15 * 60_000);
     expect(getQuestionPenaltyMs('SPLIT_EW')).toBe(15 * 60_000);
     expect(getQuestionPenaltyMs('THERMOMETER')).toBe(10 * 60_000);
@@ -116,6 +122,59 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(getQuestionPenaltyMs('CONE_45')).toBe(15 * 60_000);
     expect(getQuestionPenaltyMs('MEDIA_SKY')).toBe(5 * 60_000);
     expect(getQuestionPenaltyMs('MEDIA_GROUND')).toBe(5 * 60_000);
+    expect(getMediaRefundMs()).toBe(10 * 60_000);
+
+    // Prüfe Preis-Skalierung für alle 5 Stufen (30, 45, 60, 75, 90 Min.)
+    const stepsMs = CLASSIC_SEARCH_DURATION_STEPS_MINUTES.map((m) => m * 60_000);
+    expect(
+      stepsMs.map((ms) => Math.round(getQuestionPenaltyMs('SPLIT_NS', ms) / 60_000))
+    ).toEqual([10, 15, 20, 25, 30]);
+    expect(
+      stepsMs.map((ms) => Math.round(getQuestionPenaltyMs('THERMOMETER', ms) / 60_000))
+    ).toEqual([7, 10, 13, 17, 20]);
+    expect(
+      stepsMs.map((ms) => Math.round(getQuestionPenaltyMs('MEDIA_SKY', ms) / 60_000))
+    ).toEqual([3, 5, 7, 8, 10]);
+    expect(
+      stepsMs.map((ms) => Math.round(getQuestionPenaltyMs('DONUT_RING', ms) / 60_000))
+    ).toEqual([3, 4, 5, 7, 8]);
+    expect(
+      stepsMs.map((ms) => Math.round(getQuestionPenaltyMs('OSM_TRANSIT', ms) / 60_000))
+    ).toEqual([2, 3, 4, 5, 6]);
+    expect(
+      stepsMs.map((ms) => Math.round(getMediaRefundMs(ms) / 60_000))
+    ).toEqual([6, 10, 14, 16, 20]);
+
+    // Prüfe Radar-Schrumpfstufen (800m -> 400m -> 200m -> 100m -> 25m) für 30, 60 und 90 Min. Suchdauer
+    const sched30 = buildRadarScheduleForHidingMinutes(20, 30);
+    expect(sched30).toEqual({
+      hidingDurationMs: 20 * 60_000,
+      stage1Ms: 30 * 60_000, // +10 Min.
+      stage2Ms: 35 * 60_000, // +15 Min.
+      stage3Ms: 40 * 60_000, // +20 Min.
+      stage4Ms: 45 * 60_000, // +25 Min.
+      stage5Ms: 50 * 60_000, // +30 Min.
+    });
+
+    const sched60 = buildRadarScheduleForHidingMinutes(20, 60);
+    expect(sched60).toEqual({
+      hidingDurationMs: 20 * 60_000,
+      stage1Ms: 40 * 60_000, // +20 Min.
+      stage2Ms: 50 * 60_000, // +30 Min.
+      stage3Ms: 60 * 60_000, // +40 Min.
+      stage4Ms: 70 * 60_000, // +50 Min.
+      stage5Ms: 80 * 60_000, // +60 Min.
+    });
+
+    const sched90 = buildRadarScheduleForHidingMinutes(20, 90);
+    expect(sched90).toEqual({
+      hidingDurationMs: 20 * 60_000,
+      stage1Ms: 50 * 60_000, // +30 Min.
+      stage2Ms: 65 * 60_000, // +45 Min.
+      stage3Ms: 80 * 60_000, // +60 Min.
+      stage4Ms: 95 * 60_000, // +75 Min.
+      stage5Ms: 110 * 60_000, // +90 Min.
+    });
   });
 
   it('erlaubt beim Login exakt die 14 Spielernamen sowie den Overview-Account (nur mit Admin-Code) und schaltet Admin-Rechte für Lasse, Linus, Test 1 & Overview frei', () => {

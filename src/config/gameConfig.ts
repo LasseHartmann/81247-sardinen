@@ -47,13 +47,17 @@ export const DEFAULT_SAFETY_POINT: SafetyPoint = {
   lng: 11.4572,
 };
 
+export const DEFAULT_CLASSIC_HIDING_MINUTES = 20;
+export const DEFAULT_CLASSIC_SEARCH_MINUTES = 45;
+export const CLASSIC_SEARCH_DURATION_STEPS_MINUTES = [30, 45, 60, 75, 90] as const;
+
 export const DEFAULT_RADAR_SCHEDULE: RadarSchedule = {
-  hidingDurationMs: 20 * 60_000, // 20:00 Standard-Versteckzeit
-  stage1Ms: 35 * 60_000, // 35:00 -> 800m
-  stage2Ms: 40 * 60_000, // 40:00 -> 400m
-  stage3Ms: 45 * 60_000, // 45:00 -> 200m
-  stage4Ms: 50 * 60_000, // 50:00 -> 100m
-  stage5Ms: 55 * 60_000, // 55:00 -> 25m
+  hidingDurationMs: DEFAULT_CLASSIC_HIDING_MINUTES * 60_000, // 20:00 Standard-Versteckzeit
+  stage1Ms: 35 * 60_000, // +15:00 Suche -> 800m
+  stage2Ms: Math.round(42.5 * 60_000), // +22:30 Suche -> 400m
+  stage3Ms: 50 * 60_000, // +30:00 Suche -> 200m
+  stage4Ms: Math.round(57.5 * 60_000), // +37:30 Suche -> 100m
+  stage5Ms: 65 * 60_000, // +45:00 Suche -> 25m
 };
 
 export const DEFAULT_MANHUNT_HIDING_MINUTES = 5;
@@ -222,18 +226,27 @@ export function getManhuntPingStatusAtElapsedMs(
   };
 }
 
+/**
+ * Berechnet den Radar-Schrumpfplan für das klassische Sardinen-Spiel:
+ * - Erstes Drittel (`2/6`) von `searchDurationMinutes` (30 / 45 / 60 / 75 / 90 Min., Standard 45 Min.) ist offene Suche.
+ * - Danach schrumpft das Radar in 4 gleichmäßigen Schritten (`2/6`, `3/6`, `4/6`, `5/6`, `6/6` der Suchdauer)
+ *   von 800 m -> 400 m -> 200 m -> 100 m -> 25 m.
+ */
 export function buildRadarScheduleForHidingMinutes(
-  hidingMinutes: number
+  hidingMinutes: number,
+  searchDurationMinutes = DEFAULT_CLASSIC_SEARCH_MINUTES
 ): RadarSchedule {
-  const clampedMin = Math.max(1, Math.round(hidingMinutes));
+  const clampedMin = Math.max(0, Math.round(hidingMinutes));
+  const clampedSearchMin = Math.min(90, Math.max(30, Math.round(searchDurationMinutes)));
   const hidingDurationMs = clampedMin * 60_000;
+  const searchDurationMs = clampedSearchMin * 60_000;
   return {
     hidingDurationMs,
-    stage1Ms: hidingDurationMs + 15 * 60_000,
-    stage2Ms: hidingDurationMs + 20 * 60_000,
-    stage3Ms: hidingDurationMs + 25 * 60_000,
-    stage4Ms: hidingDurationMs + 30 * 60_000,
-    stage5Ms: hidingDurationMs + 35 * 60_000,
+    stage1Ms: hidingDurationMs + Math.round((searchDurationMs * 2) / 6),
+    stage2Ms: hidingDurationMs + Math.round((searchDurationMs * 3) / 6),
+    stage3Ms: hidingDurationMs + Math.round((searchDurationMs * 4) / 6),
+    stage4Ms: hidingDurationMs + Math.round((searchDurationMs * 5) / 6),
+    stage5Ms: hidingDurationMs + searchDurationMs,
   };
 }
 
@@ -300,27 +313,64 @@ export const QUESTION_PENALTY_MS: Record<1 | 2 | 3 | 4, number> = {
 
 export const THERMOMETER_MIN_DISTANCE_METERS = 250;
 
-export function getQuestionPenaltyMs(questionType: QuestionType): number {
+function scalePenaltyMinutes(
+  baseMinutes: number,
+  searchDurationMs?: number
+): number {
+  const effectiveSearchMs =
+    typeof searchDurationMs === 'number' &&
+    Number.isFinite(searchDurationMs) &&
+    searchDurationMs > 0
+      ? searchDurationMs
+      : DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000;
+  const ratio = effectiveSearchMs / (DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000);
+  const scaledMinutes = Math.max(1, Math.round(baseMinutes * ratio));
+  return scaledMinutes * 60_000;
+}
+
+export function getQuestionPenaltyMs(
+  questionType: QuestionType,
+  searchDurationMs?: number
+): number {
+  let baseMinutes: number;
   switch (questionType) {
     case 'SPLIT_NS':
     case 'SPLIT_EW':
-      return 15 * 60_000; // Himmelsrichtung: +15 Min.
-    case 'THERMOMETER':
-      return 10 * 60_000; // Thermometer (250 m): +10 Min.
     case 'RADIUS_RADAR':
     case 'CONE_45':
-      return 15 * 60_000; // Radar: +15 Min.
+      baseMinutes = 15; // Himmelsrichtung / Radar: +15 Min. (bei 45 Min. Suchdauer)
+      break;
+    case 'THERMOMETER':
+      baseMinutes = 10; // Thermometer (250 m): +10 Min. (bei 45 Min. Suchdauer)
+      break;
     case 'MEDIA_SKY':
     case 'MEDIA_GROUND':
     case 'MEDIA_SELFIE':
-      return 5 * 60_000; // Foto: +5 Min.
+      baseMinutes = 5; // Foto: +5 Min. (bei 45 Min. Suchdauer)
+      break;
+    case 'DONUT_RING':
+      baseMinutes = 4; // Donut-Ring: +4 Min. (bei 45 Min. Suchdauer)
+      break;
+    case 'OSM_TRANSIT':
+    case 'OSM_RECYCLING':
+    case 'OSM_GREEN':
+      baseMinutes = 3; // Umgebung: +3 Min. (bei 45 Min. Suchdauer)
+      break;
     default:
-      return QUESTION_PENALTY_MS[QUESTION_CATEGORY_MAP[questionType]];
+      baseMinutes = Math.round(
+        QUESTION_PENALTY_MS[QUESTION_CATEGORY_MAP[questionType]] / 60_000
+      );
+      break;
   }
+  return scalePenaltyMinutes(baseMinutes, searchDurationMs);
 }
 
 export const MEDIA_RESPONSE_TIMEOUT_NET_MS = 5 * 60_000; // 5 Min. (300s) Netto-Spielzeit zum Senden eines Fotos
-export const MEDIA_REFUND_MS = 10 * 60_000; // -10 Min. Zeitabzug bei Nicht-Senden innerhalb von 5 Min. (oder Ablehnung)
+export const MEDIA_REFUND_MS = 10 * 60_000; // -10 Min. Zeitabzug bei Nicht-Senden innerhalb von 5 Min. (oder Ablehnung) bei 45 Min. Standard-Suchdauer
+
+export function getMediaRefundMs(searchDurationMs?: number): number {
+  return getQuestionPenaltyMs('MEDIA_SKY', searchDurationMs) * 2;
+}
 export const MEDIA_AUTO_EXPIRE_MS = 10 * 60_000; // Empfangene Fotos verschwinden automatisch nach 10 Min.
 export const MEDIA_POST_DOWNLOAD_EXPIRE_MS = 60_000; // Nach Klick auf Download verkürzt sich die Restzeit auf max. 1 Min.
 
@@ -377,6 +427,7 @@ export function createDefaultPublicState(
     status: 'LOBBY',
     currentPhase: 'LOBBY',
     gameMode: 'CLASSIC',
+    classicSearchDurationMs: DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000,
     manhuntShrinkDurationMs: DEFAULT_MANHUNT_SHRINK_MINUTES * 60_000,
     gameStartTimestamp: null,
     searchStartTimestamp: null,

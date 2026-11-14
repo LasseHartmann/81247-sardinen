@@ -902,7 +902,7 @@ export function createDemoStore(options?: {
     async undoClueByHost(teamId, clue): Promise<void> {
       const appliedNetPenaltyMs =
         clue.refundedMs && clue.refundedMs > 0
-          ? 5 * 60_000 - clue.refundedMs
+          ? Math.round(clue.refundedMs / 2) - clue.refundedMs
           : clue.penaltyMs || 0;
 
       writeTree((t) => {

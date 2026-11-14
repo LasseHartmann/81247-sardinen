@@ -17,8 +17,10 @@ import {
   buildRadarScheduleForHidingMinutes,
   createDefaultPublicState,
   createDefaultTeams,
+  DEFAULT_CLASSIC_SEARCH_MINUTES,
   DEFAULT_MANHUNT_HIDING_MINUTES,
   DEFAULT_MANHUNT_SHRINK_MINUTES,
+  getQuestionPenaltyMs,
   TEAM_PALETTE,
 } from '../../config/gameConfig';
 import { HardwareKnob } from '../Common/HardwareKnob';
@@ -92,6 +94,14 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     return Math.min(55, Math.max(5, Math.round(mins / 5) * 5));
   });
 
+  const [classicSearchMin, setClassicSearchMin] = useState(() => {
+    const rawSearchMs =
+      publicState.classicSearchDurationMs ??
+      DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000;
+    const mins = Math.round(rawSearchMs / 60_000);
+    return Math.min(90, Math.max(30, Math.round(mins / 15) * 15));
+  });
+
   const [manhuntHeadStartMin, setManhuntHeadStartMin] = useState(() => {
     if (publicState.gameMode !== 'MANHUNT') return DEFAULT_MANHUNT_HIDING_MINUTES;
     const mins = Math.round(publicState.radarSchedule.hidingDurationMs / 60_000);
@@ -111,11 +121,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     const nextSchedule =
       nextMode === 'MANHUNT'
         ? buildManhuntRadarSchedule(manhuntHeadStartMin, manhuntShrinkMin)
-        : buildRadarScheduleForHidingMinutes(classicHidingMin);
+        : buildRadarScheduleForHidingMinutes(classicHidingMin, classicSearchMin);
     void adapter
       .savePublicStateByHost({
         ...publicState,
         gameMode: nextMode,
+        classicSearchDurationMs: classicSearchMin * 60_000,
         manhuntShrinkDurationMs: manhuntShrinkMin * 60_000,
         radarSchedule: nextSchedule,
       })
@@ -172,12 +183,13 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
 
     const activeSchedule = isManhunt
       ? buildManhuntRadarSchedule(manhuntHeadStartMin, manhuntShrinkMin)
-      : buildRadarScheduleForHidingMinutes(classicHidingMin);
+      : buildRadarScheduleForHidingMinutes(classicHidingMin, classicSearchMin);
     const immediateOpenSearch = activeSchedule.hidingDurationMs <= 0;
 
     const nextPublicState: PublicGameState = {
       ...publicState,
       gameMode: selectedMode,
+      classicSearchDurationMs: classicSearchMin * 60_000,
       manhuntShrinkDurationMs: manhuntShrinkMin * 60_000,
       status: 'RUNNING',
       currentPhase: immediateOpenSearch ? 'OPEN_SEARCH' : 'HIDING',
@@ -268,10 +280,11 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     );
     resetPublic.allowTestClicks = publicState.allowTestClicks;
     resetPublic.gameMode = selectedMode;
+    resetPublic.classicSearchDurationMs = classicSearchMin * 60_000;
     resetPublic.manhuntShrinkDurationMs = manhuntShrinkMin * 60_000;
     resetPublic.radarSchedule = isManhunt
       ? buildManhuntRadarSchedule(manhuntHeadStartMin, manhuntShrinkMin)
-      : buildRadarScheduleForHidingMinutes(classicHidingMin);
+      : buildRadarScheduleForHidingMinutes(classicHidingMin, classicSearchMin);
 
     const resetTeams = createDefaultTeams();
     for (const m of enabledMembers) {
@@ -482,26 +495,103 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </div>
 
           {!isManhunt ? (
-            <HardwareKnob
-              label="VERSTECKZEIT (STANDARD 20 MIN)"
-              ariaLabel="Versteckzeit in Minuten"
-              dataTestId="hiding-time-knob"
-              value={classicHidingMin}
-              min={5}
-              max={55}
-              step={5}
-              unit=" Min."
-              onChange={(nextMin) => {
-                setClassicHidingMin(nextMin);
-                void adapter
-                  .savePublicStateByHost({
-                    ...publicState,
-                    gameMode: 'CLASSIC',
-                    radarSchedule: buildRadarScheduleForHidingMinutes(nextMin),
-                  })
-                  .catch(() => {});
-              }}
-            />
+            (() => {
+              const classicPreviewSchedule = buildRadarScheduleForHidingMinutes(
+                classicHidingMin,
+                classicSearchMin
+              );
+              const searchDurationMs = classicSearchMin * 60_000;
+              const splitMin = Math.round(
+                getQuestionPenaltyMs('SPLIT_NS', searchDurationMs) / 60_000
+              );
+              const thermoMin = Math.round(
+                getQuestionPenaltyMs('THERMOMETER', searchDurationMs) / 60_000
+              );
+              const photoMin = Math.round(
+                getQuestionPenaltyMs('MEDIA_SKY', searchDurationMs) / 60_000
+              );
+              const donutMin = Math.round(
+                getQuestionPenaltyMs('DONUT_RING', searchDurationMs) / 60_000
+              );
+              const envMin = Math.round(
+                getQuestionPenaltyMs('OSM_TRANSIT', searchDurationMs) / 60_000
+              );
+
+              return (
+                <div className="space-y-2.5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <HardwareKnob
+                      label="VERSTECKZEIT (STANDARD 20 MIN)"
+                      ariaLabel="Versteckzeit in Minuten"
+                      dataTestId="hiding-time-knob"
+                      value={classicHidingMin}
+                      min={5}
+                      max={55}
+                      step={5}
+                      unit=" Min."
+                      onChange={(nextMin) => {
+                        setClassicHidingMin(nextMin);
+                        void adapter
+                          .savePublicStateByHost({
+                            ...publicState,
+                            gameMode: 'CLASSIC',
+                            classicSearchDurationMs: classicSearchMin * 60_000,
+                            radarSchedule: buildRadarScheduleForHidingMinutes(
+                              nextMin,
+                              classicSearchMin
+                            ),
+                          })
+                          .catch(() => {});
+                      }}
+                    />
+
+                    <HardwareKnob
+                      label="SPIELZEIT / SUCHDAUER BIS 25M (30-90 MIN)"
+                      ariaLabel="Spielzeit und Suchdauer in Minuten"
+                      dataTestId="classic-search-time-knob"
+                      value={classicSearchMin}
+                      min={30}
+                      max={90}
+                      step={15}
+                      unit=" Min."
+                      onChange={(nextSearchMin) => {
+                        setClassicSearchMin(nextSearchMin);
+                        void adapter
+                          .savePublicStateByHost({
+                            ...publicState,
+                            gameMode: 'CLASSIC',
+                            classicSearchDurationMs: nextSearchMin * 60_000,
+                            radarSchedule: buildRadarScheduleForHidingMinutes(
+                              classicHidingMin,
+                              nextSearchMin
+                            ),
+                          })
+                          .catch(() => {});
+                      }}
+                    />
+                  </div>
+
+                  <div className="cmf-well px-3.5 py-2 text-center font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase space-y-0.5">
+                    <div>
+                      RADAR-STUFEN AB SUCHSTART (800M → 400M → 200M → 100M → 25M):{' '}
+                      <span className="text-[var(--text-main)]">
+                        +{formatDurationClock(classicPreviewSchedule.stage1Ms - classicPreviewSchedule.hidingDurationMs)} → +
+                        {formatDurationClock(classicPreviewSchedule.stage2Ms - classicPreviewSchedule.hidingDurationMs)} → +
+                        {formatDurationClock(classicPreviewSchedule.stage3Ms - classicPreviewSchedule.hidingDurationMs)} → +
+                        {formatDurationClock(classicPreviewSchedule.stage4Ms - classicPreviewSchedule.hidingDurationMs)} → +
+                        {formatDurationClock(classicPreviewSchedule.stage5Ms - classicPreviewSchedule.hidingDurationMs)}
+                      </span>
+                    </div>
+                    <div>
+                      ANGEPASSTE TIPP-PREISE:{' '}
+                      <span className="text-[var(--cmf-teal)]">
+                        RICHTUNG/RADAR +{splitMin} MIN. • THERMO +{thermoMin} MIN. • FOTO +{photoMin} MIN. • DONUT +{donutMin} MIN. • UMGEBUNG +{envMin} MIN.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()
           ) : (
             <div className="space-y-2.5">
               <div className="grid gap-3 sm:grid-cols-2">

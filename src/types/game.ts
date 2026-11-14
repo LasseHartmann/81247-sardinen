@@ -94,6 +94,7 @@ export interface PresenceSession {
   gameStartTimestamp?: number;
   activeTeamIds?: string[];
   gameMode?: GameMode;
+  classicSearchDurationMs?: number;
   manhuntShrinkDurationMs?: number;
   radarSchedule?: RadarSchedule;
   leashAlertStartedAt?: number;
@@ -211,6 +212,7 @@ export interface PublicGameState {
   status: GameStatus;
   currentPhase: GamePhase;
   gameMode?: GameMode;
+  classicSearchDurationMs?: number;
   manhuntShrinkDurationMs?: number;
   gameStartTimestamp: number | null;
   searchStartTimestamp: number | null;

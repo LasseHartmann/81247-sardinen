@@ -576,6 +576,31 @@ export async function executeControllerTick(
           startSearchImmediately: false,
           rng,
         });
+      } else if (
+        hiderPrivate.anchorPoint &&
+        hiderPrivate.radarStages.length === 5
+      ) {
+        const schedMap: Record<RadarStageId, number> = {
+          1: publicState.radarSchedule.stage1Ms,
+          2: publicState.radarSchedule.stage2Ms,
+          3: publicState.radarSchedule.stage3Ms,
+          4: publicState.radarSchedule.stage4Ms,
+          5: publicState.radarSchedule.stage5Ms,
+        };
+        const scheduleShifted = hiderPrivate.radarStages.some(
+          (s) => s.triggerElapsedMs !== schedMap[s.stage]
+        );
+        if (scheduleShifted) {
+          const syncedStages = hiderPrivate.radarStages.map((s) => ({
+            ...s,
+            triggerElapsedMs: schedMap[s.stage],
+          }));
+          hiderPrivate = {
+            ...hiderPrivate,
+            radarStages: syncedStages,
+          };
+          await adapter.saveHiderPrivate(hiderPrivate);
+        }
       }
 
       const dueRadar = getDueRadarCircle(
@@ -852,10 +877,14 @@ export async function refundAndCompensateMediaRequest(params: {
     return false;
   }
 
-  // Exakt einmal -10 Min. (600.000 ms) von der Zeit des anfragenden Sucher-Teams abziehen
+  const refundMs =
+    claimed.penaltyMs > 0 ? claimed.penaltyMs * 2 : MEDIA_REFUND_MS;
+  const refundMin = Math.round(refundMs / 60_000);
+
+  // Exakt einmal das Doppelte des Foto-Preises (Standard -10 Min.) von der Zeit des anfragenden Sucher-Teams abziehen
   await adapter.adjustTeamPenaltyAndClueCountAtomically(
     claimed.teamId,
-    -MEDIA_REFUND_MS,
+    -refundMs,
     0
   );
 
@@ -881,11 +910,11 @@ export async function refundAndCompensateMediaRequest(params: {
     answerText: freeDonut.answerText,
     detailText:
       reasonStatus === 'EXPIRED'
-        ? `5-Min.-Antwortfrist abgelaufen (-10 Min. Zeitabzug). ${freeDonut.detailText}`
-        : `Foto-Anfrage abgelehnt (-10 Min. Zeitabzug). ${freeDonut.detailText}`,
+        ? `5-Min.-Antwortfrist abgelaufen (-${refundMin} Min. Zeitabzug). ${freeDonut.detailText}`
+        : `Foto-Anfrage abgelehnt (-${refundMin} Min. Zeitabzug). ${freeDonut.detailText}`,
     isPositiveHit: true,
     penaltyMs: 0,
-    refundedMs: MEDIA_REFUND_MS,
+    refundedMs: refundMs,
     createdAt: serverNowMs,
     overlayGeoJson: freeDonut.overlayGeoJson,
     overlayStyle: 'RING_BAND',
@@ -896,7 +925,7 @@ export async function refundAndCompensateMediaRequest(params: {
   await adapter.updateClueRequest(claimed.teamId, claimed.id, {
     ...claimed,
     status: reasonStatus,
-    refundedMs: MEDIA_REFUND_MS,
+    refundedMs: refundMs,
     processedAt: serverNowMs,
     rejectionReason,
   });

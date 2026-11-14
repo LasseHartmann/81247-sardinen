@@ -23,7 +23,7 @@ import {
   TEAM_PALETTE,
   THERMOMETER_MIN_DISTANCE_METERS,
 } from '../../config/gameConfig';
-import { distanceMeters } from '../../geo/distance';
+import { destinationPoint, distanceMeters } from '../../geo/distance';
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
 import { generateRandomId } from '../../services/qrService';
 import type {
@@ -142,6 +142,22 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
     if (activePreviewQuestion === qType) {
       onChangePreviewQuestion(null);
     } else {
+      if (qType === 'THERMOMETER') {
+        const baseA =
+          thermoPointA ??
+          (ownFix ? { lat: ownFix.lat, lng: ownFix.lng } : null);
+        if (!thermoPointA && baseA) {
+          onSetThermoPointA(baseA);
+        }
+        if (
+          baseA &&
+          (!thermoPointB || distanceMeters(baseA, thermoPointB) < 5)
+        ) {
+          onSetThermoPointB(
+            destinationPoint(baseA, THERMOMETER_MIN_DISTANCE_METERS, 45)
+          );
+        }
+      }
       onChangePreviewQuestion(qType);
       onNavigateToMap();
     }
@@ -578,40 +594,69 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 }`}
               >
                 {thermoPointA
-                  ? 'Startpunkt neu setzen'
+                  ? 'Start A = Standort'
                   : 'Startpunkt hier setzen'}
               </button>
 
+              <button
+                type="button"
+                data-testid="pick-thermo-b-map-btn"
+                onClick={() => {
+                  const baseA =
+                    thermoPointA ??
+                    (ownFix ? { lat: ownFix.lat, lng: ownFix.lng } : null);
+                  if (!thermoPointA && baseA) {
+                    onSetThermoPointA(baseA);
+                  }
+                  if (
+                    baseA &&
+                    (!thermoPointB || distanceMeters(baseA, thermoPointB) < 5)
+                  ) {
+                    onSetThermoPointB(
+                      destinationPoint(baseA, THERMOMETER_MIN_DISTANCE_METERS, 45)
+                    );
+                  }
+                  onChangePreviewQuestion('THERMOMETER');
+                  onRequestMapPointPick({
+                    kind: 'PICK_THERMO_B',
+                    label: `Tippe auf die Karte oder ziehe Pin B für den Endpunkt (mind. ${THERMOMETER_MIN_DISTANCE_METERS} m)`,
+                  });
+                  onNavigateToMap();
+                }}
+                className={`font-tech min-h-[40px] flex-1 px-3 py-1.5 text-xs font-bold uppercase ${
+                  thermoPointB
+                    ? 'cmf-btn-active'
+                    : 'cmf-btn-secondary bg-white/60 text-[var(--text-main)]'
+                }`}
+              >
+                {thermoPointB ? 'Endpunkt B ändern' : 'Endpunkt B wählen'}
+              </button>
+
+              {thermoPointB && ownFix && (
+                <button
+                  type="button"
+                  onClick={() => onSetThermoPointB(null)}
+                  className="cmf-btn-secondary font-tech min-h-[40px] bg-white/60 px-2.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                >
+                  Ende B = Standort
+                </button>
+              )}
+
               {canUseMapClicks && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onRequestMapPointPick({
-                        kind: 'PICK_THERMO_A',
-                        label: 'Tippe auf die Karte für Punkt A',
-                      });
-                      onNavigateToMap();
-                    }}
-                    className="cmf-btn-secondary font-tech min-h-[40px] bg-white/60 px-2.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
-                  >
-                    A wählen
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!thermoPointA}
-                    onClick={() => {
-                      onRequestMapPointPick({
-                        kind: 'PICK_THERMO_B',
-                        label: `Mindestens ${THERMOMETER_MIN_DISTANCE_METERS} m entfernt für Punkt B tippen`,
-                      });
-                      onNavigateToMap();
-                    }}
-                    className="cmf-btn-secondary font-tech min-h-[40px] bg-white/60 px-2.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
-                  >
-                    B wählen
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChangePreviewQuestion('THERMOMETER');
+                    onRequestMapPointPick({
+                      kind: 'PICK_THERMO_A',
+                      label: 'Tippe auf die Karte für Startpunkt A',
+                    });
+                    onNavigateToMap();
+                  }}
+                  className="cmf-btn-secondary font-tech min-h-[40px] bg-white/60 px-2.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                >
+                  A wählen
+                </button>
               )}
             </div>
 

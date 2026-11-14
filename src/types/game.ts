@@ -78,7 +78,8 @@ export interface PresenceSession {
     | 'EMERGENCY_ALERT'
     | 'READY_STATE'
     | 'HIDER_PW_LOCK'
-    | 'ROUND_START_META';
+    | 'ROUND_START_META'
+    | 'LEASH_ALERT';
   playerId?: string;
   senderName?: string;
   emergencyText?: string;
@@ -92,6 +93,32 @@ export interface PresenceSession {
   logoutGen?: string;
   gameStartTimestamp?: number;
   activeTeamIds?: string[];
+  gameMode?: GameMode;
+  manhuntShrinkDurationMs?: number;
+  radarSchedule?: RadarSchedule;
+  leashAlertStartedAt?: number;
+  leashExposeAt?: number;
+  leashViolationReason?:
+    | 'OUTSIDE_81247'
+    | 'OUTSIDE_MANHUNT_ZONE'
+    | 'OUTSIDE_CLASSIC_LEASH';
+  exposedHiderLat?: number;
+  exposedHiderLng?: number;
+  exposedHiderAccuracy?: number;
+}
+
+export interface ActiveLeashViolationInfo {
+  uid: string;
+  sessionId: string;
+  alertStartedAt: number;
+  exposeAt: number;
+  violationReason?:
+    | 'OUTSIDE_81247'
+    | 'OUTSIDE_MANHUNT_ZONE'
+    | 'OUTSIDE_CLASSIC_LEASH';
+  exposedLat?: number;
+  exposedLng?: number;
+  exposedAccuracy?: number;
 }
 
 export interface EmergencyMessage {
@@ -134,11 +161,26 @@ export interface RadarStageSecret {
   triggerElapsedMs: number;
 }
 
+export type ManhuntPingSource =
+  | 'LIVE_GPS'
+  | 'LAST_KNOWN_GPS'
+  | 'ZONE_FALLBACK';
+
+export interface ManhuntPingInfo extends LatLng {
+  accuracy: number;
+  pingNumber: number;
+  pingedAt: number;
+  triggerElapsedMs: number;
+  source: ManhuntPingSource;
+  lastFixAgeMs?: number;
+}
+
 export interface PublishedRadarCircle {
   stage: RadarStageId;
   radiusMeters: number;
   center: LatLng;
   publishedAt?: number;
+  lastPing?: ManhuntPingInfo | null;
 }
 
 export interface PlayAreaState {

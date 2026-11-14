@@ -6,6 +6,7 @@ import {
 } from '../config/gameConfig';
 import {
   extractActiveHiderLock,
+  extractActiveLeashViolation,
   extractEmergencyMessages,
   extractReadyPlayerIds,
   extractRoundStartMeta,
@@ -15,6 +16,7 @@ import {
 } from '../services/databaseAdapter';
 import { generateRandomId, generateSessionSecrets } from '../services/qrService';
 import type {
+  ActiveLeashViolationInfo,
   CatchRequest,
   ClueRecord,
   ClueRequest,
@@ -46,6 +48,7 @@ export interface SynchronizedGameState {
   catchRequests: Record<string, CatchRequest>;
   leaderboard: Record<string, LeaderboardEntry>;
   activeHiderLock: HiderLoginLock | null;
+  activeLeashViolation: ActiveLeashViolationInfo | null;
   readyPlayerIds: string[];
   emergencyMessages: EmergencyMessage[];
 }
@@ -154,16 +157,27 @@ export function useGameState(
 
   const publicState = useMemo<PublicGameState | null>(() => {
     if (!rawPublicState) return null;
-    if (
-      rawPublicState.status !== 'LOBBY' &&
-      rawPublicState.gameStartTimestamp === null
-    ) {
+    if (rawPublicState.status !== 'LOBBY') {
       const fallbackMeta = extractRoundStartMeta(rawPublicState, presence);
       if (fallbackMeta) {
         return {
           ...rawPublicState,
-          gameStartTimestamp: fallbackMeta.gameStartTimestamp,
-          activeTeamIds: fallbackMeta.activeTeamIds,
+          gameStartTimestamp:
+            rawPublicState.gameStartTimestamp ?? fallbackMeta.gameStartTimestamp,
+          activeTeamIds:
+            rawPublicState.gameStartTimestamp !== null
+              ? rawPublicState.activeTeamIds
+              : fallbackMeta.activeTeamIds,
+          gameMode:
+            rawPublicState.gameMode === 'MANHUNT' ||
+            fallbackMeta.gameMode === 'MANHUNT'
+              ? 'MANHUNT'
+              : 'CLASSIC',
+          manhuntShrinkDurationMs:
+            fallbackMeta.manhuntShrinkDurationMs ??
+            rawPublicState.manhuntShrinkDurationMs,
+          radarSchedule:
+            fallbackMeta.radarSchedule ?? rawPublicState.radarSchedule,
         };
       }
     }
@@ -173,6 +187,11 @@ export function useGameState(
   const activeHiderLock = useMemo(
     () => extractActiveHiderLock(publicState, presence, members),
     [publicState, presence, members]
+  );
+
+  const activeLeashViolation = useMemo(
+    () => extractActiveLeashViolation(publicState, presence),
+    [publicState, presence]
   );
 
   const readyPlayerIds = useMemo(
@@ -273,7 +292,10 @@ export function useGameState(
     const roundReadyToken = `${publicState.sessionId}:${activeHiderLock.logoutGen}`;
     if (autoStartedTokenRef.current === roundReadyToken) return;
 
-    const isPrimaryStarter = hiders[0]?.playerId === ownMember.playerId;
+    const onlineHost = onlineList.find((m) => m.isHost);
+    const isPrimaryStarter = onlineHost
+      ? onlineHost.playerId === ownMember.playerId
+      : hiders[0]?.playerId === ownMember.playerId;
     const delayMs = isPrimaryStarter ? 150 : 1400;
 
     const timerId = setTimeout(() => {
@@ -372,6 +394,7 @@ export function useGameState(
     catchRequests,
     leaderboard,
     activeHiderLock,
+    activeLeashViolation,
     readyPlayerIds,
     emergencyMessages,
   };

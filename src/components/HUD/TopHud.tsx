@@ -126,7 +126,7 @@ export const TopHud: React.FC<TopHudProps> = ({
 
           <div className="flex min-w-0 items-center gap-1 font-tech text-[10px] font-bold tracking-wide text-[var(--cmf-amber)] sm:text-xs">
             <Radar className="h-3 w-3 shrink-0 text-[var(--cmf-teal)] sm:h-3.5 sm:w-3.5" />
-            <span className="truncate whitespace-nowrap">
+            <span className="truncate whitespace-nowrap" title={timer.nextStageLabel}>
               {activePhase === 'LOBBY'
                 ? isManhunt
                   ? 'Lobby • Manhunt'
@@ -135,7 +135,9 @@ export const TopHud: React.FC<TopHudProps> = ({
                   ? isManhunt
                     ? activePhase === 'HIDING'
                       ? `Jagd in ${formatDurationClock(timer.nextStageRemainingMs)}`
-                      : `Zone in ${formatDurationClock(timer.nextStageRemainingMs)}`
+                      : timer.manhuntIsInLastQuarter
+                        ? `5m-Ping in ${formatDurationClock(timer.nextStageRemainingMs)}`
+                        : `Ping in ${formatDurationClock(timer.nextStageRemainingMs)}`
                     : `Tipp in ${formatDurationClock(timer.nextStageRemainingMs)}`
                   : isManhunt
                     ? '150m Zone'

@@ -108,3 +108,77 @@ export function createEmergencyBeaconIcon(senderName: string): L.DivIcon {
     `,
   });
 }
+
+/**
+ * Manhunt Verstecker-Ping-Marker (#FF4D00 bzw. #F59E0B bei GPS-Fallback).
+ */
+export function createManhuntPingIcon(
+  pingNumber: number,
+  isFallbackSource = false
+): L.DivIcon {
+  const badgeBg = isFallbackSource ? '#B45309' : '#FF4D00';
+  const dotBg = isFallbackSource ? '#F59E0B' : '#FF4D00';
+  const label = isFallbackSource
+    ? `PING #${pingNumber} (FALLBACK)`
+    : `VERSTECKER-PING #${pingNumber}`;
+  return L.divIcon({
+    className: 'sardinen-div-icon',
+    iconSize: [148, 48],
+    iconAnchor: [74, 36],
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:9999px;background:${badgeBg};border:1.5px solid #FFFFFF;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;letter-spacing:0.05em;white-space:nowrap;box-shadow:0 5px 14px rgba(20,25,30,0.38);">
+          <span style="width:6px;height:6px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
+          <span>${escapeHtml(label)}</span>
+        </div>
+        <div style="position:relative;width:20px;height:20px;margin-top:2px;display:flex;align-items:center;justify-content:center;">
+          <span style="width:13px;height:13px;border-radius:9999px;background:${dotBg};border:2.5px solid #FFFFFF;box-shadow:0 0 12px rgba(255,77,0,0.75);"></span>
+        </div>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Freigegebener Live-Verstecker-Standort nach >2 Min. Zonen-/Bereichsverstoß (#DC2626).
+ */
+export function createExposedHiderIcon(): L.DivIcon {
+  return L.divIcon({
+    className: 'sardinen-div-icon',
+    iconSize: [176, 52],
+    iconAnchor: [88, 38],
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
+        <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:9999px;background:#DC2626;border:2px solid #FFFFFF;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;letter-spacing:0.05em;white-space:nowrap;box-shadow:0 6px 18px rgba(220,38,38,0.55);">
+          <span style="width:7px;height:7px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
+          <span>LIVE // VERSTECKER</span>
+        </div>
+        <div style="position:relative;width:22px;height:22px;margin-top:1px;display:flex;align-items:center;justify-content:center;">
+          <span class="cmf-sos-wave" style="position:absolute;inset:0;border-radius:9999px;background:rgba(220,38,38,0.58);pointer-events:none;"></span>
+          <span style="position:relative;width:14px;height:14px;border-radius:9999px;background:#DC2626;border:2.5px solid #FFFFFF;box-shadow:0 0 14px rgba(220,38,38,0.85);"></span>
+        </div>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Live-Verstecker-Pin für Overview-Account & Sardinen-Rudel im Manhunt-Modus (#FF4D00).
+ */
+export function createLiveHiderOverviewIcon(label = 'VERSTECKER'): L.DivIcon {
+  const safe = escapeHtml(label.toUpperCase());
+  return L.divIcon({
+    className: 'sardinen-div-icon',
+    iconSize: [120, 40],
+    iconAnchor: [60, 28],
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:9999px;background:#FF4D00;border:1.5px solid #FFFFFF;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;letter-spacing:0.05em;white-space:nowrap;box-shadow:0 4px 12px rgba(20,25,30,0.32);">
+          <span style="width:6px;height:6px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
+          <span>${safe}</span>
+        </div>
+        <div style="width:11px;height:11px;border-radius:9999px;background:#FF4D00;border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 6px rgba(255,77,0,0.5);"></div>
+      </div>
+    `,
+  });
+}

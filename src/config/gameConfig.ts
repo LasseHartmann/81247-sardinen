@@ -57,7 +57,10 @@ export const DEFAULT_RADAR_SCHEDULE: RadarSchedule = {
 };
 
 export const DEFAULT_MANHUNT_HIDING_MINUTES = 5;
-export const DEFAULT_MANHUNT_SHRINK_MINUTES = 30;
+export const DEFAULT_MANHUNT_SHRINK_MINUTES = 40;
+
+export const MANHUNT_PING_INTERVAL_INITIAL_MS = 10 * 60_000; // Erste 3/4 der Spielzeit: alle 10 Min.
+export const MANHUNT_PING_INTERVAL_LAST_QUARTER_MS = 5 * 60_000; // Letztes Viertel der Spielzeit: alle 5 Min.
 
 export const MANHUNT_RADAR_RADII: Record<RadarStageId, number> = {
   1: 1200,
@@ -66,6 +69,158 @@ export const MANHUNT_RADAR_RADII: Record<RadarStageId, number> = {
   4: 300,
   5: 150,
 };
+
+export interface ManhuntPingStatus {
+  /** Absolute Netto-Spielzeit (ab Rundenstart) des zuletzt fälligen Pings, oder null vor dem ersten Ping */
+  duePingElapsedMs: number | null;
+  /** 1-basierte Nummer des aktuell fälligen Pings (0 vor dem ersten Ping) */
+  duePingNumber: number;
+  /** Zugehörige Zonen-Stufe (1..5) des aktuell fälligen Pings, oder null vor dem ersten Ping */
+  dueStageId: RadarStageId | null;
+  /** Zugehöriger Zonen-Radius (1200..150 m) des aktuell fälligen Pings, oder null vor dem ersten Ping */
+  dueRadiusMeters: number | null;
+  /** Absolute Netto-Spielzeit (ab Rundenstart) des nächsten bevorstehenden Pings */
+  nextPingElapsedMs: number;
+  /** Aktuelles Ping-Intervall in Minuten (10 in den ersten 3/4, 5 im letzten Viertel) */
+  currentIntervalMinutes: 10 | 5;
+  /** Ob sich die Jagd aktuell im letzten Viertel (oder in der Verlängerung) der angegebenen Spielzeit befindet */
+  isInLastQuarter: boolean;
+  /** Geplante Ping-Zeitpunkte (Netto-Spielzeit ab Rundenstart) innerhalb der regulären Jagddauer */
+  scheduledPingElapsedMs: number[];
+}
+
+/**
+ * Berechnet alle Manhunt-Ping-Zeitpunkte (in ms Netto-Spielzeit ab Rundenstart):
+ * - Während des Vorsprungs (`0 .. headStartMs`) wird noch nicht gepingt.
+ * - In den ersten 3/4 der angegebenen Spielzeit (`huntDurationMs`) wird alle 10 Min. gepingt.
+ * - Im letzten Viertel (`>= 0.75 * huntDurationMs`, sowie in einer evtl. Verlängerung) wird alle 5 Min. gepingt.
+ */
+export function getManhuntPingScheduleMs(
+  headStartMs: number,
+  huntDurationMs: number,
+  upToNetElapsedMs?: number
+): number[] {
+  const safeHeadStartMs = Math.max(0, Math.round(headStartMs));
+  const safeHuntDurationMs = Math.max(10 * 60_000, Math.round(huntDurationMs));
+  const lastQuarterStartRelMs = Math.round(safeHuntDurationMs * 0.75);
+
+  const schedule: number[] = [];
+  let relMs = 0;
+
+  while (
+    relMs < safeHuntDurationMs ||
+    (upToNetElapsedMs !== undefined && safeHeadStartMs + relMs <= upToNetElapsedMs)
+  ) {
+    const nextFiveRelMs = relMs + MANHUNT_PING_INTERVAL_LAST_QUARTER_MS;
+    const stepMs =
+      nextFiveRelMs >= lastQuarterStartRelMs
+        ? MANHUNT_PING_INTERVAL_LAST_QUARTER_MS
+        : MANHUNT_PING_INTERVAL_INITIAL_MS;
+    relMs += stepMs;
+    schedule.push(safeHeadStartMs + relMs);
+  }
+
+  return schedule;
+}
+
+/**
+ * Liefert für einen beliebigen Netto-Spielzeitpunkt `netElapsedMs` den aktuellen Manhunt-Ping-Status
+ * (fälliger Ping, Ping-Nummer, Zonen-Stufe/Radius, nächster Ping-Zeitpunkt und Intervall).
+ */
+export function getManhuntPingStatusAtElapsedMs(
+  netElapsedMs: number,
+  headStartMs: number,
+  huntDurationMs: number
+): ManhuntPingStatus {
+  const safeHeadStartMs = Math.max(0, Math.round(headStartMs));
+  const safeHuntDurationMs = Math.max(10 * 60_000, Math.round(huntDurationMs));
+  const lastQuarterStartRelMs = Math.round(safeHuntDurationMs * 0.75);
+
+  const scheduledPingElapsedMs = getManhuntPingScheduleMs(
+    safeHeadStartMs,
+    safeHuntDurationMs
+  );
+  const extendedSchedule = getManhuntPingScheduleMs(
+    safeHeadStartMs,
+    safeHuntDurationMs,
+    Math.max(0, netElapsedMs)
+  );
+
+  let dueIndex = -1;
+  if (netElapsedMs >= safeHeadStartMs) {
+    for (let i = 0; i < extendedSchedule.length; i++) {
+      if (extendedSchedule[i] <= netElapsedMs) {
+        dueIndex = i;
+      } else {
+        break;
+      }
+    }
+  }
+
+  const huntElapsedMs = Math.max(0, netElapsedMs - safeHeadStartMs);
+  const isInLastQuarter =
+    netElapsedMs >= safeHeadStartMs && huntElapsedMs >= lastQuarterStartRelMs;
+
+  if (dueIndex < 0) {
+    const nextPingElapsedMs =
+      extendedSchedule[0] ?? safeHeadStartMs + MANHUNT_PING_INTERVAL_INITIAL_MS;
+    const currentIntervalMinutes: 10 | 5 =
+      nextPingElapsedMs - safeHeadStartMs <= MANHUNT_PING_INTERVAL_LAST_QUARTER_MS
+        ? 5
+        : 10;
+    return {
+      duePingElapsedMs: null,
+      duePingNumber: 0,
+      dueStageId: null,
+      dueRadiusMeters: null,
+      nextPingElapsedMs,
+      currentIntervalMinutes,
+      isInLastQuarter,
+      scheduledPingElapsedMs,
+    };
+  }
+
+  const duePingElapsedMs = extendedSchedule[dueIndex];
+  const duePingNumber = dueIndex + 1;
+  const nextPingElapsedMs =
+    extendedSchedule[dueIndex + 1] ??
+    duePingElapsedMs + MANHUNT_PING_INTERVAL_LAST_QUARTER_MS;
+
+  const totalBasePings = scheduledPingElapsedMs.length;
+  let dueStageId: RadarStageId;
+  if (
+    totalBasePings <= 1 ||
+    duePingNumber >= totalBasePings ||
+    duePingElapsedMs >= safeHeadStartMs + safeHuntDurationMs
+  ) {
+    dueStageId = 5;
+  } else if (duePingNumber === 1) {
+    dueStageId = 1;
+  } else {
+    const mapped = Math.min(
+      5,
+      Math.max(1, Math.round(1 + ((duePingNumber - 1) / (totalBasePings - 1)) * 4))
+    );
+    dueStageId = mapped as RadarStageId;
+  }
+
+  const dueRadiusMeters = MANHUNT_RADAR_RADII[dueStageId];
+  const currentIntervalMinutes: 10 | 5 =
+    nextPingElapsedMs - duePingElapsedMs <= MANHUNT_PING_INTERVAL_LAST_QUARTER_MS
+      ? 5
+      : 10;
+
+  return {
+    duePingElapsedMs,
+    duePingNumber,
+    dueStageId,
+    dueRadiusMeters,
+    nextPingElapsedMs,
+    currentIntervalMinutes,
+    isInLastQuarter,
+    scheduledPingElapsedMs,
+  };
+}
 
 export function buildRadarScheduleForHidingMinutes(
   hidingMinutes: number
@@ -83,10 +238,10 @@ export function buildRadarScheduleForHidingMinutes(
 }
 
 /**
- * Erzeugt den Manhunt-Schrumpfplan:
- * Nach `headStartMinutes` (0..30 Min.) startet die Jagd auf dem vollen 81247-Gebiet
- * und schrumpft in 5 gleichmäßigen Schritten innerhalb von `totalShrinkMinutes` (10..80 Min.)
- * auf die kleinste Zone (1200 m -> 800 m -> 500 m -> 300 m -> 150 m).
+ * Erzeugt den Manhunt-Schrumpf- & Ping-Plan:
+ * Nach `headStartMinutes` (0..30 Min.) startet die Jagd auf dem vollen 81247-Gebiet.
+ * In den ersten 3/4 von `totalShrinkMinutes` (10..80 Min.) werden die Verstecker alle 10 Min. gepingt,
+ * im letzten Viertel alle 5 Min., wobei die Zone um die Verstecker bis auf 150 m schrumpft.
  */
 export function buildManhuntRadarSchedule(
   headStartMinutes: number,
@@ -96,13 +251,28 @@ export function buildManhuntRadarSchedule(
   const clampedShrinkMin = Math.min(80, Math.max(10, Math.round(totalShrinkMinutes)));
   const hidingDurationMs = clampedHeadStart * 60_000;
   const shrinkDurationMs = clampedShrinkMin * 60_000;
+  const pings = getManhuntPingScheduleMs(hidingDurationMs, shrinkDurationMs);
+
+  const pickStageMs = (stageIdxZeroBased: number): number => {
+    if (pings.length === 0) {
+      return hidingDurationMs + Math.round(((stageIdxZeroBased + 1) * shrinkDurationMs) / 5);
+    }
+    if (stageIdxZeroBased === 0) return pings[0];
+    if (stageIdxZeroBased === 4) return pings[pings.length - 1];
+    const mappedIdx = Math.min(
+      pings.length - 1,
+      Math.max(0, Math.round((stageIdxZeroBased / 4) * (pings.length - 1)))
+    );
+    return pings[mappedIdx];
+  };
+
   return {
     hidingDurationMs,
-    stage1Ms: hidingDurationMs + Math.round((shrinkDurationMs * 1) / 5),
-    stage2Ms: hidingDurationMs + Math.round((shrinkDurationMs * 2) / 5),
-    stage3Ms: hidingDurationMs + Math.round((shrinkDurationMs * 3) / 5),
-    stage4Ms: hidingDurationMs + Math.round((shrinkDurationMs * 4) / 5),
-    stage5Ms: hidingDurationMs + shrinkDurationMs,
+    stage1Ms: pickStageMs(0),
+    stage2Ms: pickStageMs(1),
+    stage3Ms: pickStageMs(2),
+    stage4Ms: pickStageMs(3),
+    stage5Ms: pickStageMs(4),
   };
 }
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildManhuntRadarSchedule,
   DEFAULT_PLAY_AREA_FEATURE,
+  getManhuntPingScheduleMs,
+  getManhuntPingStatusAtElapsedMs,
   MANHUNT_RADAR_RADII,
 } from '../src/config/gameConfig';
 import { destinationPoint, distanceMeters } from '../src/geo/distance';
@@ -111,28 +113,60 @@ describe('Inside-Out Schrumpf-Radar (500-Trial Monte-Carlo & Phasenlogik)', () =
     expect(endgameCircle?.radiusMeters).toBe(25);
   });
 
-  it('berechnet den Manhunt-Schrumpfplan exakt über die Host-Schrumpfdauer bis zur 150-m-Zone', () => {
-    const schedDefault = buildManhuntRadarSchedule(5, 30);
-    expect(schedDefault.hidingDurationMs).toBe(5 * 60_000);
-    expect(schedDefault.stage1Ms).toBe(11 * 60_000);
-    expect(schedDefault.stage2Ms).toBe(17 * 60_000);
-    expect(schedDefault.stage3Ms).toBe(23 * 60_000);
-    expect(schedDefault.stage4Ms).toBe(29 * 60_000);
-    expect(schedDefault.stage5Ms).toBe(35 * 60_000);
+  it('berechnet den Manhunt-Ping- & Schrumpfplan (alle 10 Min. in den ersten 3/4, alle 5 Min. im letzten Viertel)', () => {
+    // 5 Min. Vorsprung + 40 Min. Spielzeit -> Letztes Viertel startet nach 30 Min. Jagd (Netto 35:00)
+    // Pings bei Netto 15:00 (+10m), 25:00 (+20m), 35:00 (+30m), 40:00 (+35m), 45:00 (+40m)
+    const pings40 = getManhuntPingScheduleMs(5 * 60_000, 40 * 60_000);
+    expect(pings40).toEqual([
+      15 * 60_000,
+      25 * 60_000,
+      35 * 60_000,
+      40 * 60_000,
+      45 * 60_000,
+    ]);
 
-    expect(getDueRadarStageId(10 * 60_000 + 59_999, schedDefault)).toBeNull();
-    expect(getDueRadarStageId(11 * 60_000, schedDefault)).toBe(1);
-    expect(getDueRadarStageId(23 * 60_000, schedDefault)).toBe(3);
-    expect(getDueRadarStageId(35 * 60_000, schedDefault)).toBe(5);
+    const sched40 = buildManhuntRadarSchedule(5, 40);
+    expect(sched40.hidingDurationMs).toBe(5 * 60_000);
+    expect(sched40.stage1Ms).toBe(15 * 60_000);
+    expect(sched40.stage2Ms).toBe(25 * 60_000);
+    expect(sched40.stage3Ms).toBe(35 * 60_000);
+    expect(sched40.stage4Ms).toBe(40 * 60_000);
+    expect(sched40.stage5Ms).toBe(45 * 60_000);
+
+    expect(getDueRadarStageId(14 * 60_000 + 59_999, sched40)).toBeNull();
+    expect(getDueRadarStageId(15 * 60_000, sched40)).toBe(1);
+    expect(getDueRadarStageId(35 * 60_000, sched40)).toBe(3);
+    expect(getDueRadarStageId(45 * 60_000, sched40)).toBe(5);
+
+    const statusBeforeFirstPing = getManhuntPingStatusAtElapsedMs(
+      12 * 60_000,
+      5 * 60_000,
+      40 * 60_000
+    );
+    expect(statusBeforeFirstPing.duePingElapsedMs).toBeNull();
+    expect(statusBeforeFirstPing.nextPingElapsedMs).toBe(15 * 60_000);
+    expect(statusBeforeFirstPing.currentIntervalMinutes).toBe(10);
+    expect(statusBeforeFirstPing.isInLastQuarter).toBe(false);
+
+    const statusInLastQuarter = getManhuntPingStatusAtElapsedMs(
+      36 * 60_000,
+      5 * 60_000,
+      40 * 60_000
+    );
+    expect(statusInLastQuarter.duePingElapsedMs).toBe(35 * 60_000);
+    expect(statusInLastQuarter.duePingNumber).toBe(3);
+    expect(statusInLastQuarter.nextPingElapsedMs).toBe(40 * 60_000);
+    expect(statusInLastQuarter.currentIntervalMinutes).toBe(5);
+    expect(statusInLastQuarter.isInLastQuarter).toBe(true);
 
     const schedFast = buildManhuntRadarSchedule(0, 20);
     expect(schedFast.hidingDurationMs).toBe(0);
-    expect(schedFast.stage1Ms).toBe(4 * 60_000);
+    expect(schedFast.stage1Ms).toBe(10 * 60_000);
     expect(schedFast.stage5Ms).toBe(20 * 60_000);
 
     const schedMax = buildManhuntRadarSchedule(30, 80);
     expect(schedMax.hidingDurationMs).toBe(30 * 60_000);
-    expect(schedMax.stage1Ms).toBe(46 * 60_000);
+    expect(schedMax.stage1Ms).toBe(40 * 60_000);
     expect(schedMax.stage5Ms).toBe(110 * 60_000);
   });
 

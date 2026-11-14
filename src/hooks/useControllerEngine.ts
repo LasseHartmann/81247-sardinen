@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   CONTROLLER_HEARTBEAT_INTERVAL_MS,
   CONTROLLER_LEASE_TTL_MS,
+  getManhuntPingStatusAtElapsedMs,
   MANHUNT_RADAR_RADII,
   MEDIA_AUTO_EXPIRE_MS,
   MEDIA_REFUND_MS,
@@ -17,7 +18,6 @@ import {
   computeNextManhuntZoneCircle,
   generateInsideOutRadarStages,
   getDueRadarCircle,
-  getDueRadarStageId,
   getPhaseForElapsedMs,
 } from '../geo/radar';
 import type { DatabaseAdapter } from '../services/databaseAdapter';
@@ -29,12 +29,16 @@ import type {
   ClueRecord,
   ClueRequest,
   ControllerLease,
+  GamePhase,
   GeoFix,
   HiderPrivateState,
   LatLng,
   LeaderboardEntry,
+  ManhuntPingInfo,
+  ManhuntPingSource,
   MemberRecord,
   PublicGameState,
+  PublishedRadarCircle,
   RadarStageId,
   RadarStageSecret,
   TeamLocation,
@@ -63,16 +67,30 @@ export interface ControllerTickContext {
   ) => Promise<OsmEnvironmentData>;
 }
 
+export const MANHUNT_LIVE_FIX_MAX_AGE_MS = 2 * 60_000; // <= 2 Min. gilt als frischer Live-GPS-Fix
+
+export interface ResolvedManhuntPingLocation {
+  lat: number;
+  lng: number;
+  accuracy: number;
+  source: ManhuntPingSource;
+  lastFixAgeMs?: number;
+}
+
 /**
- * Ermittelt im Manhunt-Modus den aktuellen Live-Schwerpunkt aller Verstecker aus `hiderPrivate.hiderLocations`.
+ * Mehrstufige Positionsauflösung für Manhunt-Pings mit GPS-Ausfallschutz:
+ * 1. LIVE_GPS: Frische GPS-Fixes (<= 2 Min. alt) aus `hiderPrivate.hiderLocations` (inkl. Sardinen-Rudel) oder `fallbackHiderFix`.
+ * 2. LAST_KNOWN_GPS: Letzter bekannter historischer Standort der Verstecker (aus `hiderLocations`, `fallbackHiderFix` oder vorherigem Ping).
+ * 3. ZONE_FALLBACK: Aktueller Zonenmittelpunkt bzw. Sammelpunkt im Spielgebiet, falls noch nie ein GPS-Signal vorlag.
  */
-export function resolveLiveManhuntHiderCentroid(params: {
+export function resolveManhuntHiderPingLocation(params: {
   hiderPrivate: HiderPrivateState;
   fallbackHiderFix?: GeoFix | null;
   publicState: PublicGameState;
-}): LatLng {
-  const { hiderPrivate, fallbackHiderFix, publicState } = params;
-  const fixes = Object.values(hiderPrivate.hiderLocations ?? {}).filter(
+  serverNowMs: number;
+}): ResolvedManhuntPingLocation {
+  const { hiderPrivate, fallbackHiderFix, publicState, serverNowMs } = params;
+  const allFixes = Object.values(hiderPrivate.hiderLocations ?? {}).filter(
     (f): f is GeoFix =>
       Boolean(
         f &&
@@ -83,29 +101,153 @@ export function resolveLiveManhuntHiderCentroid(params: {
       )
   );
 
-  if (fixes.length > 0) {
-    const sumLat = fixes.reduce((acc, f) => acc + f.lat, 0);
-    const sumLng = fixes.reduce((acc, f) => acc + f.lng, 0);
+  const freshFixes = allFixes.filter(
+    (f) =>
+      typeof f.timestamp !== 'number' ||
+      !Number.isFinite(f.timestamp) ||
+      serverNowMs - f.timestamp <= MANHUNT_LIVE_FIX_MAX_AGE_MS
+  );
+
+  // 1. LIVE_GPS aus aktiven Hider/Sardinen-Fixes
+  if (freshFixes.length > 0) {
+    const sumLat = freshFixes.reduce((acc, f) => acc + f.lat, 0);
+    const sumLng = freshFixes.reduce((acc, f) => acc + f.lng, 0);
+    const avgAcc =
+      freshFixes.reduce(
+        (acc, f) => acc + (Number.isFinite(f.accuracy) ? f.accuracy : 15),
+        0
+      ) / freshFixes.length;
+    const newestTs = Math.max(
+      ...freshFixes.map((f) =>
+        typeof f.timestamp === 'number' && Number.isFinite(f.timestamp)
+          ? f.timestamp
+          : serverNowMs
+      )
+    );
     return {
-      lat: sumLat / fixes.length,
-      lng: sumLng / fixes.length,
+      lat: sumLat / freshFixes.length,
+      lng: sumLng / freshFixes.length,
+      accuracy: Math.max(5, Math.round(avgAcc)),
+      source: 'LIVE_GPS',
+      lastFixAgeMs: Math.max(0, serverNowMs - newestTs),
     };
   }
 
+  // 1b. LIVE_GPS aus lokalem Controller-Fallback-Fix (falls frisch)
+  if (
+    fallbackHiderFix &&
+    (typeof fallbackHiderFix.timestamp !== 'number' ||
+      serverNowMs - fallbackHiderFix.timestamp <= MANHUNT_LIVE_FIX_MAX_AGE_MS)
+  ) {
+    return {
+      lat: fallbackHiderFix.lat,
+      lng: fallbackHiderFix.lng,
+      accuracy: Math.max(5, Math.round(fallbackHiderFix.accuracy || 15)),
+      source: 'LIVE_GPS',
+      lastFixAgeMs:
+        typeof fallbackHiderFix.timestamp === 'number'
+          ? Math.max(0, serverNowMs - fallbackHiderFix.timestamp)
+          : 0,
+    };
+  }
+
+  // 2. LAST_KNOWN_GPS aus älteren gespeicherten Hider-Fixes (neuestes Zeitfenster)
+  if (allFixes.length > 0) {
+    const newestTs = Math.max(
+      ...allFixes.map((f) =>
+        typeof f.timestamp === 'number' && Number.isFinite(f.timestamp)
+          ? f.timestamp
+          : 0
+      )
+    );
+    const recentHistorical = allFixes.filter(
+      (f) => (f.timestamp ?? 0) >= newestTs - 60_000
+    );
+    const chosen = recentHistorical.length > 0 ? recentHistorical : allFixes;
+    const sumLat = chosen.reduce((acc, f) => acc + f.lat, 0);
+    const sumLng = chosen.reduce((acc, f) => acc + f.lng, 0);
+    const avgAcc =
+      chosen.reduce(
+        (acc, f) => acc + (Number.isFinite(f.accuracy) ? f.accuracy : 25),
+        0
+      ) / chosen.length;
+    return {
+      lat: sumLat / chosen.length,
+      lng: sumLng / chosen.length,
+      accuracy: Math.max(10, Math.round(avgAcc)),
+      source: 'LAST_KNOWN_GPS',
+      lastFixAgeMs: newestTs > 0 ? Math.max(0, serverNowMs - newestTs) : undefined,
+    };
+  }
+
+  // 2b. LAST_KNOWN_GPS aus älterem lokalen Controller-Fix
   if (fallbackHiderFix) {
     return {
       lat: fallbackHiderFix.lat,
       lng: fallbackHiderFix.lng,
+      accuracy: Math.max(10, Math.round(fallbackHiderFix.accuracy || 25)),
+      source: 'LAST_KNOWN_GPS',
+      lastFixAgeMs:
+        typeof fallbackHiderFix.timestamp === 'number'
+          ? Math.max(0, serverNowMs - fallbackHiderFix.timestamp)
+          : undefined,
     };
   }
 
-  return snapPointIntoPlayArea(
+  // 2c. LAST_KNOWN_GPS aus vorherigem Ping
+  if (publicState.radarCircle?.lastPing) {
+    const prevPing = publicState.radarCircle.lastPing;
+    return {
+      lat: prevPing.lat,
+      lng: prevPing.lng,
+      accuracy: Math.max(15, Math.round(prevPing.accuracy || 30)),
+      source: 'LAST_KNOWN_GPS',
+      lastFixAgeMs: Math.max(0, serverNowMs - prevPing.pingedAt),
+    };
+  }
+
+  // 3. ZONE_FALLBACK: Noch nie ein GPS-Signal empfangen -> nutze aktuellen Zonenmittelpunkt bzw. SafetyPoint
+  if (publicState.radarCircle) {
+    return {
+      lat: publicState.radarCircle.center.lat,
+      lng: publicState.radarCircle.center.lng,
+      accuracy: Math.min(
+        250,
+        Math.max(40, Math.round(publicState.radarCircle.radiusMeters * 0.25))
+      ),
+      source: 'ZONE_FALLBACK',
+    };
+  }
+
+  const snappedSafety = snapPointIntoPlayArea(
     {
       lat: publicState.safetyPoint.lat,
       lng: publicState.safetyPoint.lng,
     },
     publicState.playArea.polygon
   );
+  return {
+    lat: snappedSafety.lat,
+    lng: snappedSafety.lng,
+    accuracy: 100,
+    source: 'ZONE_FALLBACK',
+  };
+}
+
+/**
+ * Ermittelt im Manhunt-Modus den aktuellen Live-Schwerpunkt aller Verstecker aus `hiderPrivate.hiderLocations`.
+ */
+export function resolveLiveManhuntHiderCentroid(params: {
+  hiderPrivate: HiderPrivateState;
+  fallbackHiderFix?: GeoFix | null;
+  publicState: PublicGameState;
+  serverNowMs?: number;
+}): LatLng {
+  const resolved = resolveManhuntHiderPingLocation({
+    ...params,
+    serverNowMs: params.serverNowMs ?? Date.now(),
+  });
+  return { lat: resolved.lat, lng: resolved.lng };
 }
 
 /**
@@ -230,13 +372,50 @@ export async function executeControllerTick(
         : rawDuePhase;
 
     if (isManhunt) {
-      // Im Manhunt-Modus gibt es keinen statischen Anchor Point; jede fällige Schrumpfstufe wird
-      // live um die aktuelle Position der Verstecker berechnet und verschachtelt gespeichert.
-      const dueStageId = getDueRadarStageId(
+      // Im Manhunt-Modus bewegen sich die Verstecker dauerhaft (kein statisches Versteck / kein Anchor-Lock).
+      // Pings erfolgen alle 10 Min. in den ersten 3/4 der angegebenen Spielzeit und alle 5 Min. im letzten Viertel.
+      const headStartMs = publicState.radarSchedule.hidingDurationMs;
+      const huntDurationMs =
+        publicState.manhuntShrinkDurationMs ??
+        Math.max(10 * 60_000, publicState.radarSchedule.stage5Ms - headStartMs);
+
+      const pingStatus = getManhuntPingStatusAtElapsedMs(
         netElapsedMs,
-        publicState.radarSchedule
+        headStartMs,
+        huntDurationMs
       );
-      if (dueStageId !== null) {
+
+      const manhuntRawPhase: GamePhase =
+        netElapsedMs < headStartMs
+          ? 'HIDING'
+          : pingStatus.dueStageId === null
+            ? 'OPEN_SEARCH'
+            : pingStatus.dueStageId === 5
+              ? 'ENDGAME'
+              : (`RADAR_${pingStatus.dueStageId}` as GamePhase);
+
+      const manhuntDuePhase: GamePhase =
+        manhuntRawPhase === 'HIDING' &&
+        publicState.searchStartTimestamp !== null &&
+        publicState.currentPhase !== 'HIDING'
+          ? publicState.currentPhase
+          : manhuntRawPhase;
+
+      const lastPublishedPingElapsedMs =
+        publicState.radarCircle?.lastPing?.triggerElapsedMs ?? null;
+      const isNewPingDue =
+        pingStatus.duePingElapsedMs !== null &&
+        pingStatus.dueStageId !== null &&
+        (lastPublishedPingElapsedMs === null ||
+          lastPublishedPingElapsedMs < pingStatus.duePingElapsedMs);
+
+      let nextRadarToPublish: PublishedRadarCircle | null = null;
+
+      if (
+        pingStatus.dueStageId !== null &&
+        pingStatus.duePingElapsedMs !== null
+      ) {
+        const dueStageId = pingStatus.dueStageId;
         const stageMap = new Map<RadarStageId, RadarStageSecret>();
         for (const s of hiderPrivate.radarStages ?? []) {
           stageMap.set(s.stage, s);
@@ -250,38 +429,54 @@ export async function executeControllerTick(
           5: publicState.radarSchedule.stage5Ms,
         };
 
-        let mutatedStages = false;
-        const liveHiderPos = resolveLiveManhuntHiderCentroid({
+        const resolvedPingLoc = resolveManhuntHiderPingLocation({
           hiderPrivate,
           fallbackHiderFix,
           publicState,
+          serverNowMs,
         });
+        const liveHiderPos: LatLng = {
+          lat: resolvedPingLoc.lat,
+          lng: resolvedPingLoc.lng,
+        };
 
+        let mutatedStages = false;
         for (let st = 1; st <= dueStageId; st++) {
           const stageId = st as RadarStageId;
-          if (!stageMap.has(stageId)) {
+          const isCurrentDueStage = stageId === dueStageId;
+          const existingSecret = stageMap.get(stageId);
+          const needsStageRecompute =
+            !existingSecret ||
+            (isCurrentDueStage &&
+              isNewPingDue &&
+              existingSecret.triggerElapsedMs < pingStatus.duePingElapsedMs);
+
+          if (needsStageRecompute) {
             const prevSecret =
               stageId > 1
                 ? (stageMap.get((stageId - 1) as RadarStageId) ?? null)
                 : null;
-            const prevCircle = prevSecret
-              ? {
-                  center: prevSecret.center,
-                  radiusMeters: prevSecret.radiusMeters,
-                }
-              : publicState.radarCircle &&
-                  publicState.radarCircle.stage < stageId
+            const candidatePrevCircle =
+              publicState.radarCircle &&
+              publicState.radarCircle.radiusMeters >
+                MANHUNT_RADAR_RADII[stageId]
                 ? {
                     center: publicState.radarCircle.center,
                     radiusMeters: publicState.radarCircle.radiusMeters,
                   }
-                : null;
+                : prevSecret &&
+                    prevSecret.radiusMeters > MANHUNT_RADAR_RADII[stageId]
+                  ? {
+                      center: prevSecret.center,
+                      radiusMeters: prevSecret.radiusMeters,
+                    }
+                  : null;
 
             const computed = computeNextManhuntZoneCircle({
               hiderPosition: liveHiderPos,
               stage: stageId,
               nextRadiusMeters: MANHUNT_RADAR_RADII[stageId],
-              previousCircle: prevCircle,
+              previousCircle: candidatePrevCircle,
               playArea: publicState.playArea.polygon,
               publishedAt: serverNowMs,
               rng,
@@ -291,7 +486,9 @@ export async function executeControllerTick(
               stage: stageId,
               radiusMeters: computed.radiusMeters,
               center: computed.center,
-              triggerElapsedMs: triggerMap[stageId],
+              triggerElapsedMs: isCurrentDueStage
+                ? pingStatus.duePingElapsedMs
+                : triggerMap[stageId],
             });
             mutatedStages = true;
           }
@@ -307,23 +504,45 @@ export async function executeControllerTick(
           };
           await adapter.saveHiderPrivate(hiderPrivate);
         }
+
+        const activeSecret = stageMap.get(dueStageId);
+        if (
+          activeSecret &&
+          (isNewPingDue ||
+            publicState.radarCircle?.stage !== dueStageId ||
+            !publicState.radarCircle?.lastPing)
+        ) {
+          const lastPing: ManhuntPingInfo = {
+            lat: resolvedPingLoc.lat,
+            lng: resolvedPingLoc.lng,
+            accuracy: resolvedPingLoc.accuracy,
+            pingNumber: pingStatus.duePingNumber,
+            pingedAt: serverNowMs,
+            triggerElapsedMs: pingStatus.duePingElapsedMs,
+            source: resolvedPingLoc.source,
+            ...(resolvedPingLoc.lastFixAgeMs !== undefined
+              ? { lastFixAgeMs: resolvedPingLoc.lastFixAgeMs }
+              : {}),
+          };
+
+          nextRadarToPublish = {
+            stage: activeSecret.stage,
+            radiusMeters: activeSecret.radiusMeters,
+            center: activeSecret.center,
+            publishedAt: serverNowMs,
+            lastPing,
+          };
+        }
       }
 
-      const dueRadar = getDueRadarCircle(
-        netElapsedMs,
-        hiderPrivate.radarStages,
-        serverNowMs
-      );
       const needsSearchStartInit =
-        duePhase !== 'HIDING' && publicState.searchStartTimestamp === null;
-      const needsPhaseUpdate = duePhase !== publicState.currentPhase;
-      const needsRadarUpdate =
-        dueRadar !== null &&
-        dueRadar.stage !== (publicState.radarCircle?.stage ?? null);
+        manhuntDuePhase !== 'HIDING' && publicState.searchStartTimestamp === null;
+      const needsPhaseUpdate = manhuntDuePhase !== publicState.currentPhase;
+      const needsRadarUpdate = nextRadarToPublish !== null;
 
       if (needsSearchStartInit || needsPhaseUpdate || needsRadarUpdate) {
         await adapter.patchControllerPublicTransition({
-          ...(needsPhaseUpdate ? { currentPhase: duePhase } : {}),
+          ...(needsPhaseUpdate ? { currentPhase: manhuntDuePhase } : {}),
           ...(needsSearchStartInit
             ? {
                 searchStartTimestamp: serverNowMs,
@@ -331,7 +550,7 @@ export async function executeControllerTick(
                 anchorLocked: false,
               }
             : {}),
-          ...(needsRadarUpdate ? { radarCircle: dueRadar } : {}),
+          ...(needsRadarUpdate ? { radarCircle: nextRadarToPublish } : {}),
         });
       }
     } else {

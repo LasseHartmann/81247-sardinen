@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Play,
   Pause,
@@ -78,8 +78,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   onNavigateToMap,
   onLeaveAndLockConsole,
 }) => {
-  const selectedMode: GameMode =
-    publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC';
+  const [selectedMode, setSelectedMode] = useState<GameMode>(() =>
+    publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC'
+  );
+  useEffect(() => {
+    setSelectedMode(publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC');
+  }, [publicState.gameMode]);
   const isManhunt = selectedMode === 'MANHUNT';
 
   const [classicHidingMin, setClassicHidingMin] = useState(() => {
@@ -103,7 +107,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   });
 
   const handleSelectGameMode = (nextMode: GameMode) => {
-    if (nextMode === selectedMode) return;
+    setSelectedMode(nextMode);
     const nextSchedule =
       nextMode === 'MANHUNT'
         ? buildManhuntRadarSchedule(manhuntHeadStartMin, manhuntShrinkMin)
@@ -227,7 +231,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     const now = adapter.getServerNow();
     if (isManhunt) {
       const currentNetMs = computeNetElapsedMs(publicState, now);
-      const shrinkDurationMs = manhuntShrinkMin * 60_000;
+      const baseSched = buildManhuntRadarSchedule(0, manhuntShrinkMin);
       await adapter.savePublicStateByHost({
         ...publicState,
         currentPhase: 'OPEN_SEARCH',
@@ -236,11 +240,11 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
         anchorLocked: false,
         radarSchedule: {
           hidingDurationMs: currentNetMs,
-          stage1Ms: currentNetMs + Math.round((shrinkDurationMs * 1) / 5),
-          stage2Ms: currentNetMs + Math.round((shrinkDurationMs * 2) / 5),
-          stage3Ms: currentNetMs + Math.round((shrinkDurationMs * 3) / 5),
-          stage4Ms: currentNetMs + Math.round((shrinkDurationMs * 4) / 5),
-          stage5Ms: currentNetMs + shrinkDurationMs,
+          stage1Ms: currentNetMs + baseSched.stage1Ms,
+          stage2Ms: currentNetMs + baseSched.stage2Ms,
+          stage3Ms: currentNetMs + baseSched.stage3Ms,
+          stage4Ms: currentNetMs + baseSched.stage4Ms,
+          stage5Ms: currentNetMs + baseSched.stage5Ms,
         },
       });
       return;
@@ -471,7 +475,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                   Manhunt
                 </span>
                 <span className="text-[11px] leading-snug opacity-80">
-                  Verstecker in Bewegung • Sardinen-Rudel • Dynamische Schrumpf-Zone
+                  Dauerhaft in Bewegung (kein festes Versteck) • Ping alle 10/5 Min. • Schrumpf-Zone
                 </span>
               </button>
             </div>
@@ -527,7 +531,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 />
 
                 <HardwareKnob
-                  label="SCHRUMPFDAUER BIS 150M (STD. 30 MIN)"
+                  label="SPIELZEIT / SCHRUMPEN BIS 150M (10-80 MIN)"
                   ariaLabel="Gesamtdauer bis zur kleinsten Zone in Minuten"
                   dataTestId="manhunt-shrink-time-knob"
                   value={manhuntShrinkMin}
@@ -553,9 +557,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               </div>
 
               <div className="cmf-well px-3.5 py-2 text-center font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                5 SCHRUMPFSTUFEN (ALLE{' '}
-                {formatDurationClock(Math.round((manhuntShrinkMin * 60_000) / 5))}
-                ): 1200M → 800M → 500M → 300M → 150M
+                KEIN FESTES VERSTECK • PING ALLE 10 MIN. & IM LETZTEN VIERTEL (AB{' '}
+                {formatDurationClock(Math.round(manhuntShrinkMin * 60_000 * 0.75))}
+                ) ALLE 5 MIN. • ZONE: 1200M → 800M → 500M → 300M → 150M
               </div>
             </div>
           )}

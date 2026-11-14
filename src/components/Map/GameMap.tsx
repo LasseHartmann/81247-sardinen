@@ -7,8 +7,10 @@ import {
   LEASH_RADIUS_METERS,
   MAP_DEFAULT_CENTER,
   MAP_DEFAULT_ZOOM,
+  THERMOMETER_MIN_DISTANCE_METERS,
 } from '../../config/gameConfig';
 import { buildQuestionPreviewGeoJson } from '../../geo/clueGeometry';
+import { destinationPoint, distanceMeters } from '../../geo/distance';
 import {
   buildExcludedOrangeMask,
   computePossibleHidingArea,
@@ -28,6 +30,9 @@ import type {
 import {
   createAnchorPointIcon,
   createEmergencyBeaconIcon,
+  createExposedHiderIcon,
+  createLiveHiderOverviewIcon,
+  createManhuntPingIcon,
   createOwnPositionIcon,
   createSelectionPinIcon,
   createTeamBeaconIcon,
@@ -52,6 +57,12 @@ export interface GameMapProps {
   anchorPoint: AnchorPoint | null;
   showAnchorAndLeash: boolean;
   publishedRadar: PublishedRadarCircle | null;
+  exposedHiderLocation?: {
+    lat: number;
+    lng: number;
+    accuracy?: number;
+  } | null;
+  liveHiderLocations?: Record<string, { lat: number; lng: number; accuracy: number; label: string }>;
   visibleTeamLocations: Record<string, TeamLocation | null>;
   teamsPublic: Record<string, TeamPublic>;
   activeTeamIds?: string[];
@@ -62,6 +73,8 @@ export interface GameMapProps {
   selectedRadius?: RadiusOptionMeters;
   thermoPointA?: LatLng | null;
   thermoPointB?: LatLng | null;
+  onChangeThermoPointA?: (pt: LatLng) => void;
+  onChangeThermoPointB?: (pt: LatLng) => void;
   clickMode: MapClickInteractionMode;
   onMapCoordinateClick?: (pt: LatLng) => void;
   onRequestGpsPermission?: () => Promise<GeoFix | null> | void;
@@ -79,6 +92,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
   anchorPoint,
   showAnchorAndLeash,
   publishedRadar,
+  exposedHiderLocation = null,
+  liveHiderLocations,
   visibleTeamLocations,
   teamsPublic,
   activeTeamIds,
@@ -89,6 +104,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
   selectedRadius = 250,
   thermoPointA,
   thermoPointB,
+  onChangeThermoPointA,
+  onChangeThermoPointB,
   clickMode,
   onMapCoordinateClick,
   onRequestGpsPermission,
@@ -106,6 +123,12 @@ const GameMapInner: React.FC<GameMapProps> = ({
   const actorsLayerRef = useRef<L.LayerGroup | null>(null);
 
   const anchorMarkerRef = useRef<L.Marker | null>(null);
+  const manhuntPingMarkerRef = useRef<L.Marker | null>(null);
+  const manhuntPingCircleRef = useRef<L.Circle | null>(null);
+  const exposedHiderMarkerRef = useRef<L.Marker | null>(null);
+  const liveHiderMarkersRef = useRef<Map<string, { marker: L.Marker; label: string }>>(
+    new Map()
+  );
   const ownMarkerRef = useRef<L.Marker | null>(null);
   const teamMarkersRef = useRef<
     Map<string, { marker: L.Marker; name: string; color: string }>
@@ -118,6 +141,12 @@ const GameMapInner: React.FC<GameMapProps> = ({
   onClickRef.current = onMapCoordinateClick;
   const clickModeRef = useRef(clickMode);
   clickModeRef.current = clickMode;
+  const activePreviewRef = useRef(activePreviewQuestion);
+  activePreviewRef.current = activePreviewQuestion;
+  const onThermoARef = useRef(onChangeThermoPointA);
+  onThermoARef.current = onChangeThermoPointA;
+  const onThermoBRef = useRef(onChangeThermoPointB);
+  onThermoBRef.current = onChangeThermoPointB;
 
   const cluesSignature = clues.map((c) => c.id).join('|');
   const hiddenSignature = Array.from(hiddenClueIds).sort().join('|');
@@ -145,6 +174,31 @@ const GameMapInner: React.FC<GameMapProps> = ({
   const previewOriginLat = anchorGpsOrigin?.lat ?? null;
   const previewOriginLng = anchorGpsOrigin?.lng ?? null;
 
+  const effectiveThermoA = useMemo<LatLng | null>(() => {
+    if (thermoPointA) return thermoPointA;
+    if (
+      activePreviewQuestion === 'THERMOMETER' &&
+      previewOriginLat !== null &&
+      previewOriginLng !== null
+    ) {
+      return { lat: previewOriginLat, lng: previewOriginLng };
+    }
+    return null;
+  }, [thermoPointA, activePreviewQuestion, previewOriginLat, previewOriginLng]);
+
+  const effectiveThermoB = useMemo<LatLng | null>(() => {
+    if (
+      thermoPointB &&
+      (!effectiveThermoA || distanceMeters(effectiveThermoA, thermoPointB) >= 5)
+    ) {
+      return thermoPointB;
+    }
+    if (activePreviewQuestion === 'THERMOMETER' && effectiveThermoA) {
+      return destinationPoint(effectiveThermoA, THERMOMETER_MIN_DISTANCE_METERS, 45);
+    }
+    return thermoPointB ?? null;
+  }, [thermoPointB, effectiveThermoA, activePreviewQuestion]);
+
   const liveConePreview = useMemo(() => {
     if (!activePreviewQuestion) return null;
     const originPt =
@@ -156,8 +210,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
       {
         bearingDeg: coneBearingDeg,
         radiusMeters: selectedRadius,
-        pointA: thermoPointA ?? undefined,
-        pointB: (thermoPointB ?? originPt) ?? undefined,
+        pointA: effectiveThermoA ?? undefined,
+        pointB: effectiveThermoB ?? undefined,
       },
       originPt,
       possibleHidingArea ?? playArea
@@ -166,8 +220,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
     activePreviewQuestion,
     coneBearingDeg,
     selectedRadius,
-    thermoPointA,
-    thermoPointB,
+    effectiveThermoA,
+    effectiveThermoB,
     previewOriginLat,
     previewOriginLng,
     possibleHidingArea,
@@ -205,11 +259,16 @@ const GameMapInner: React.FC<GameMapProps> = ({
     actorsLayerRef.current = L.layerGroup().addTo(map);
 
     map.on('click', (ev: L.LeafletMouseEvent) => {
+      const pt = {
+        lat: ev.latlng.lat,
+        lng: ev.latlng.lng,
+      };
       if (clickModeRef.current.kind !== 'NONE' && onClickRef.current) {
-        onClickRef.current({
-          lat: ev.latlng.lat,
-          lng: ev.latlng.lng,
-        });
+        onClickRef.current(pt);
+        return;
+      }
+      if (activePreviewRef.current === 'THERMOMETER' && onThermoBRef.current) {
+        onThermoBRef.current(pt);
       }
     });
 
@@ -227,6 +286,10 @@ const GameMapInner: React.FC<GameMapProps> = ({
     return () => {
       resizeObserver.disconnect();
       anchorMarkerRef.current = null;
+      manhuntPingMarkerRef.current = null;
+      manhuntPingCircleRef.current = null;
+      exposedHiderMarkerRef.current = null;
+      liveHiderMarkersRef.current.clear();
       ownMarkerRef.current = null;
       teamMarkersRef.current.clear();
       emergencyMarkersRef.current.clear();
@@ -317,33 +380,104 @@ const GameMapInner: React.FC<GameMapProps> = ({
     group.clearLayers();
     const renderer = canvasRendererRef.current ?? undefined;
 
+    const isThermoPreview = activePreviewQuestion === 'THERMOMETER';
+    const thermoDist =
+      effectiveThermoA && effectiveThermoB
+        ? distanceMeters(effectiveThermoA, effectiveThermoB)
+        : 0;
+    const isThermoValid =
+      !isThermoPreview || thermoDist >= THERMOMETER_MIN_DISTANCE_METERS;
+    const previewColor = isThermoValid ? '#00A896' : '#F59E0B';
+
     if (liveConePreview) {
       L.geoJSON(liveConePreview, {
         style: {
           renderer,
-          color: '#00A896',
-          weight: 2,
-          fillColor: '#00A896',
-          fillOpacity: 0.18,
+          color: previewColor,
+          weight: 2.2,
+          fillColor: previewColor,
+          fillOpacity: 0.2,
         },
         interactive: false,
       }).addTo(group);
     }
 
-    if (thermoPointA) {
-      L.marker([thermoPointA.lat, thermoPointA.lng], {
+    let abLine: L.Polyline | null = null;
+    if (isThermoPreview && effectiveThermoA) {
+      // 250-Meter-Mindestradius um Startpunkt A als Orientierungskreis
+      L.circle([effectiveThermoA.lat, effectiveThermoA.lng], {
+        renderer,
+        radius: THERMOMETER_MIN_DISTANCE_METERS,
+        color: '#64748B',
+        weight: 1.5,
+        dashArray: '5 5',
+        fillOpacity: 0,
+        interactive: false,
+      }).addTo(group);
+
+      if (effectiveThermoB) {
+        abLine = L.polyline(
+          [
+            [effectiveThermoA.lat, effectiveThermoA.lng],
+            [effectiveThermoB.lat, effectiveThermoB.lng],
+          ],
+          {
+            renderer,
+            color: previewColor,
+            weight: 2.5,
+            dashArray: '6 4',
+            interactive: false,
+          }
+        ).addTo(group);
+      }
+    }
+
+    if (effectiveThermoA && (thermoPointA || isThermoPreview)) {
+      const markerA = L.marker([effectiveThermoA.lat, effectiveThermoA.lng], {
         icon: createSelectionPinIcon('A', 'primary'),
+        draggable: Boolean(isThermoPreview && onThermoARef.current),
       })
         .bindTooltip('THERMOMETER START [A]')
         .addTo(group);
+
+      markerA.on('drag', () => {
+        const pos = markerA.getLatLng();
+        if (abLine && effectiveThermoB) {
+          abLine.setLatLngs([
+            [pos.lat, pos.lng],
+            [effectiveThermoB.lat, effectiveThermoB.lng],
+          ]);
+        }
+      });
+      markerA.on('dragend', () => {
+        const pos = markerA.getLatLng();
+        onThermoARef.current?.({ lat: pos.lat, lng: pos.lng });
+      });
     }
 
-    if (thermoPointB) {
-      L.marker([thermoPointB.lat, thermoPointB.lng], {
+    if (effectiveThermoB && (thermoPointB || isThermoPreview)) {
+      const markerB = L.marker([effectiveThermoB.lat, effectiveThermoB.lng], {
         icon: createSelectionPinIcon('B', 'secondary'),
+        draggable: Boolean(onThermoBRef.current),
       })
-        .bindTooltip('THERMOMETER ENDE [B]')
+        .bindTooltip(
+          `THERMOMETER ENDE [B] (${Math.round(thermoDist)} m) — Ziehen oder Karte antippen`
+        )
         .addTo(group);
+
+      markerB.on('drag', () => {
+        const pos = markerB.getLatLng();
+        if (abLine && effectiveThermoA) {
+          abLine.setLatLngs([
+            [effectiveThermoA.lat, effectiveThermoA.lng],
+            [pos.lat, pos.lng],
+          ]);
+        }
+      });
+      markerB.on('dragend', () => {
+        const pos = markerB.getLatLng();
+        onThermoBRef.current?.({ lat: pos.lat, lng: pos.lng });
+      });
     }
 
     if (anchorPickLat !== null && anchorPickLng !== null) {
@@ -358,7 +492,16 @@ const GameMapInner: React.FC<GameMapProps> = ({
         interactive: false,
       }).addTo(group);
     }
-  }, [liveConePreview, thermoPointA, thermoPointB, anchorPickLat, anchorPickLng]);
+  }, [
+    liveConePreview,
+    activePreviewQuestion,
+    effectiveThermoA,
+    effectiveThermoB,
+    thermoPointA,
+    thermoPointB,
+    anchorPickLat,
+    anchorPickLng,
+  ]);
 
   // 3. Eigene Position, autorisierte Team-Beacons sowie Hider-Anchor (in-place aktualisiert ohne Flackern!)
   useEffect(() => {
@@ -382,6 +525,134 @@ const GameMapInner: React.FC<GameMapProps> = ({
     } else if (anchorMarkerRef.current) {
       group.removeLayer(anchorMarkerRef.current);
       anchorMarkerRef.current = null;
+    }
+
+    // 3a2. Manhunt Verstecker-Ping Marker & Unschärfe-Kreis (für Sucher & Verstecker sichtbar)
+    const lastPing = publishedRadar?.lastPing ?? null;
+    if (lastPing) {
+      const isFallbackSource = lastPing.source !== 'LIVE_GPS';
+      const sourceLabel =
+        lastPing.source === 'LIVE_GPS'
+          ? 'Live-GPS'
+          : lastPing.source === 'LAST_KNOWN_GPS'
+            ? `Letzter bekannter GPS-Standort${
+                typeof lastPing.lastFixAgeMs === 'number'
+                  ? ` (vor ${Math.max(1, Math.round(lastPing.lastFixAgeMs / 60000))} Min.)`
+                  : ''
+              }`
+            : 'Zonen-Fallback (kein GPS-Signal der Verstecker verfügbar)';
+      const pingPopupHtml = `<strong>VERSTECKER-PING #${lastPing.pingNumber}</strong><br/>Quelle: ${sourceLabel}<br/>Genauigkeit: ±${Math.round(lastPing.accuracy)} m`;
+      const pingRadius = Math.max(15, Math.min(250, Math.round(lastPing.accuracy)));
+      const ringColor = isFallbackSource ? '#F59E0B' : '#FF4D00';
+
+      if (!manhuntPingCircleRef.current) {
+        manhuntPingCircleRef.current = L.circle([lastPing.lat, lastPing.lng], {
+          renderer: canvasRendererRef.current ?? undefined,
+          radius: pingRadius,
+          color: ringColor,
+          weight: 2,
+          dashArray: '5 4',
+          fillColor: ringColor,
+          fillOpacity: 0.14,
+          interactive: false,
+        }).addTo(group);
+      } else {
+        manhuntPingCircleRef.current.setLatLng([lastPing.lat, lastPing.lng]);
+        manhuntPingCircleRef.current.setRadius(pingRadius);
+        manhuntPingCircleRef.current.setStyle({
+          color: ringColor,
+          fillColor: ringColor,
+        });
+      }
+
+      const nextIcon = createManhuntPingIcon(lastPing.pingNumber, isFallbackSource);
+      if (!manhuntPingMarkerRef.current) {
+        manhuntPingMarkerRef.current = L.marker([lastPing.lat, lastPing.lng], {
+          icon: nextIcon,
+          zIndexOffset: 650,
+        })
+          .bindPopup(pingPopupHtml)
+          .addTo(group);
+      } else {
+        manhuntPingMarkerRef.current.setLatLng([lastPing.lat, lastPing.lng]);
+        manhuntPingMarkerRef.current.setIcon(nextIcon);
+        manhuntPingMarkerRef.current.setPopupContent(pingPopupHtml);
+      }
+    } else {
+      if (manhuntPingMarkerRef.current) {
+        group.removeLayer(manhuntPingMarkerRef.current);
+        manhuntPingMarkerRef.current = null;
+      }
+      if (manhuntPingCircleRef.current) {
+        group.removeLayer(manhuntPingCircleRef.current);
+        manhuntPingCircleRef.current = null;
+      }
+    }
+
+    // 3a3. Freigegebener Live-Verstecker-Standort nach Ablauf der weiteren Minute (für alle Teams sichtbar)
+    if (
+      exposedHiderLocation &&
+      Number.isFinite(exposedHiderLocation.lat) &&
+      Number.isFinite(exposedHiderLocation.lng)
+    ) {
+      const exposedPopup = `<strong>LIVE // VERSTECKER-STANDORT FREIGEGEBEN</strong><br/>Zonen-/Bereichsverstoß > 2 Min.${
+        typeof exposedHiderLocation.accuracy === 'number'
+          ? `<br/>GPS: ±${Math.round(exposedHiderLocation.accuracy)} m`
+          : ''
+      }`;
+      if (!exposedHiderMarkerRef.current) {
+        exposedHiderMarkerRef.current = L.marker(
+          [exposedHiderLocation.lat, exposedHiderLocation.lng],
+          {
+            icon: createExposedHiderIcon(),
+            zIndexOffset: 900,
+          }
+        )
+          .bindPopup(exposedPopup)
+          .addTo(group);
+      } else {
+        exposedHiderMarkerRef.current.setLatLng([
+          exposedHiderLocation.lat,
+          exposedHiderLocation.lng,
+        ]);
+        exposedHiderMarkerRef.current.setPopupContent(exposedPopup);
+      }
+    } else if (exposedHiderMarkerRef.current) {
+      group.removeLayer(exposedHiderMarkerRef.current);
+      exposedHiderMarkerRef.current = null;
+    }
+
+    // 3a4. Live-Verstecker-Standorte für Overview-Account & Sardinen-Rudel
+    const seenLiveHiders = new Set<string>();
+    if (liveHiderLocations) {
+      for (const [uidKey, hLoc] of Object.entries(liveHiderLocations)) {
+        if (!hLoc || !Number.isFinite(hLoc.lat) || !Number.isFinite(hLoc.lng)) continue;
+        seenLiveHiders.add(uidKey);
+        const hPopup = `<strong>VERSTECKER // ${hLoc.label.toUpperCase()}</strong><br/>GPS: ±${Math.round(hLoc.accuracy)}M`;
+        const existingH = liveHiderMarkersRef.current.get(uidKey);
+        if (!existingH) {
+          const marker = L.marker([hLoc.lat, hLoc.lng], {
+            icon: createLiveHiderOverviewIcon(hLoc.label),
+            zIndexOffset: 700,
+          })
+            .bindPopup(hPopup)
+            .addTo(group);
+          liveHiderMarkersRef.current.set(uidKey, { marker, label: hLoc.label });
+        } else {
+          existingH.marker.setLatLng([hLoc.lat, hLoc.lng]);
+          existingH.marker.setPopupContent(hPopup);
+          if (existingH.label !== hLoc.label) {
+            existingH.marker.setIcon(createLiveHiderOverviewIcon(hLoc.label));
+            existingH.label = hLoc.label;
+          }
+        }
+      }
+    }
+    for (const [uidKey, entry] of liveHiderMarkersRef.current.entries()) {
+      if (!seenLiveHiders.has(uidKey)) {
+        group.removeLayer(entry.marker);
+        liveHiderMarkersRef.current.delete(uidKey);
+      }
     }
 
     // 3b. Team-Beacons
@@ -495,6 +766,9 @@ const GameMapInner: React.FC<GameMapProps> = ({
     isOwnSideHider,
     anchorPoint,
     showAnchorAndLeash,
+    publishedRadar?.lastPing,
+    exposedHiderLocation,
+    liveHiderLocations,
     visibleTeamLocations,
     teamsPublic,
     activeTeamIds,
@@ -584,11 +858,13 @@ const GameMapInner: React.FC<GameMapProps> = ({
         </button>
       </div>
 
-      {clickMode.kind !== 'NONE' && (
+      {(clickMode.kind !== 'NONE' || activePreviewQuestion === 'THERMOMETER') && (
         <div className="cmf-oled pointer-events-none absolute top-14 right-3 left-3 z-[450] mx-auto flex max-w-sm items-center justify-center gap-2 px-3.5 py-2 text-center text-[11px] font-tech tracking-wide uppercase shadow-xl">
           <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--cmf-amber)]" />
           <span className="text-[#F8FAFC]">
-            {clickMode.label ?? 'Tippe auf die Karte, um den Punkt zu setzen'}
+            {clickMode.kind !== 'NONE'
+              ? (clickMode.label ?? 'Tippe auf die Karte, um den Punkt zu setzen')
+              : 'Tippe auf die Karte oder ziehe Pin B, um den Endpunkt zu wählen'}
           </span>
         </div>
       )}
@@ -672,13 +948,20 @@ export const GameMap = React.memo(GameMapInner, (prev, next) => {
 
   if (!sameLatLng(prev.thermoPointA, next.thermoPointA)) return false;
   if (!sameLatLng(prev.thermoPointB, next.thermoPointB)) return false;
+  if (!sameLatLng(prev.exposedHiderLocation, next.exposedHiderLocation)) return false;
+  if (prev.liveHiderLocations !== next.liveHiderLocations) return false;
 
   if (prev.publishedRadar !== next.publishedRadar) {
     if (!prev.publishedRadar || !next.publishedRadar) return false;
     if (
       prev.publishedRadar.stage !== next.publishedRadar.stage ||
       prev.publishedRadar.radiusMeters !== next.publishedRadar.radiusMeters ||
-      !sameLatLng(prev.publishedRadar.center, next.publishedRadar.center)
+      !sameLatLng(prev.publishedRadar.center, next.publishedRadar.center) ||
+      (prev.publishedRadar.lastPing?.triggerElapsedMs ?? null) !==
+        (next.publishedRadar.lastPing?.triggerElapsedMs ?? null) ||
+      (prev.publishedRadar.lastPing?.pingNumber ?? null) !==
+        (next.publishedRadar.lastPing?.pingNumber ?? null) ||
+      !sameLatLng(prev.publishedRadar.lastPing, next.publishedRadar.lastPing)
     ) {
       return false;
     }

@@ -132,20 +132,20 @@ export class HiderPrivateBroadcaster {
   async maybePublishFix(params: {
     adapter: DatabaseAdapter;
     member: MemberRecord | null;
+    team?: TeamPublic | null;
     gameMode: GameMode;
     gameActive: boolean;
     fix: GeoFix | null;
   }): Promise<boolean> {
-    const { adapter, member, gameMode, gameActive, fix } = params;
+    const { adapter, member, team, gameMode, gameActive, fix } = params;
 
-    if (
-      gameMode !== 'MANHUNT' ||
-      !gameActive ||
-      !member ||
-      !member.enabled ||
-      member.side !== 'HIDER' ||
-      !fix
-    ) {
+    const isInSardinePack = Boolean(
+      member &&
+        member.enabled &&
+        (member.side === 'HIDER' || team?.status === 'JOINED_SARDINES')
+    );
+
+    if (gameMode !== 'MANHUNT' || !gameActive || !member || !isInSardinePack || !fix) {
       if (!gameActive || gameMode !== 'MANHUNT') {
         this.reset();
       }

@@ -11,7 +11,9 @@ import {
 import {
   computeHiderPasswordHash,
   EXPECTED_ADMIN_AUTH_HASH,
+  isOverviewMember,
   PRESET_PLAYERS,
+  REGULAR_PLAYER_COUNT,
   resolveAllowedPlayerByNameInput,
   verifyAdminCode,
   verifyHiderPasswordHash,
@@ -23,6 +25,7 @@ import {
   computeAveragedTeamLocationFromMemberFixes,
   deduplicateEnabledMembers,
   extractActiveHiderLock,
+  extractActiveLeashViolation,
   extractEmergencyMessages,
   extractReadyPlayerIds,
   filterOnlineEnabledMembers,
@@ -115,7 +118,7 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(getQuestionPenaltyMs('MEDIA_GROUND')).toBe(5 * 60_000);
   });
 
-  it('erlaubt beim Login exakt die 14 Namen (inkl. Theo, Test 1 & Test 2) und schaltet Admin-Rechte für Lasse, Linus & Test 1 über den Admin-Code frei', () => {
+  it('erlaubt beim Login exakt die 14 Spielernamen sowie den Overview-Account (nur mit Admin-Code) und schaltet Admin-Rechte für Lasse, Linus, Test 1 & Overview frei', () => {
     const expectedNames = [
       'Lasse',
       'Linus',
@@ -131,22 +134,29 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
       'Theo',
       'Test 1',
       'Test 2',
+      'Overview',
     ];
     expect(PRESET_PLAYERS.map((p) => p.name)).toEqual(expectedNames);
-    expect(PRESET_PLAYERS).toHaveLength(14);
+    expect(PRESET_PLAYERS).toHaveLength(15);
+    expect(REGULAR_PLAYER_COUNT).toBe(14);
 
-    // Nur Lasse, Linus & Test 1 können Admin-Rechte freischalten (Test 2 nicht)
+    // Nur Lasse, Linus, Test 1 & Overview können Admin-Rechte freischalten (Test 2 nicht)
     expect(
       PRESET_PLAYERS.filter((p) => p.canUnlockAdmin).map((p) => p.name)
-    ).toEqual(['Lasse', 'Linus', 'Test 1']);
+    ).toEqual(['Lasse', 'Linus', 'Test 1', 'Overview']);
 
-    // Alle 14 Namen loggen sich direkt per Vorname ein
+    // Alle 14 Namen loggen sich direkt per Vorname ein, Overview (bzw. Übersicht) ist als Overview-Account markiert
     expect(resolveAllowedPlayerByNameInput('  lasse ')?.name).toBe('Lasse');
     expect(resolveAllowedPlayerByNameInput('LINUS')?.name).toBe('Linus');
     expect(resolveAllowedPlayerByNameInput('  roman  ')?.name).toBe('Roman');
     expect(resolveAllowedPlayerByNameInput('  theo  ')?.name).toBe('Theo');
     expect(resolveAllowedPlayerByNameInput('  test 1 ')?.canUnlockAdmin).toBe(true);
     expect(resolveAllowedPlayerByNameInput('TEST 2')?.canUnlockAdmin).toBe(false);
+    expect(resolveAllowedPlayerByNameInput('Overview')?.isOverviewOnly).toBe(true);
+    expect(resolveAllowedPlayerByNameInput('übersicht')?.id).toBe('overview');
+    expect(isOverviewMember({ playerId: 'overview', name: 'Overview' })).toBe(true);
+    expect(isOverviewMember({ playerId: 'test-1', name: 'Overview' })).toBe(true);
+    expect(isOverviewMember({ playerId: 'lasse', name: 'Lasse' })).toBe(false);
 
     // Standard-Versteckzeit beträgt 20 Minuten und Radius-Radar kostet 15 Minuten
     expect(DEFAULT_RADAR_SCHEDULE.hidingDurationMs).toBe(20 * 60_000);
@@ -478,5 +488,30 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     // Erst wenn der Absender selbst (demo_uid_thomas) löscht, verschwindet die Nachricht
     await store.adapter.clearOwnEmergencyMessage('demo_uid_thomas');
     expect(extractEmergencyMessages(store.getSnapshot().presence)).toHaveLength(0);
+
+    // 5. Leash-/Zonenverstoß veröffentlicht nach 60s den 2.-Minuten-Countdown und nach einer weiteren Minute den Live-Verstecker-Standort
+    await store.adapter.patchControllerPublicTransition({
+      leashAlertActive: true,
+    });
+    await store.adapter.setLeashViolationAlert({
+      uid: 'demo_uid_lasse',
+      sessionId,
+      alertStartedAt: t0 + 60_000,
+      exposeAt: t0 + 120_000,
+      violationReason: 'OUTSIDE_MANHUNT_ZONE',
+      exposedLat: 48.1642,
+      exposedLng: 11.4621,
+      exposedAccuracy: 9,
+      nowMs: t0 + 121_000,
+    });
+    const snapLeash = store.getSnapshot();
+    const activeViolation = extractActiveLeashViolation(
+      snapLeash.state.public,
+      snapLeash.presence
+    );
+    expect(activeViolation?.violationReason).toBe('OUTSIDE_MANHUNT_ZONE');
+    expect(activeViolation?.exposeAt).toBe(t0 + 120_000);
+    expect(activeViolation?.exposedLat).toBeCloseTo(48.1642, 4);
+    expect(activeViolation?.exposedLng).toBeCloseTo(11.4621, 4);
   });
 });

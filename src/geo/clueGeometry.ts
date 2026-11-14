@@ -678,16 +678,12 @@ export function buildQuestionPreviewGeoJson(
 
     case 'THERMOMETER': {
       const ptA = params.pointA ?? origin;
-      const ptB = params.pointB ?? origin;
       if (!ptA) return null;
-      if (!ptB || distanceMeters(ptA, ptB) < 5) {
-        const minWalkCircle = turf.circle([ptA.lng, ptA.lat], 250, {
-          units: 'meters',
-          steps: 48,
-        });
-        const clipped = safeClipWithPlayArea(minWalkCircle, playArea);
-        return clipped ? turf.featureCollection([clipped]) : null;
-      }
+      const rawPtB = params.pointB;
+      const ptB =
+        rawPtB && distanceMeters(ptA, rawPtB) >= 5
+          ? rawPtB
+          : destinationPoint(ptA, 250, params.bearingDeg ?? 45);
 
       const midLat = (ptA.lat + ptB.lat) / 2;
       const midLng = (ptA.lng + ptB.lng) / 2;

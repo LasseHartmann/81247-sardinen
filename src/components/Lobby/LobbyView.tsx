@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import {
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Crown,
   Eye,
   EyeOff,
+  KeyRound,
+  LocateFixed,
   Lock,
   LogIn,
   LogOut,
@@ -13,12 +16,14 @@ import {
   Users,
 } from 'lucide-react';
 import { TEAM_PALETTE } from '../../config/gameConfig';
-import { PRESET_PLAYERS } from '../../config/players';
+import { isOverviewMember, REGULAR_PLAYER_COUNT } from '../../config/players';
+import type { GpsPermissionState } from '../../hooks/useGeolocation';
 import {
   filterOnlineEnabledMembers,
 } from '../../services/databaseAdapter';
 import type {
   AuthUserSummary,
+  GeoFix,
   HiderLoginLock,
   MemberRecord,
   PresenceSession,
@@ -32,8 +37,14 @@ export interface LoginScreenProps {
   loginError: string | null;
   logoutNotice: string | null;
   pendingHiderPasswordFor: string | null;
+  pendingAdminCodeFor?: string | null;
   onClearPendingHiderPrompt: () => void;
-  onLoginByName: (typedName: string, hiderPassword?: string) => Promise<void>;
+  onClearPendingAdminPrompt?: () => void;
+  onLoginByName: (
+    typedName: string,
+    hiderPassword?: string,
+    adminCode?: string
+  ) => Promise<void>;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
@@ -41,15 +52,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   loginError,
   logoutNotice,
   pendingHiderPasswordFor,
+  pendingAdminCodeFor = null,
   onClearPendingHiderPrompt,
+  onClearPendingAdminPrompt,
   onLoginByName,
 }) => {
   const [typedName, setTypedName] = useState('');
   const [hiderPassword, setHiderPassword] = useState('');
+  const [adminCode, setAdminCode] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const effectiveName = pendingHiderPasswordFor ?? typedName;
+  const effectiveName =
+    pendingAdminCodeFor ?? pendingHiderPasswordFor ?? typedName;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +72,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     try {
       await onLoginByName(
         effectiveName,
-        pendingHiderPasswordFor ? hiderPassword : undefined
+        pendingHiderPasswordFor ? hiderPassword : undefined,
+        pendingAdminCodeFor ? adminCode : undefined
       );
     } finally {
       setSubmitting(false);
@@ -121,19 +137,65 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               type="text"
               enterKeyHint="go"
               autoComplete="off"
-              autoFocus={!pendingHiderPasswordFor}
+              autoFocus={!pendingHiderPasswordFor && !pendingAdminCodeFor}
               value={effectiveName}
               onChange={(e) => {
                 if (pendingHiderPasswordFor) {
                   onClearPendingHiderPrompt();
                   setHiderPassword('');
                 }
+                if (pendingAdminCodeFor) {
+                  onClearPendingAdminPrompt?.();
+                  setAdminCode('');
+                }
                 setTypedName(e.target.value);
               }}
-              placeholder="Namen eingeben ..."
+              placeholder="Namen eingeben (oder „Overview“) ..."
               className="cmf-input min-h-[50px] w-full px-4 py-3 text-base font-semibold"
             />
           </div>
+
+          {pendingAdminCodeFor && (
+            <div className="cmf-module cmf-drawer-down space-y-2 p-3.5">
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="overview-admin-code-input"
+                  className="flex items-center gap-1.5 font-tech text-[11px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Admin-Code // {pendingAdminCodeFor}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="inline-flex items-center gap-1 font-tech text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
+                >
+                  {showPw ? (
+                    <>
+                      <EyeOff className="h-3.5 w-3.5" /> Verbergen
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-3.5 w-3.5" /> Anzeigen
+                    </>
+                  )}
+                </button>
+              </div>
+              <input
+                id="overview-admin-code-input"
+                data-testid="overview-admin-code-input"
+                type={showPw ? 'text' : 'password'}
+                inputMode="numeric"
+                enterKeyHint="go"
+                autoComplete="off"
+                autoFocus
+                value={adminCode}
+                onChange={(e) => setAdminCode(e.target.value)}
+                placeholder="4-stelliger Admin-Code ..."
+                className="cmf-input font-tech min-h-[48px] w-full px-3.5 py-2.5 text-base font-bold tracking-widest sm:text-sm"
+              />
+            </div>
+          )}
 
           {pendingHiderPasswordFor && (
             <div className="cmf-module cmf-drawer-down space-y-2 p-3.5">
@@ -198,17 +260,39 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               submitting ||
               !firebaseAvailable ||
               !effectiveName.trim() ||
-              Boolean(pendingHiderPasswordFor && !hiderPassword.trim())
+              Boolean(pendingHiderPasswordFor && !hiderPassword.trim()) ||
+              Boolean(pendingAdminCodeFor && !adminCode.trim())
             }
             className="cmf-btn-primary font-dot flex min-h-[50px] w-full items-center justify-center gap-2 px-4 py-3 text-sm font-bold"
           >
             <LogIn className="h-4 w-4" />
             {submitting
               ? 'Prüfe ...'
-              : pendingHiderPasswordFor
-                ? 'Mit Verstecker-Passwort einloggen'
-                : 'Einloggen'}
+              : pendingAdminCodeFor
+                ? 'Overview mit Admin-Code öffnen'
+                : pendingHiderPasswordFor
+                  ? 'Mit Verstecker-Passwort einloggen'
+                  : 'Einloggen'}
           </button>
+
+          {!pendingAdminCodeFor && (
+            <button
+              type="button"
+              data-testid="login-overview-quick-btn"
+              disabled={submitting || !firebaseAvailable}
+              onClick={async () => {
+                setTypedName('Overview');
+                setHiderPassword('');
+                setAdminCode('');
+                onClearPendingHiderPrompt();
+                await onLoginByName('Overview');
+              }}
+              className="cmf-btn-secondary font-tech flex min-h-[42px] w-full items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold tracking-wider uppercase"
+            >
+              <KeyRound className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+              <span>Overview-Account (mit Admin-Code)</span>
+            </button>
+          )}
         </form>
       </div>
     </div>
@@ -294,6 +378,10 @@ export interface LobbyStatusCardProps {
   teamsPublic: Record<string, TeamPublic>;
   activeHiderLock: HiderLoginLock | null;
   readyPlayerIds: string[];
+  ownFix?: GeoFix | null;
+  gpsStatus?: GpsPermissionState;
+  gpsError?: string | null;
+  onRetryGps?: () => Promise<GeoFix | null> | void;
   onSetHiderPassword: (rawPassword: string) => Promise<void>;
   onToggleOwnReady: (nextReady: boolean) => Promise<void>;
   onOpenHostTab?: () => void;
@@ -308,12 +396,21 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   teamsPublic,
   activeHiderLock,
   readyPlayerIds,
+  ownFix = null,
+  gpsStatus = 'IDLE',
+  gpsError = null,
+  onRetryGps,
   onSetHiderPassword,
   onToggleOwnReady,
   onOpenHostTab,
   onLogout,
 }) => {
   const isManhunt = (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT';
+  const isOverviewAccount = isOverviewMember(ownMember);
+  const isGpsNotWorking = Boolean(
+    !isOverviewAccount &&
+      (!ownFix || gpsStatus === 'DENIED' || gpsStatus === 'UNSUPPORTED')
+  );
   // Vor Rundenbeginn zählen für Gruppen & „Bereit"-Check ausschließlich aktuell online verbundene Spieler!
   const memberList = filterOnlineEnabledMembers(
     members,
@@ -485,16 +582,20 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
             </span>
             <strong
               className={`font-industrial text-sm ${
-                ownMember.side === 'HIDER'
-                  ? 'text-[var(--cmf-orange)]'
-                  : 'text-[#F8FAFC]'
+                isOverviewAccount
+                  ? 'text-[var(--cmf-teal)]'
+                  : ownMember.side === 'HIDER'
+                    ? 'text-[var(--cmf-orange)]'
+                    : 'text-[#F8FAFC]'
               }`}
             >
-              {ownMember.side === 'HIDER'
-                ? 'VERSTECKER // DIE SARDINEN'
-                : ownMember.teamId
-                  ? (teamsPublic[ownMember.teamId]?.name ?? ownMember.teamId)
-                  : 'Wartet auf Zuteilung durch Lasse / Linus'}
+              {isOverviewAccount
+                ? 'OVERVIEW // LIVE-KARTENÜBERSICHT & ADMIN'
+                : ownMember.side === 'HIDER'
+                  ? 'VERSTECKER // DIE SARDINEN'
+                  : ownMember.teamId
+                    ? (teamsPublic[ownMember.teamId]?.name ?? ownMember.teamId)
+                    : 'Wartet auf Zuteilung durch Lasse / Linus'}
             </strong>
           </div>
 
@@ -648,7 +749,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         <div className="mb-2 flex items-center justify-between font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
           <span className="flex items-center gap-1.5">
             <Users className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-            Online ({memberList.length} / {PRESET_PLAYERS.length})
+            Online ({memberList.length} / {REGULAR_PLAYER_COUNT})
           </span>
           {hasPasswordSet && (
             <span className="text-[var(--cmf-teal)]">
@@ -688,8 +789,45 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         </div>
       </div>
 
+      {/* GPS-Warnung bei der Bereitmachung zum Start, falls das eigene GPS nicht funktioniert */}
+      {isGpsNotWorking && (
+        <div
+          role="alert"
+          data-testid="lobby-gps-warning"
+          className="cmf-badge-orange mt-3.5 rounded-xl p-3 text-xs shadow-sm space-y-2"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="space-y-0.5">
+              <p className="font-tech text-[11px] font-bold tracking-wider uppercase">
+                WARNUNG // DEIN GPS FUNKTIONIERT AKTUELL NICHT!
+              </p>
+              <p className="text-[11px] leading-relaxed opacity-95">
+                {gpsStatus === 'DENIED'
+                  ? 'Die Standortfreigabe wurde im Browser verweigert. Bitte erlaube den Standortzugriff vor dem Start, damit deine Position im Spiel übertragen wird.'
+                  : gpsStatus === 'UNSUPPORTED'
+                    ? 'Dein Browser unterstützt kein GPS-Tracking.'
+                    : (gpsError ??
+                      'Noch kein GPS-Signal empfangen. Bitte prüfe deine Standortfreigabe vor dem Start.')}
+              </p>
+            </div>
+          </div>
+          {onRetryGps && (
+            <button
+              type="button"
+              data-testid="lobby-retry-gps-btn"
+              onClick={() => void onRetryGps()}
+              className="cmf-btn-secondary font-tech inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 bg-white/90 px-3 py-1.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
+            >
+              <LocateFixed className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+              <span>GPS jetzt aktivieren / erneut prüfen</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* BEREIT-Button für alle Spieler -> startet automatisch sobald alle bereit sind! */}
-      {hasPasswordSet && (
+      {hasPasswordSet && !isOverviewAccount && (
         <div className="mt-3.5 space-y-1.5">
           {!canPressReady ? (
             <div className="cmf-badge-amber rounded-xl p-2.5 text-center text-xs font-medium">
@@ -726,6 +864,12 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                 : `Ich bin bereit! (${readyCount}/${memberList.length})`}
             </button>
           )}
+        </div>
+      )}
+
+      {isOverviewAccount && (
+        <div className="cmf-badge-teal mt-3.5 rounded-xl p-2.5 text-center text-xs font-medium">
+          Overview-Modus aktiv: Du beobachtest alle Teams & Verstecker live und blockierst nicht den „Bereit“-Start der Spieler.
         </div>
       )}
 

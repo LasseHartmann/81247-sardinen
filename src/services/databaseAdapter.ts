@@ -26,10 +26,12 @@ import {
   TEAM_MEMBER_FIX_MAX_AGE_MS,
   TEAM_PALETTE,
 } from '../config/gameConfig';
+import { isOverviewMember } from '../config/players';
 import { getBrowserDemoStore } from '../demo/demoStore';
 import { roundCoord5 } from '../geo/distance';
 import { generateRandomId, generateSessionSecrets } from './qrService';
 import type {
+  ActiveLeashViolationInfo,
   AuthUserSummary,
   CatchRequest,
   CatchRequestStatus,
@@ -221,6 +223,19 @@ export interface DatabaseAdapter {
   sendEmergencyMessage(msg: EmergencyMessage): Promise<void>;
   clearOwnEmergencyMessage(uid: string): Promise<void>;
 
+  setLeashViolationAlert(params: {
+    uid: string;
+    sessionId: string;
+    alertStartedAt: number;
+    exposeAt: number;
+    violationReason?: ActiveLeashViolationInfo['violationReason'];
+    exposedLat?: number;
+    exposedLng?: number;
+    exposedAccuracy?: number;
+    nowMs: number;
+  }): Promise<void>;
+  clearLeashViolationAlert(uid: string): Promise<void>;
+
   fetchLoginSecurityContext(): Promise<{
     publicState: PublicGameState | null;
     members: Record<string, MemberRecord>;
@@ -259,7 +274,8 @@ export function isMemberTabOnline(
       key !== 'emergency_alert' &&
       key !== 'ready_state' &&
       key !== 'hider_pw_lock' &&
-      key !== 'round_start_meta'
+      key !== 'round_start_meta' &&
+      key !== 'leash_alert'
   );
 }
 
@@ -279,11 +295,13 @@ export function isPlayerOnline(
 
 export function deduplicateEnabledMembers(
   members: Record<string, MemberRecord>,
-  presence: Record<string, Record<string, PresenceSession>>
+  presence: Record<string, Record<string, PresenceSession>>,
+  options?: { includeOverview?: boolean }
 ): MemberRecord[] {
   const deduped = new Map<string, MemberRecord>();
   for (const m of Object.values(members)) {
     if (!m.enabled) continue;
+    if (!options?.includeOverview && isOverviewMember(m)) continue;
     const prev = deduped.get(m.playerId);
     if (!prev) {
       deduped.set(m.playerId, m);
@@ -308,17 +326,63 @@ export function deduplicateEnabledMembers(
 
 /**
  * Liefert vor dem Rundenstart ausschließlich die aktiv eingeloggten & online verbundenen Spieler.
- * Offline-Spieler blockieren dadurch weder die Gruppen noch den „Bereit“-Countdown.
+ * Offline-Spieler sowie der Overview-Account blockieren dadurch weder die Gruppen noch den „Bereit“-Countdown.
  */
 export function filterOnlineEnabledMembers(
   members: Record<string, MemberRecord>,
   presence: Record<string, Record<string, PresenceSession>>,
-  ownUid?: string
+  ownUid?: string,
+  options?: { includeOverview?: boolean }
 ): MemberRecord[] {
-  const deduped = deduplicateEnabledMembers(members, presence);
+  const deduped = deduplicateEnabledMembers(members, presence, options);
   return deduped.filter((m) =>
     isPlayerOnline(m.playerId, members, presence, ownUid)
   );
+}
+
+export function extractActiveLeashViolation(
+  publicState: PublicGameState | null,
+  presence: Record<string, Record<string, PresenceSession>>
+): ActiveLeashViolationInfo | null {
+  const sessionId = publicState?.sessionId;
+  if (!sessionId || !publicState?.leashAlertActive) return null;
+
+  let best: ActiveLeashViolationInfo | null = null;
+  for (const [uid, userSessions] of Object.entries(presence)) {
+    const entry = userSessions?.leash_alert;
+    if (
+      entry &&
+      entry.sessionId === sessionId &&
+      typeof entry.leashAlertStartedAt === 'number' &&
+      typeof entry.leashExposeAt === 'number'
+    ) {
+      if (!best || (entry.lastSeen || 0) >= best.alertStartedAt) {
+        best = {
+          uid,
+          sessionId,
+          alertStartedAt: entry.leashAlertStartedAt,
+          exposeAt: entry.leashExposeAt,
+          violationReason: entry.leashViolationReason,
+          exposedLat:
+            typeof entry.exposedHiderLat === 'number' &&
+            Number.isFinite(entry.exposedHiderLat)
+              ? entry.exposedHiderLat
+              : undefined,
+          exposedLng:
+            typeof entry.exposedHiderLng === 'number' &&
+            Number.isFinite(entry.exposedHiderLng)
+              ? entry.exposedHiderLng
+              : undefined,
+          exposedAccuracy:
+            typeof entry.exposedHiderAccuracy === 'number' &&
+            Number.isFinite(entry.exposedHiderAccuracy)
+              ? entry.exposedHiderAccuracy
+              : undefined,
+        };
+      }
+    }
+  }
+  return best;
 }
 
 export function extractActiveHiderLock(
@@ -429,11 +493,23 @@ export function extractEmergencyMessages(
 export function extractRoundStartMeta(
   publicState: PublicGameState | null,
   presence: Record<string, Record<string, PresenceSession>>
-): { gameStartTimestamp: number; activeTeamIds: string[] } | null {
+): {
+  gameStartTimestamp: number;
+  activeTeamIds: string[];
+  gameMode?: PublicGameState['gameMode'];
+  manhuntShrinkDurationMs?: number;
+  radarSchedule?: PublicGameState['radarSchedule'];
+} | null {
   const sessionId = publicState?.sessionId;
   if (!sessionId) return null;
   let bestAt = -1;
-  let result: { gameStartTimestamp: number; activeTeamIds: string[] } | null = null;
+  let result: {
+    gameStartTimestamp: number;
+    activeTeamIds: string[];
+    gameMode?: PublicGameState['gameMode'];
+    manhuntShrinkDurationMs?: number;
+    radarSchedule?: PublicGameState['radarSchedule'];
+  } | null = null;
   for (const userSessions of Object.values(presence)) {
     const meta = userSessions?.round_start_meta;
     if (
@@ -449,6 +525,12 @@ export function extractRoundStartMeta(
           activeTeamIds: Array.isArray(meta.activeTeamIds)
             ? meta.activeTeamIds
             : TEAM_PALETTE.map((t) => t.id),
+          gameMode: meta.gameMode === 'MANHUNT' ? 'MANHUNT' : meta.gameMode === 'CLASSIC' ? 'CLASSIC' : undefined,
+          manhuntShrinkDurationMs:
+            typeof meta.manhuntShrinkDurationMs === 'number'
+              ? meta.manhuntShrinkDurationMs
+              : undefined,
+          radarSchedule: meta.radarSchedule,
         };
       }
     }
@@ -901,8 +983,11 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
             pausedAt: val.pausedAt ?? null,
             gameStartTimestamp: val.gameStartTimestamp ?? null,
             searchStartTimestamp: val.searchStartTimestamp ?? null,
+            anchorLocked: Boolean(val.anchorLocked),
             radarCircle: val.radarCircle ?? null,
             emergencyStopReason: null,
+            allowTestClicks: Boolean(val.allowTestClicks),
+            leashAlertActive: Boolean(val.leashAlertActive),
             totalPausedMs: val.totalPausedMs ?? 0,
             pausedBeforeSearchMs: val.pausedBeforeSearchMs ?? 0,
             activeTeamIds:
@@ -933,7 +1018,16 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async savePublicStateByHost(state): Promise<void> {
-      await set(ref(db, `${ROOT_PATH}/state/public`), stripUndefinedDeep(state));
+      const normalized: PublicGameState = {
+        ...state,
+        anchorLocked: Boolean(state.anchorLocked),
+        leashAlertActive: Boolean(state.leashAlertActive),
+        allowTestClicks: Boolean(state.allowTestClicks),
+      };
+      await set(
+        ref(db, `${ROOT_PATH}/state/public`),
+        stripUndefinedDeep(normalized)
+      );
     },
 
     async patchControllerPublicTransition(patch): Promise<void> {
@@ -1474,6 +1568,50 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       await remove(ref(db, `${ROOT_PATH}/presence/${uid}/emergency_alert`));
     },
 
+    async setLeashViolationAlert({
+      uid,
+      sessionId,
+      alertStartedAt,
+      exposeAt,
+      violationReason,
+      exposedLat,
+      exposedLng,
+      exposedAccuracy,
+      nowMs,
+    }): Promise<void> {
+      const leashRef = ref(db, `${ROOT_PATH}/presence/${uid}/leash_alert`);
+      await set(
+        leashRef,
+        stripUndefinedDeep({
+          online: false,
+          lastSeen: nowMs,
+          kind: 'LEASH_ALERT',
+          sessionId,
+          leashAlertStartedAt: alertStartedAt,
+          leashExposeAt: exposeAt,
+          leashViolationReason: violationReason,
+          exposedHiderLat:
+            typeof exposedLat === 'number' && Number.isFinite(exposedLat)
+              ? roundCoord5(exposedLat)
+              : undefined,
+          exposedHiderLng:
+            typeof exposedLng === 'number' && Number.isFinite(exposedLng)
+              ? roundCoord5(exposedLng)
+              : undefined,
+          exposedHiderAccuracy:
+            typeof exposedAccuracy === 'number' && Number.isFinite(exposedAccuracy)
+              ? Math.round(exposedAccuracy)
+              : undefined,
+        })
+      );
+    },
+
+    async clearLeashViolationAlert(uid): Promise<void> {
+      await remove(ref(db, `${ROOT_PATH}/presence/${uid}/leash_alert`)).catch(
+        () => {}
+      );
+    },
+
     async fetchLoginSecurityContext() {
       let pub: PublicGameState | null = null;
       let members: Record<string, MemberRecord> = {};
@@ -1594,6 +1732,9 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           sessionId: publicState.sessionId,
           gameStartTimestamp: nowMs,
           activeTeamIds: occupiedTeamIds,
+          gameMode: publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
+          manhuntShrinkDurationMs: publicState.manhuntShrinkDurationMs,
+          radarSchedule: publicState.radarSchedule,
         })
       );
 
@@ -1606,6 +1747,9 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         await update(ref(db, `${ROOT_PATH}/state/public`), {
           status: 'RUNNING',
           currentPhase: initialPhase,
+          gameMode: publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
+          manhuntShrinkDurationMs: publicState.manhuntShrinkDurationMs ?? null,
+          radarSchedule: stripUndefinedDeep(publicState.radarSchedule),
           gameStartTimestamp: nowMs,
           searchStartTimestamp: initialSearchStart,
           pausedAt: null,

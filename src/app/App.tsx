@@ -21,12 +21,18 @@ import {
   ANCHOR_ACCURACY_WARNING_METERS,
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
   TEAM_PALETTE,
+  THERMOMETER_MIN_DISTANCE_METERS,
 } from '../config/gameConfig';
-import { computeHiderPasswordHash, findPresetPlayerById } from '../config/players';
+import {
+  computeHiderPasswordHash,
+  findPresetPlayerById,
+  isOverviewMember,
+} from '../config/players';
 import {
   isPointInPlayArea,
   validateManualAnchorSelection,
 } from '../geo/boundary';
+import { destinationPoint, distanceMeters } from '../geo/distance';
 import { useAuth } from '../hooks/useAuth';
 import {
   lockHiderAnchorAndGenerateRadar,
@@ -82,7 +88,9 @@ export const App: React.FC = () => {
     loginError,
     logoutNotice,
     pendingHiderPasswordFor,
+    pendingAdminCodeFor,
     clearPendingHiderPrompt,
+    clearPendingAdminPrompt,
     loginByTypedName,
     syncWithActiveHiderLock,
     unlockAdminWithCode,
@@ -261,7 +269,9 @@ export const App: React.FC = () => {
         loginError={loginError}
         logoutNotice={logoutNotice}
         pendingHiderPasswordFor={pendingHiderPasswordFor}
+        pendingAdminCodeFor={pendingAdminCodeFor}
         onClearPendingHiderPrompt={clearPendingHiderPrompt}
+        onClearPendingAdminPrompt={clearPendingAdminPrompt}
         onLoginByName={loginByTypedName}
       />
     );
@@ -405,8 +415,11 @@ export const App: React.FC = () => {
   }
 
   const isJoinedSardines = ownTeam?.status === 'JOINED_SARDINES';
+  const isOverviewAccount = isOverviewMember(ownMember);
   const isSardineDashboardView =
     ownMember.side === 'HIDER' || isJoinedSardines;
+  const isOverviewOrSardineDashboard =
+    isSardineDashboardView || isOverviewAccount;
   const isActiveSeeker = Boolean(
     ownMember.side === 'SEEKER' && ownTeam && !isJoinedSardines
   );
@@ -487,6 +500,41 @@ export const App: React.FC = () => {
       ? { [ownTeam.id]: gameState.teamLocations[ownTeam.id] ?? null }
       : gameState.teamLocations;
 
+  const exposedHiderLocation =
+    gameState.activeLeashViolation &&
+    typeof gameState.activeLeashViolation.exposedLat === 'number' &&
+    typeof gameState.activeLeashViolation.exposedLng === 'number'
+      ? {
+          lat: gameState.activeLeashViolation.exposedLat,
+          lng: gameState.activeLeashViolation.exposedLng,
+          accuracy: gameState.activeLeashViolation.exposedAccuracy,
+        }
+      : null;
+
+  const liveHiderLocations =
+    (isOverviewAccount || (!isActiveSeeker && ownMember.isHost)) &&
+    hiderPrivate?.hiderLocations
+      ? Object.fromEntries(
+          Object.entries(hiderPrivate.hiderLocations)
+            .filter(
+              ([uidKey, fix]) =>
+                Boolean(fix) &&
+                uidKey !== ownMember.uid &&
+                Number.isFinite(fix.lat) &&
+                Number.isFinite(fix.lng)
+            )
+            .map(([uidKey, fix]) => [
+              uidKey,
+              {
+                lat: fix.lat,
+                lng: fix.lng,
+                accuracy: fix.accuracy,
+                label: gameState.members[uidKey]?.name ?? 'Verstecker',
+              },
+            ])
+        )
+      : undefined;
+
   const openHiderMediaRequests: ClueRequest[] =
     isSardineDashboardView || (!isActiveSeeker && ownMember.isHost)
       ? Object.values(gameState.requestsByTeam)
@@ -516,20 +564,40 @@ export const App: React.FC = () => {
       return;
     }
     if (mapClickMode.kind === 'TEST_LOCATION') {
-      geo.setManualTestLocation(pt);
+      geo.setManualTestLocation(pt, true);
+      if (
+        (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT' &&
+        (ownMember.side === 'HIDER' || ownTeam?.status === 'JOINED_SARDINES')
+      ) {
+        void adapter
+          .writeHiderLocationPrivate(ownMember.uid, {
+            lat: pt.lat,
+            lng: pt.lng,
+            accuracy: 8,
+            timestamp: adapter.getServerNow(),
+          })
+          .catch(() => {});
+      }
       setMapClickMode({ kind: 'NONE' });
       return;
     }
     if (mapClickMode.kind === 'PICK_THERMO_A') {
       setThermoPointA(pt);
       setMapClickMode({ kind: 'NONE' });
-      setActiveTab('QUESTIONS');
+      if (activePreviewQuestion !== 'THERMOMETER') {
+        setActiveTab('QUESTIONS');
+      }
       return;
     }
     if (mapClickMode.kind === 'PICK_THERMO_B') {
+      if (!thermoPointA && geo.currentFix) {
+        setThermoPointA({ lat: geo.currentFix.lat, lng: geo.currentFix.lng });
+      }
       setThermoPointB(pt);
       setMapClickMode({ kind: 'NONE' });
-      setActiveTab('QUESTIONS');
+      if (activePreviewQuestion !== 'THERMOMETER') {
+        setActiveTab('QUESTIONS');
+      }
     }
   };
 
@@ -752,6 +820,7 @@ export const App: React.FC = () => {
         isOwnSideHider={ownMember.side === 'HIDER'}
         leashState={geo.leashState}
         publicLeashAlertActive={publicState.leashAlertActive}
+        activeLeashViolation={gameState.activeLeashViolation}
         isOutsidePlayArea={isOutsidePlayArea}
         gameMode={publicState.gameMode ?? 'CLASSIC'}
       />
@@ -767,14 +836,16 @@ export const App: React.FC = () => {
             playArea={publicState.playArea.polygon}
             playAreaConfirmed={publicState.playArea.confirmed}
             ownFix={
-              fineAdjustAnchorPt
-                ? {
-                    lat: fineAdjustAnchorPt.lat,
-                    lng: fineAdjustAnchorPt.lng,
-                    accuracy: 5,
-                    timestamp: 0,
-                  }
-                : geo.currentFix
+              isOverviewAccount && !canUseMapClicks
+                ? null
+                : fineAdjustAnchorPt
+                  ? {
+                      lat: fineAdjustAnchorPt.lat,
+                      lng: fineAdjustAnchorPt.lng,
+                      accuracy: 5,
+                      timestamp: 0,
+                    }
+                  : geo.currentFix
             }
             anchorGpsOrigin={geo.currentFix}
             isOwnSideHider={isSardineDashboardView}
@@ -786,6 +857,8 @@ export const App: React.FC = () => {
               )
             }
             publishedRadar={publicState.radarCircle}
+            exposedHiderLocation={exposedHiderLocation}
+            liveHiderLocations={liveHiderLocations}
             visibleTeamLocations={visibleMapTeamLocations}
             teamsPublic={gameState.teamsPublic}
             activeTeamIds={activeRoundTeamIds}
@@ -796,6 +869,16 @@ export const App: React.FC = () => {
             selectedRadius={selectedRadius}
             thermoPointA={thermoPointA}
             thermoPointB={thermoPointB}
+            onChangeThermoPointA={setThermoPointA}
+            onChangeThermoPointB={(pt) => {
+              if (!thermoPointA && geo.currentFix) {
+                setThermoPointA({
+                  lat: geo.currentFix.lat,
+                  lng: geo.currentFix.lng,
+                });
+              }
+              setThermoPointB(pt);
+            }}
             clickMode={mapClickMode}
             onMapCoordinateClick={handleMapCoordinateClick}
             onRequestGpsPermission={geo.retryGpsPermission}
@@ -808,12 +891,13 @@ export const App: React.FC = () => {
           {/* Obere schlanke Status-Pills & Verstecker-Teamfilter auf der Karte */}
           {(canUseMapClicks ||
             isJoinedSardines ||
+            isOverviewAccount ||
             (!isManhunt &&
-              isSardineDashboardView &&
+              isOverviewOrSardineDashboard &&
               publicState.status !== 'LOBBY' &&
               roundSeekerTeamsForFilter.length > 0)) && (
             <div className="pointer-events-none absolute top-2.5 right-2.5 left-2.5 z-[400] flex flex-col gap-1.5">
-              {(canUseMapClicks || isJoinedSardines) && (
+              {(canUseMapClicks || isJoinedSardines || isOverviewAccount) && (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   {canUseMapClicks && (
                     <button
@@ -849,6 +933,13 @@ export const App: React.FC = () => {
                     </button>
                   )}
 
+                  {isOverviewAccount && (
+                    <div className="cmf-oled pointer-events-auto inline-flex items-center gap-2 px-3 py-1.5 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
+                      <Eye className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
+                      <span>Overview-Modus // Alle Teams & Verstecker live</span>
+                    </div>
+                  )}
+
                   {isJoinedSardines && (
                     <div className="cmf-oled pointer-events-auto inline-flex items-center gap-2 px-3 py-1.5 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
                       <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
@@ -863,7 +954,7 @@ export const App: React.FC = () => {
               )}
 
               {!isManhunt &&
-                isSardineDashboardView &&
+                isOverviewOrSardineDashboard &&
                 publicState.status !== 'LOBBY' &&
                 roundSeekerTeamsForFilter.length > 0 && (
                   <div
@@ -1037,6 +1128,116 @@ export const App: React.FC = () => {
                     </button>
                   </div>
                 )}
+
+                {activePreviewQuestion === 'THERMOMETER' && (() => {
+                  const previewA =
+                    thermoPointA ??
+                    (geo.currentFix
+                      ? { lat: geo.currentFix.lat, lng: geo.currentFix.lng }
+                      : null);
+                  const previewB =
+                    thermoPointB &&
+                    (!previewA || distanceMeters(previewA, thermoPointB) >= 5)
+                      ? thermoPointB
+                      : previewA
+                        ? destinationPoint(
+                            previewA,
+                            THERMOMETER_MIN_DISTANCE_METERS,
+                            45
+                          )
+                        : null;
+                  const distAB =
+                    previewA && previewB
+                      ? Math.round(distanceMeters(previewA, previewB))
+                      : 0;
+                  const isDistOk = distAB >= THERMOMETER_MIN_DISTANCE_METERS;
+
+                  return (
+                    <div className="space-y-2 border-t border-dashed border-[#27272A] pt-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                        <span className="font-tech text-[#CBD2D9]">
+                          Tippe auf die Karte oder ziehe <strong className="text-white">Pin B</strong> für den Endpunkt
+                        </span>
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold uppercase ${
+                            isDistOk
+                              ? 'bg-[#00A896]/25 text-[#2DD4BF]'
+                              : 'bg-[#F59E0B]/25 text-[#FBBF24]'
+                          }`}
+                        >
+                          A → B: {distAB} / {THERMOMETER_MIN_DISTANCE_METERS} M
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMapClickMode((prev) =>
+                              prev.kind === 'PICK_THERMO_A'
+                                ? { kind: 'NONE' }
+                                : {
+                                    kind: 'PICK_THERMO_A',
+                                    label: 'Tippe auf die Karte für Startpunkt A',
+                                  }
+                            )
+                          }
+                          className={`min-h-[36px] rounded-lg px-2 font-tech text-[10px] font-bold uppercase ${
+                            mapClickMode.kind === 'PICK_THERMO_A'
+                              ? 'bg-[var(--cmf-orange)] text-white'
+                              : 'bg-[#181B20] text-[#CBD2D9]'
+                          }`}
+                        >
+                          {mapClickMode.kind === 'PICK_THERMO_A'
+                            ? 'A tippen aktiv'
+                            : 'A per Klick'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setMapClickMode({ kind: 'NONE' })}
+                          className={`min-h-[36px] rounded-lg px-2 font-tech text-[10px] font-bold uppercase ${
+                            mapClickMode.kind !== 'PICK_THERMO_A'
+                              ? 'bg-[#00A896] text-white'
+                              : 'bg-[#181B20] text-[#CBD2D9]'
+                          }`}
+                        >
+                          B per Klick
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!geo.currentFix}
+                          onClick={() =>
+                            geo.currentFix &&
+                            setThermoPointA({
+                              lat: geo.currentFix.lat,
+                              lng: geo.currentFix.lng,
+                            })
+                          }
+                          className="min-h-[36px] rounded-lg bg-[#181B20] px-2 font-tech text-[10px] font-bold text-[#CBD2D9] uppercase disabled:opacity-40"
+                        >
+                          A = Standort
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!geo.currentFix}
+                          onClick={() =>
+                            geo.currentFix &&
+                            setThermoPointB({
+                              lat: geo.currentFix.lat,
+                              lng: geo.currentFix.lng,
+                            })
+                          }
+                          className="min-h-[36px] rounded-lg bg-[#181B20] px-2 font-tech text-[10px] font-bold text-[#CBD2D9] uppercase disabled:opacity-40"
+                        >
+                          B = Standort
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -1050,6 +1251,10 @@ export const App: React.FC = () => {
                 teamsPublic={gameState.teamsPublic}
                 activeHiderLock={gameState.activeHiderLock}
                 readyPlayerIds={gameState.readyPlayerIds}
+                ownFix={geo.currentFix}
+                gpsStatus={geo.gpsStatus}
+                gpsError={geo.gpsError}
+                onRetryGps={geo.retryGpsPermission}
                 onSetHiderPassword={handleSetHiderPassword}
                 onToggleOwnReady={handleToggleOwnReady}
                 onOpenHostTab={
@@ -1260,46 +1465,88 @@ export const App: React.FC = () => {
 
             {/* 5. Schnellzugriff „Versteck neu wählen“ & „Sardinen-QR-Code zeigen“ */}
             {showQuickSardineFab && (
-              <div className="cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg items-center justify-between gap-2">
-                {isManhunt ? (
-                  <div className="cmf-oled flex min-h-[48px] items-center gap-2 px-3.5 py-2 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--cmf-orange)]" />
-                    <span>
-                      {publicState.radarCircle
-                        ? `AKTIVE ZONE: ${publicState.radarCircle.radiusMeters} M`
-                        : 'MANHUNT // FREI IN 81247'}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="hidden sm:block" />
-                )}
-
-                <div className="flex flex-1 sm:flex-initial items-center justify-end gap-2">
-                  {canRehideWhileTimerActive && (
-                    <button
-                      type="button"
-                      data-testid="rehide-anchor-btn"
-                      onClick={() => {
-                        setAnchorFeedbackError(null);
-                        setIsRehidingAnchor(true);
-                        setHiderAnchorCollapsed(false);
-                      }}
-                      className="cmf-btn-active font-tech inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-bold uppercase shadow-lg"
-                    >
-                      <RotateCcw className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
-                      <span>Neu verstecken</span>
-                    </button>
+              <div className="cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg flex-col gap-1.5">
+                {isManhunt &&
+                  (!geo.currentFix ||
+                    geo.gpsStatus === 'DENIED' ||
+                    geo.gpsStatus === 'MANUAL_TEST') && (
+                    <div className="cmf-chassis flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs shadow-lg">
+                      <span className="font-tech text-[11px] font-bold text-[var(--cmf-orange)] uppercase">
+                        {geo.gpsStatus === 'MANUAL_TEST'
+                          ? 'Manueller GPS-Fallback aktiv'
+                          : 'Kein GPS-Signal? Standort auf Karte antippen:'}
+                      </span>
+                      <button
+                        type="button"
+                        data-testid="manhunt-manual-location-fallback-btn"
+                        onClick={() =>
+                          setMapClickMode((prev) =>
+                            prev.kind === 'TEST_LOCATION'
+                              ? { kind: 'NONE' }
+                              : {
+                                  kind: 'TEST_LOCATION',
+                                  label:
+                                    'Tippe euren aktuellen Standort auf der Karte an (GPS-Fallback)',
+                                }
+                          )
+                        }
+                        className="cmf-btn-secondary font-tech inline-flex min-h-[36px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                      >
+                        <Crosshair className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                        <span>
+                          {mapClickMode.kind === 'TEST_LOCATION'
+                            ? 'Abbrechen'
+                            : 'Standort antippen'}
+                        </span>
+                      </button>
+                    </div>
                   )}
 
-                  <button
-                    type="button"
-                    data-testid="quick-show-sardinen-qr-btn"
-                    onClick={() => setActiveTab('QR')}
-                    className="cmf-btn-primary font-dot inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold shadow-lg"
-                  >
-                    <QrCode className="h-4 w-4 shrink-0" />
-                    <span>QR-Code zeigen</span>
-                  </button>
+                <div className="flex w-full items-center justify-between gap-2">
+                  {isManhunt ? (
+                    <div className="cmf-oled flex min-h-[48px] items-center gap-2 px-3.5 py-2 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--cmf-orange)]" />
+                      <span>
+                        {publicState.radarCircle
+                          ? `ZONE: ${publicState.radarCircle.radiusMeters} M${
+                              publicState.radarCircle.lastPing
+                                ? ` • PING #${publicState.radarCircle.lastPing.pingNumber}`
+                                : ''
+                            }`
+                          : 'MANHUNT // IN BEWEGUNG (KEIN FESTES VERSTECK)'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="hidden sm:block" />
+                  )}
+
+                  <div className="flex flex-1 sm:flex-initial items-center justify-end gap-2">
+                    {canRehideWhileTimerActive && (
+                      <button
+                        type="button"
+                        data-testid="rehide-anchor-btn"
+                        onClick={() => {
+                          setAnchorFeedbackError(null);
+                          setIsRehidingAnchor(true);
+                          setHiderAnchorCollapsed(false);
+                        }}
+                        className="cmf-btn-active font-tech inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-bold uppercase shadow-lg"
+                      >
+                        <RotateCcw className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+                        <span>Neu verstecken</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      data-testid="quick-show-sardinen-qr-btn"
+                      onClick={() => setActiveTab('QR')}
+                      className="cmf-btn-primary font-dot inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold shadow-lg"
+                    >
+                      <QrCode className="h-4 w-4 shrink-0" />
+                      <span>QR-Code zeigen</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

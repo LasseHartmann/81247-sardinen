@@ -3,11 +3,12 @@ export interface PresetPlayer {
   name: string;
   canUnlockAdmin: boolean;
   loginEmail: string;
+  isOverviewOnly?: boolean;
 }
 
 /**
- * Exakte, abgeschlossene Spielerliste der Freundesgruppe (keine weiteren Namen erlaubt).
- * Alle 11 loggen sich direkt mit ihrem Vornamen ein.
+ * Exakte, abgeschlossene Spielerliste der Freundesgruppe (keine weiteren Namen erlaubt)
+ * sowie der spezielle Overview-Account (nur per Admin-Code zugänglich).
  * Lasse und Linus sehen nach dem Login einen Button, um per Admin-Code ihre Admin-Rechte freizuschalten.
  */
 export const PRESET_PLAYERS: PresetPlayer[] = [
@@ -25,7 +26,27 @@ export const PRESET_PLAYERS: PresetPlayer[] = [
   { id: 'theo', name: 'Theo', canUnlockAdmin: false, loginEmail: 'theo@81247-sardinen.local' },
   { id: 'test-1', name: 'Test 1', canUnlockAdmin: true, loginEmail: 'test1@81247-sardinen.local' },
   { id: 'test-2', name: 'Test 2', canUnlockAdmin: false, loginEmail: 'test2@81247-sardinen.local' },
+  {
+    id: 'overview',
+    name: 'Overview',
+    canUnlockAdmin: true,
+    isOverviewOnly: true,
+    loginEmail: 'test1@81247-sardinen.local',
+  },
 ];
+
+export const REGULAR_PLAYER_COUNT = PRESET_PLAYERS.filter(
+  (p) => !p.isOverviewOnly
+).length;
+
+export function isOverviewMember(
+  member?: { playerId?: string | null; name?: string | null } | null
+): boolean {
+  if (!member) return false;
+  if (member.playerId === 'overview') return true;
+  const n = member.name?.trim().toLowerCase() ?? '';
+  return n === 'overview' || n === 'übersicht' || n === 'uebersicht';
+}
 
 /**
  * SHA-256-Prüfsumme des gesalzenen Admin-Codes — der Klartext-Code steht nirgends im Quellcode,
@@ -162,6 +183,13 @@ export function resolveAllowedPlayerByNameInput(
   if (!rawName) return undefined;
   const normalized = rawName.trim().toLowerCase();
   if (!normalized) return undefined;
+  if (
+    normalized === 'overview' ||
+    normalized === 'übersicht' ||
+    normalized === 'uebersicht'
+  ) {
+    return PRESET_PLAYERS.find((p) => p.id === 'overview');
+  }
   return PRESET_PLAYERS.find((p) => p.name.toLowerCase() === normalized);
 }
 

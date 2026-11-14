@@ -1110,6 +1110,51 @@ export function createDemoStore(options?: {
       });
     },
 
+    async setLeashViolationAlert({
+      uid,
+      sessionId,
+      alertStartedAt,
+      exposeAt,
+      violationReason,
+      exposedLat,
+      exposedLng,
+      exposedAccuracy,
+      nowMs,
+    }): Promise<void> {
+      writeTree((t) => {
+        if (!t.presence[uid]) t.presence[uid] = {};
+        t.presence[uid].leash_alert = {
+          online: false,
+          lastSeen: nowMs,
+          kind: 'LEASH_ALERT',
+          sessionId,
+          leashAlertStartedAt: alertStartedAt,
+          leashExposeAt: exposeAt,
+          leashViolationReason: violationReason,
+          exposedHiderLat:
+            typeof exposedLat === 'number' && Number.isFinite(exposedLat)
+              ? exposedLat
+              : undefined,
+          exposedHiderLng:
+            typeof exposedLng === 'number' && Number.isFinite(exposedLng)
+              ? exposedLng
+              : undefined,
+          exposedHiderAccuracy:
+            typeof exposedAccuracy === 'number' && Number.isFinite(exposedAccuracy)
+              ? Math.round(exposedAccuracy)
+              : undefined,
+        };
+      });
+    },
+
+    async clearLeashViolationAlert(uid): Promise<void> {
+      writeTree((t) => {
+        if (t.presence[uid]) {
+          delete t.presence[uid].leash_alert;
+        }
+      });
+    },
+
     async fetchLoginSecurityContext() {
       const t = readTree();
       const pub = structuredClone(t.state.public);

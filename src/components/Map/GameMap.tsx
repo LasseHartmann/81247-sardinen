@@ -49,6 +49,72 @@ export interface MapClickInteractionMode {
   label?: string;
 }
 
+function hasUsableMapViewport(map: L.Map): boolean {
+  const container = map.getContainer();
+  if (!container || container.clientWidth < 32 || container.clientHeight < 32) {
+    return false;
+  }
+  map.invalidateSize({ pan: false });
+  const size = map.getSize();
+  return Boolean(
+    size &&
+      Number.isFinite(size.x) &&
+      Number.isFinite(size.y) &&
+      size.x >= 32 &&
+      size.y >= 32
+  );
+}
+
+export function safeFitGeoJsonBounds(
+  map: L.Map,
+  geojson: Feature<Polygon>,
+  options: { padding: [number, number]; maxZoom: number; animate?: boolean }
+): boolean {
+  try {
+    if (!hasUsableMapViewport(map)) return false;
+    const bounds = L.geoJSON(geojson).getBounds();
+    if (!bounds.isValid()) return false;
+    const center = bounds.getCenter();
+    if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng)) {
+      return false;
+    }
+    const targetZoom = map.getBoundsZoom(
+      bounds,
+      false,
+      L.point(options.padding[0] * 2, options.padding[1] * 2)
+    );
+    if (!Number.isFinite(targetZoom)) return false;
+    map.fitBounds(bounds, {
+      padding: options.padding,
+      maxZoom: options.maxZoom,
+      animate: Boolean(options.animate),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function safeCenterMapOnLatLng(
+  map: L.Map,
+  lat: number,
+  lng: number,
+  minZoom: number
+): boolean {
+  try {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    if (!hasUsableMapViewport(map)) return false;
+    const curZoom = map.getZoom();
+    const targetZoom = Number.isFinite(curZoom)
+      ? Math.max(curZoom, minZoom)
+      : minZoom;
+    map.setView([lat, lng], targetZoom, { animate: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface GameMapProps {
   playArea: Feature<Polygon>;
   playAreaConfirmed: boolean;
@@ -284,15 +350,20 @@ const GameMapInner: React.FC<GameMapProps> = ({
     mapRef.current = map;
 
     const resizeObserver = new ResizeObserver(() => {
-      map.invalidateSize({ pan: false });
+      if (el.clientWidth > 0 && el.clientHeight > 0) {
+        map.invalidateSize({ pan: false });
+      }
     });
     resizeObserver.observe(el);
 
-    setTimeout(() => {
-      map.invalidateSize({ pan: false });
+    const initResizeTimer = setTimeout(() => {
+      if (el.clientWidth > 0 && el.clientHeight > 0) {
+        map.invalidateSize({ pan: false });
+      }
     }, 80);
 
     return () => {
+      clearTimeout(initResizeTimer);
       resizeObserver.disconnect();
       anchorMarkerRef.current = null;
       manhuntPingMarkerRef.current = null;
@@ -311,8 +382,17 @@ const GameMapInner: React.FC<GameMapProps> = ({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const t = setTimeout(() => {
+    if (
+      map.getContainer().clientWidth > 0 &&
+      map.getContainer().clientHeight > 0
+    ) {
       map.invalidateSize({ pan: false });
+    }
+    const t = setTimeout(() => {
+      const c = map.getContainer();
+      if (c.clientWidth > 0 && c.clientHeight > 0) {
+        map.invalidateSize({ pan: false });
+      }
     }, 50);
     return () => clearTimeout(t);
   }, [layoutInvalidationKey]);
@@ -323,35 +403,55 @@ const GameMapInner: React.FC<GameMapProps> = ({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || hasFittedInitialBoundsRef.current) return;
-    const tempPoly = L.geoJSON(playArea);
-    const bounds = tempPoly.getBounds();
-    if (bounds.isValid()) {
+    if (
+      safeFitGeoJsonBounds(map, playArea, {
+        padding: [24, 24],
+        maxZoom: 16,
+        animate: false,
+      })
+    ) {
       hasFittedInitialBoundsRef.current = true;
-      map.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 });
     }
   }, [playArea]);
 
-  const prevClickKindRef = useRef(clickMode.kind);
+  const circlePickerFittedRef = useRef(false);
   useEffect(() => {
-    const prevKind = prevClickKindRef.current;
-    prevClickKindRef.current = clickMode.kind;
-    if (
-      clickMode.kind === 'PICK_PLAY_AREA_CIRCLE' &&
-      prevKind !== 'PICK_PLAY_AREA_CIRCLE'
-    ) {
-      const map = mapRef.current;
-      const refBoundary = official81247Boundary ?? playArea;
-      if (map && refBoundary) {
-        const bounds = L.geoJSON(refBoundary).getBounds();
-        if (bounds.isValid()) {
-          map.flyToBounds(bounds, {
-            padding: [28, 28],
-            maxZoom: 14,
-            duration: 0.4,
-          });
-        }
-      }
+    if (clickMode.kind !== 'PICK_PLAY_AREA_CIRCLE') {
+      circlePickerFittedRef.current = false;
+      return;
     }
+    if (circlePickerFittedRef.current) return;
+
+    const map = mapRef.current;
+    const refBoundary = official81247Boundary ?? playArea;
+    if (!map || !refBoundary) return;
+
+    if (
+      safeFitGeoJsonBounds(map, refBoundary, {
+        padding: [28, 28],
+        maxZoom: 14,
+        animate: false,
+      })
+    ) {
+      circlePickerFittedRef.current = true;
+      return;
+    }
+
+    // Falls der Karten-Container beim Tab-Wechsel erst einen Frame später Layout-Größe erhält
+    const retryTimer = setTimeout(() => {
+      const currentMap = mapRef.current;
+      if (
+        currentMap &&
+        safeFitGeoJsonBounds(currentMap, refBoundary, {
+          padding: [28, 28],
+          maxZoom: 14,
+          animate: false,
+        })
+      ) {
+        circlePickerFittedRef.current = true;
+      }
+    }, 70);
+    return () => clearTimeout(retryTimer);
   }, [clickMode.kind, official81247Boundary, playArea]);
 
   // 1. Einheitlicher möglicher Versteckbereich:
@@ -848,17 +948,18 @@ const GameMapInner: React.FC<GameMapProps> = ({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !emergencyFocusTarget) return;
-    map.flyTo([emergencyFocusTarget.lat, emergencyFocusTarget.lng], Math.max(map.getZoom(), 17), {
-      duration: 0.5,
-    });
+    safeCenterMapOnLatLng(
+      map,
+      emergencyFocusTarget.lat,
+      emergencyFocusTarget.lng,
+      17
+    );
   }, [emergencyFocusTarget]);
 
   const handleCenterOnOwnFix = useCallback(() => {
     const map = mapRef.current;
     if (map && ownFix) {
-      map.flyTo([ownFix.lat, ownFix.lng], Math.max(map.getZoom(), 16), {
-        duration: 0.45,
-      });
+      safeCenterMapOnLatLng(map, ownFix.lat, ownFix.lng, 16);
     }
 
     const maybePromise = onRequestGpsPermission?.();
@@ -866,11 +967,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
       void maybePromise.then((freshFix) => {
         const currentMap = mapRef.current;
         if (freshFix && currentMap) {
-          currentMap.flyTo(
-            [freshFix.lat, freshFix.lng],
-            Math.max(currentMap.getZoom(), 16),
-            { duration: 0.45 }
-          );
+          safeCenterMapOnLatLng(currentMap, freshFix.lat, freshFix.lng, 16);
         }
       });
     }
@@ -879,11 +976,11 @@ const GameMapInner: React.FC<GameMapProps> = ({
   const handleFitPlayArea = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
-    const tempPoly = L.geoJSON(playArea);
-    const bounds = tempPoly.getBounds();
-    if (bounds.isValid()) {
-      map.flyToBounds(bounds, { padding: [24, 24], maxZoom: 16, duration: 0.45 });
-    }
+    safeFitGeoJsonBounds(map, playArea, {
+      padding: [24, 24],
+      maxZoom: 16,
+      animate: false,
+    });
   }, [playArea]);
 
   return (

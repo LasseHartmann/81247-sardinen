@@ -1,6 +1,8 @@
 import * as turf from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
+import L from 'leaflet';
 import { describe, expect, it } from 'vitest';
+import { safeFitGeoJsonBounds } from '../src/components/Map/GameMap';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
   buildCustomCirclePlayAreaState,
@@ -521,5 +523,46 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
     expect(officialArea.shapeType).toBe('OFFICIAL_81247');
     expect(officialArea.circle).toBeNull();
     expect(isValidPlayAreaPolygon(officialArea.polygon).valid).toBe(true);
+  });
+
+  it('wirft keinen NaN-LatLng-Fehler in safeFitGeoJsonBounds bei 0x0-Container nach Tabwechsel', () => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    Object.defineProperty(el, 'clientWidth', { configurable: true, value: 0 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: 0 });
+
+    const map = L.map(el, {
+      center: [48.1682, 11.465],
+      zoom: 14,
+      fadeAnimation: false,
+      zoomAnimation: false,
+    });
+
+    // Im versteckten Tab (0x0) darf safeFitGeoJsonBounds nicht in Leaflet (NaN, NaN) laufen
+    expect(() =>
+      safeFitGeoJsonBounds(map, DEFAULT_PLAY_AREA_FEATURE, {
+        padding: [28, 28],
+        maxZoom: 14,
+      })
+    ).not.toThrow();
+    expect(
+      safeFitGeoJsonBounds(map, DEFAULT_PLAY_AREA_FEATURE, {
+        padding: [28, 28],
+        maxZoom: 14,
+      })
+    ).toBe(false);
+
+    // Sobald der Container nach dem Tabwechsel sichtbare Größe hat, passt das FitBounds sauber
+    Object.defineProperty(el, 'clientWidth', { configurable: true, value: 800 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: 600 });
+    expect(
+      safeFitGeoJsonBounds(map, DEFAULT_PLAY_AREA_FEATURE, {
+        padding: [28, 28],
+        maxZoom: 14,
+      })
+    ).toBe(true);
+
+    map.remove();
+    el.remove();
   });
 });

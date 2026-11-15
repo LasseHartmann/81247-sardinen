@@ -164,7 +164,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               placeholder={
                 mode === 'REGISTER'
                   ? 'Deinen Spielernamen wählen ...'
-                  : 'Dein Name (oder „admin“) ...'
+                  : 'Dein Name ...'
               }
               className="cmf-input min-h-[50px] w-full px-4 py-3 text-base font-semibold"
             />
@@ -255,7 +255,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
           <p className="text-center text-[11px] leading-relaxed text-[var(--text-muted)]">
             {mode === 'LOGIN'
-              ? 'Noch kein Konto? Wechsle oben auf „Konto erstellen“. Die Spielleiter-Konsole erreichst du über das Konto „admin“.'
+              ? 'Noch kein Konto? Wechsle oben auf „Konto erstellen“.'
               : 'Wähle deinen Namen und ein persönliches Passwort, um dauerhaft mit deinem Account beizutreten.'}
           </p>
         </form>

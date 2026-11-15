@@ -4,12 +4,14 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
   Copy,
   Layers,
   MapPin,
   Radio,
   Search,
   Shield,
+  Trash2,
   Users,
 } from 'lucide-react';
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
@@ -22,6 +24,7 @@ export interface AdminLobbiesOverviewProps {
   busy?: boolean;
   variant?: 'hub' | 'console';
   onOpenLobby: (roomCode: string) => Promise<void> | void;
+  onAfterDeleteCurrentLobby?: (deletedRoomCode: string) => Promise<void> | void;
 }
 
 type StatusFilter = 'ALL' | 'LOBBY' | 'ACTIVE' | 'FINISHED';
@@ -76,6 +79,7 @@ export const AdminLobbiesOverview: React.FC<AdminLobbiesOverviewProps> = ({
   busy = false,
   variant = 'hub',
   onOpenLobby,
+  onAfterDeleteCurrentLobby,
 }) => {
   const [lobbies, setLobbies] = useState<AdminLobbyOverviewItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +87,10 @@ export const AdminLobbiesOverview: React.FC<AdminLobbiesOverviewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [switchingCode, setSwitchingCode] = useState<string | null>(null);
+  const [confirmDeleteCode, setConfirmDeleteCode] = useState<string | null>(
+    null
+  );
+  const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
 
   const hintKey = useMemo(() => {
@@ -169,12 +177,32 @@ export const AdminLobbiesOverview: React.FC<AdminLobbiesOverviewProps> = ({
   };
 
   const handleSwitch = async (code: string) => {
-    if (busy || switchingCode) return;
+    if (busy || switchingCode || deletingCode) return;
     setSwitchingCode(code);
     try {
       await onOpenLobby(code);
     } finally {
       setSwitchingCode(null);
+    }
+  };
+
+  const handleConfirmDeleteLobby = async (code: string) => {
+    if (busy || switchingCode || deletingCode) return;
+    setDeletingCode(code);
+    try {
+      const wasCurrent =
+        Boolean(currentRoomCode) &&
+        currentRoomCode?.toUpperCase() === code.toUpperCase();
+      await adapter.deleteLobbyRoom(code);
+      setLobbies((prev) =>
+        prev.filter((item) => item.roomCode.toUpperCase() !== code.toUpperCase())
+      );
+      setConfirmDeleteCode(null);
+      if (wasCurrent && onAfterDeleteCurrentLobby) {
+        await onAfterDeleteCurrentLobby(code);
+      }
+    } finally {
+      setDeletingCode(null);
     }
   };
 
@@ -381,28 +409,85 @@ export const AdminLobbiesOverview: React.FC<AdminLobbiesOverviewProps> = ({
                         )}
                       </div>
 
-                      {isCurrent ? (
-                        <span className="font-tech text-[10px] font-bold text-[var(--cmf-teal)] uppercase">
-                          ✓ Aktiver Raum
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          data-testid={`admin-open-lobby-${item.roomCode}`}
-                          disabled={busy || Boolean(switchingCode)}
-                          onClick={() => void handleSwitch(item.roomCode)}
-                          className="cmf-btn-primary font-dot inline-flex min-h-[36px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold disabled:opacity-50"
-                        >
-                          <span>
-                            {switchingCode === item.roomCode
-                              ? 'Öffne ...'
-                              : variant === 'console'
-                                ? 'Wechseln'
-                                : 'Lobby öffnen'}
-                          </span>
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {confirmDeleteCode === item.roomCode ? (
+                          <div className="flex items-center gap-1.5 rounded-xl border border-[#DC2626]/50 bg-[#DC2626]/10 px-2 py-1">
+                            <span className="font-tech text-[10px] font-bold text-[#DC2626] uppercase">
+                              Wirklich löschen?
+                            </span>
+                            <button
+                              type="button"
+                              data-testid={`admin-confirm-delete-lobby-${item.roomCode}`}
+                              disabled={busy || Boolean(deletingCode)}
+                              onClick={() =>
+                                void handleConfirmDeleteLobby(item.roomCode)
+                              }
+                              className="inline-flex min-h-[28px] items-center gap-1 rounded-lg bg-[#DC2626] px-2.5 py-1 font-tech text-[10px] font-bold text-white uppercase transition-opacity hover:opacity-90 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              <span>
+                                {deletingCode === item.roomCode
+                                  ? 'Lösche ...'
+                                  : 'Ja, löschen'}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              data-testid={`admin-cancel-delete-lobby-${item.roomCode}`}
+                              disabled={Boolean(deletingCode)}
+                              onClick={() => setConfirmDeleteCode(null)}
+                              className="cmf-btn-secondary inline-flex min-h-[28px] items-center px-2 py-1 font-tech text-[10px] font-bold uppercase"
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              data-testid={`admin-delete-lobby-${item.roomCode}`}
+                              disabled={
+                                busy ||
+                                Boolean(switchingCode) ||
+                                Boolean(deletingCode)
+                              }
+                              onClick={() => setConfirmDeleteCode(item.roomCode)}
+                              title={`Lobby ${item.roomCode} löschen`}
+                              className="cmf-btn-secondary inline-flex min-h-[36px] items-center gap-1.5 px-2.5 py-1.5 font-tech text-[10px] font-bold text-[#DC2626] uppercase transition-colors hover:border-[#DC2626]/50 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              <span>Löschen</span>
+                            </button>
+
+                            {isCurrent ? (
+                              <span className="font-tech px-1.5 text-[10px] font-bold text-[var(--cmf-teal)] uppercase">
+                                ✓ Aktiver Raum
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                data-testid={`admin-open-lobby-${item.roomCode}`}
+                                disabled={
+                                  busy ||
+                                  Boolean(switchingCode) ||
+                                  Boolean(deletingCode)
+                                }
+                                onClick={() => void handleSwitch(item.roomCode)}
+                                className="cmf-btn-primary font-dot inline-flex min-h-[36px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold disabled:opacity-50"
+                              >
+                                <span>
+                                  {switchingCode === item.roomCode
+                                    ? 'Öffne ...'
+                                    : variant === 'console'
+                                      ? 'Wechseln'
+                                      : 'Lobby öffnen'}
+                                </span>
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {/* Zeile 2: Host, Modus, Gebiet & Spielerzahl */}
@@ -478,6 +563,15 @@ export const AdminLobbiesOverview: React.FC<AdminLobbiesOverviewProps> = ({
               })}
             </div>
           )}
+
+          {/* Hinweis zur automatischen 24-Stunden-Bereinigung */}
+          <div className="cmf-well flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] text-[var(--text-muted)]">
+            <Clock className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
+            <span>
+              Inaktive Lobbys, in denen seit <strong>24 Stunden</strong> niemand
+              mehr online war, werden automatisch gelöscht.
+            </span>
+          </div>
         </>
       )}
     </section>

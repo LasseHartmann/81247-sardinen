@@ -312,10 +312,17 @@ export const App: React.FC = () => {
     }
   }, [activeTab, ownMember, publicState?.status]);
 
-  // Registriert den aktuell aktiven Spielraum automatisch im zentralen Raumverzeichnis (für die Admin-Gesamtübersicht)
+  // Registriert den aktuell aktiven Spielraum automatisch im zentralen Raumverzeichnis (für die Admin-Gesamtübersicht & 24h-Aktivitätszeitstempel)
   useEffect(() => {
     if (!publicState || !ownMember?.enabled) return;
     void adapter.syncRoomDirectoryEntry(publicState);
+    const id = window.setInterval(() => {
+      const latest = latestPublicStateRef.current;
+      if (latest) {
+        void adapter.syncRoomDirectoryEntry(latest);
+      }
+    }, 120_000);
+    return () => window.clearInterval(id);
   }, [
     adapter,
     ownMember?.enabled,

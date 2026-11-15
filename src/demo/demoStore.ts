@@ -18,6 +18,10 @@ import { destinationPoint, roundLatLng5 } from '../geo/distance';
 import {
   buildAdminLobbyOverviewItem,
   computeAveragedTeamLocationFromMemberFixes,
+  extractLatestLobbyActivityMs,
+  filterOnlineEnabledMembers,
+  hasAnyOnlineTabInRoom,
+  isLobbyExpiredByInactivity,
   sortAdminLobbyOverviews,
   type ControllerPublicPatch,
   type DatabaseAdapter,
@@ -600,6 +604,35 @@ export function createDemoStore(options?: {
         throw new Error(
           `Kein Spiel mit dem Code „${roomCode}“ gefunden. Bitte prüfe den Code.`
         );
+      }
+
+      const nowMs = adapter.getServerNow();
+      if (roomCode !== GAME_ID) {
+        const roomMembers = slice.members ?? {};
+        const roomPresence = slice.presence ?? {};
+        const onlineCount = filterOnlineEnabledMembers(
+          roomMembers,
+          roomPresence
+        ).length;
+        const hasOnline = hasAnyOnlineTabInRoom(roomMembers, roomPresence);
+        const lastActivityAt = extractLatestLobbyActivityMs({
+          publicState: slice.state.public,
+          members: roomMembers,
+          presence: roomPresence,
+        });
+        if (
+          isLobbyExpiredByInactivity({
+            onlineCount,
+            hasAnyOnlineTab: hasOnline,
+            lastActivityAt,
+            nowMs,
+          })
+        ) {
+          await adapter.deleteLobbyRoom(roomCode);
+          throw new Error(
+            `Der Spielraum „${roomCode}“ wurde automatisch gelöscht, da seit 24 Stunden niemand mehr online war.`
+          );
+        }
       }
 
       const isAdmin = isAdminAccountId(normalizedPlayerId);
@@ -1837,13 +1870,74 @@ export function createDemoStore(options?: {
       // Im Demo-Store liegen alle Räume direkt im lokalen DemoDatabaseTree.
     },
 
+    async deleteLobbyRoom(roomCode): Promise<void> {
+      const code = normalizeRoomCode(roomCode);
+      if (!isValidRoomCode(code)) return;
+      writeTree((t) => {
+        if (code === GAME_ID) {
+          const fresh = buildEmptyRoomSlice(GAME_ID, adapter.getServerNow());
+          t.members = fresh.members;
+          t.playerClaims = fresh.playerClaims;
+          t.assignments = fresh.assignments;
+          t.joinRequests = fresh.joinRequests;
+          t.presence = fresh.presence;
+          t.teams = fresh.teams;
+          t.state = fresh.state;
+          t.clues = fresh.clues;
+          t.requests = fresh.requests;
+          t.catchRequests = fresh.catchRequests;
+          t.leaderboard = fresh.leaderboard;
+          return;
+        }
+        if (t.rooms && code in t.rooms) {
+          delete t.rooms[code];
+        }
+      });
+    },
+
+    async pruneExpiredLobbies(nowMs = adapter.getServerNow()): Promise<string[]> {
+      const deleted: string[] = [];
+      writeTree((t) => {
+        if (!t.rooms) return;
+        for (const [code, slice] of Object.entries(t.rooms)) {
+          if (code === GAME_ID || !slice?.state?.public) continue;
+          const roomMembers = slice.members ?? {};
+          const roomPresence = slice.presence ?? {};
+          const onlineCount = filterOnlineEnabledMembers(
+            roomMembers,
+            roomPresence
+          ).length;
+          const hasOnline = hasAnyOnlineTabInRoom(roomMembers, roomPresence);
+          const lastActivityAt = extractLatestLobbyActivityMs({
+            publicState: slice.state.public,
+            members: roomMembers,
+            presence: roomPresence,
+          });
+          if (
+            isLobbyExpiredByInactivity({
+              onlineCount,
+              hasAnyOnlineTab: hasOnline,
+              lastActivityAt,
+              nowMs,
+            })
+          ) {
+            delete t.rooms[code];
+            deleted.push(code);
+          }
+        }
+      });
+      return deleted;
+    },
+
     subscribeAllLobbiesOverview(cb): UnsubscribeFn {
       return subscribeSlice((tree) => {
+        const nowMs = Date.now() + (tree.clockOffsetMs || 0);
         const sliceEntries: Array<[string, DemoRoomSlice]> = [
           [GAME_ID, tree],
           ...Object.entries(tree.rooms ?? {}),
         ];
         const items: AdminLobbyOverviewItem[] = [];
+        const expiredCodes: string[] = [];
         for (const [code, slice] of sliceEntries) {
           if (!slice?.state?.public) continue;
           const teamsPub = Object.fromEntries(
@@ -1862,9 +1956,31 @@ export function createDemoStore(options?: {
             presence: slice.presence ?? {},
             teamsPublic: teamsPub,
           });
-          if (built) {
-            items.push(built);
+          if (!built) continue;
+          const hasOnline = hasAnyOnlineTabInRoom(
+            slice.members ?? {},
+            slice.presence ?? {}
+          );
+          if (
+            code !== GAME_ID &&
+            isLobbyExpiredByInactivity({
+              onlineCount: built.onlineCount,
+              hasAnyOnlineTab: hasOnline,
+              lastActivityAt: built.updatedAt || built.createdAt,
+              nowMs,
+            })
+          ) {
+            expiredCodes.push(code);
+            continue;
           }
+          items.push(built);
+        }
+        if (expiredCodes.length > 0) {
+          setTimeout(() => {
+            for (const expired of expiredCodes) {
+              void adapter.deleteLobbyRoom(expired).catch(() => {});
+            }
+          }, 0);
         }
         return sortAdminLobbyOverviews(items);
       }, cb);

@@ -221,6 +221,24 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       // Clipboard nicht verfügbar
     }
   };
+
+  const [confirmDeleteCurrentRoom, setConfirmDeleteCurrentRoom] =
+    useState(false);
+  const [deletingCurrentRoom, setDeletingCurrentRoom] = useState(false);
+
+  const handleDeleteCurrentLobby = async () => {
+    if (deletingCurrentRoom) return;
+    setDeletingCurrentRoom(true);
+    try {
+      await adapter.deleteLobbyRoom(roomCode);
+      setConfirmDeleteCurrentRoom(false);
+      if (onLeaveRoom) {
+        await onLeaveRoom();
+      }
+    } finally {
+      setDeletingCurrentRoom(false);
+    }
+  };
   const isCirclePlayArea = publicState.playArea.shapeType === 'CUSTOM_CIRCLE';
   const activePostalCodes = getActivePostalCodes(publicState.playArea);
   const isFullMunich = isAllMunichPostalCodes(activePostalCodes);
@@ -886,17 +904,58 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 Admin-Konsole &amp; Spielraum-Steuerung
               </h2>
             </div>
-            {onLeaveRoom && (
-              <button
-                type="button"
-                data-testid="host-leave-room-btn"
-                onClick={() => void onLeaveRoom()}
-                className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Raum wechseln</span>
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {confirmDeleteCurrentRoom ? (
+                <div className="flex items-center gap-1.5 rounded-xl border border-[#DC2626]/50 bg-[#DC2626]/10 px-2.5 py-1">
+                  <span className="font-tech text-[10px] font-bold text-[#DC2626] uppercase">
+                    Lobby {roomCode} wirklich löschen?
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="host-confirm-delete-current-lobby-btn"
+                    disabled={deletingCurrentRoom}
+                    onClick={() => void handleDeleteCurrentLobby()}
+                    className="inline-flex min-h-[30px] items-center gap-1 rounded-lg bg-[#DC2626] px-2.5 py-1 font-tech text-[10px] font-bold text-white uppercase transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    <span>
+                      {deletingCurrentRoom ? 'Lösche ...' : 'Ja, löschen'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="host-cancel-delete-current-lobby-btn"
+                    disabled={deletingCurrentRoom}
+                    onClick={() => setConfirmDeleteCurrentRoom(false)}
+                    className="cmf-btn-secondary inline-flex min-h-[30px] items-center px-2 py-1 font-tech text-[10px] font-bold uppercase"
+                  >
+                    Abbrechen
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  data-testid="host-delete-current-lobby-btn"
+                  onClick={() => setConfirmDeleteCurrentRoom(true)}
+                  className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-[#DC2626] uppercase hover:border-[#DC2626]/50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Lobby löschen</span>
+                </button>
+              )}
+
+              {onLeaveRoom && (
+                <button
+                  type="button"
+                  data-testid="host-leave-room-btn"
+                  onClick={() => void onLeaveRoom()}
+                  className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  <span>Raum wechseln</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="cmf-oled flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
@@ -969,6 +1028,11 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           onOpenLobby={async (targetCode) => {
             if (onSwitchRoom) {
               await onSwitchRoom(targetCode);
+            }
+          }}
+          onAfterDeleteCurrentLobby={async () => {
+            if (onLeaveRoom) {
+              await onLeaveRoom();
             }
           }}
         />

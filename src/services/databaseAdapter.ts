@@ -294,10 +294,81 @@ export interface DatabaseAdapter {
   }): Promise<void>;
 
   syncRoomDirectoryEntry(publicState: PublicGameState): Promise<void>;
+  deleteLobbyRoom(roomCode: string): Promise<void>;
+  pruneExpiredLobbies(nowMs?: number): Promise<string[]>;
   subscribeAllLobbiesOverview(
     cb: (lobbies: AdminLobbyOverviewItem[]) => void,
     hintRoomCodes?: string[]
   ): UnsubscribeFn;
+}
+
+export const LOBBY_INACTIVE_TTL_MS = 24 * 60 * 60 * 1000;
+
+export function hasAnyOnlineTabInRoom(
+  members: Record<string, MemberRecord>,
+  presence: Record<string, Record<string, PresenceSession>>
+): boolean {
+  if (
+    filterOnlineEnabledMembers(members, presence, undefined, {
+      includeOverview: true,
+    }).length > 0
+  ) {
+    return true;
+  }
+  return Object.values(presence).some((sessions) => isMemberTabOnline(sessions));
+}
+
+export function extractLatestLobbyActivityMs(params: {
+  publicState?: PublicGameState | null;
+  directoryEntry?: LobbyDirectoryEntry | null;
+  members?: Record<string, MemberRecord>;
+  presence?: Record<string, Record<string, PresenceSession>>;
+}): number {
+  const {
+    publicState = null,
+    directoryEntry = null,
+    members = {},
+    presence = {},
+  } = params;
+  let maxTs = Math.max(
+    directoryEntry?.updatedAt ?? 0,
+    directoryEntry?.createdAt ?? 0,
+    publicState?.createdAt ?? 0,
+    publicState?.gameStartTimestamp ?? 0,
+    publicState?.searchStartTimestamp ?? 0
+  );
+  for (const m of Object.values(members)) {
+    if (typeof m?.updatedAt === 'number' && m.updatedAt > maxTs) {
+      maxTs = m.updatedAt;
+    }
+  }
+  for (const userSessions of Object.values(presence)) {
+    for (const sess of Object.values(userSessions ?? {})) {
+      if (typeof sess?.lastSeen === 'number' && sess.lastSeen > maxTs) {
+        maxTs = sess.lastSeen;
+      }
+    }
+  }
+  return maxTs;
+}
+
+export function isLobbyExpiredByInactivity(params: {
+  onlineCount: number;
+  hasAnyOnlineTab?: boolean;
+  lastActivityAt: number;
+  nowMs: number;
+  ttlMs?: number;
+}): boolean {
+  const {
+    onlineCount,
+    hasAnyOnlineTab = false,
+    lastActivityAt,
+    nowMs,
+    ttlMs = LOBBY_INACTIVE_TTL_MS,
+  } = params;
+  if (onlineCount > 0 || hasAnyOnlineTab) return false;
+  if (!Number.isFinite(lastActivityAt) || lastActivityAt <= 0) return false;
+  return nowMs - lastActivityAt >= ttlMs;
 }
 
 const ACCOUNTS_ROOT_PATH = `games/${GAME_ID}`;
@@ -470,15 +541,12 @@ export function buildAdminLobbyOverviewItem(params: {
 
   const enabledMembers = deduplicateEnabledMembers(members, presence);
   const onlineMembers = filterOnlineEnabledMembers(members, presence);
-  const latestMemberUpdate = enabledMembers.reduce(
-    (maxTs, m) => Math.max(maxTs, m.updatedAt ?? 0),
-    0
-  );
-  const updatedAt = Math.max(
-    directoryEntry?.updatedAt ?? 0,
-    latestMemberUpdate,
-    createdAt
-  );
+  const updatedAt = extractLatestLobbyActivityMs({
+    publicState,
+    directoryEntry,
+    members,
+    presence,
+  });
 
   const hiderNames = enabledMembers
     .filter((m) => m.side === 'HIDER')
@@ -999,6 +1067,51 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       }
 
       const pubVal = pubSnap.val() as PublicGameState;
+
+      if (roomCode !== GAME_ID) {
+        const [dirSnap, membersSnap, presenceSnap] = await Promise.all([
+          get(ref(db, `${ACCOUNTS_ROOT_PATH}/roomDirectory/${roomCode}`)).catch(
+            () => null
+          ),
+          get(ref(db, `games/${roomCode}/members`)).catch(() => null),
+          get(ref(db, `games/${roomCode}/presence`)).catch(() => null),
+        ]);
+        const dirEntry = dirSnap?.exists()
+          ? (dirSnap.val() as LobbyDirectoryEntry)
+          : null;
+        const roomMembers =
+          (membersSnap?.val() as Record<string, MemberRecord> | null) ?? {};
+        const roomPresence =
+          (presenceSnap?.val() as Record<
+            string,
+            Record<string, PresenceSession>
+          > | null) ?? {};
+        const onlineCount = filterOnlineEnabledMembers(
+          roomMembers,
+          roomPresence
+        ).length;
+        const hasOnline = hasAnyOnlineTabInRoom(roomMembers, roomPresence);
+        const lastActivityAt = extractLatestLobbyActivityMs({
+          publicState: pubVal,
+          directoryEntry: dirEntry,
+          members: roomMembers,
+          presence: roomPresence,
+        });
+        if (
+          isLobbyExpiredByInactivity({
+            onlineCount,
+            hasAnyOnlineTab: hasOnline,
+            lastActivityAt,
+            nowMs,
+          })
+        ) {
+          await adapter.deleteLobbyRoom(roomCode).catch(() => {});
+          throw new Error(
+            `Der Spielraum „${roomCode}“ wurde automatisch gelöscht, da seit 24 Stunden niemand mehr online war.`
+          );
+        }
+      }
+
       const shouldBeHost = Boolean(
         isAdmin ||
           (pubVal.hostPlayerId && pubVal.hostPlayerId === normalizedPlayerId)
@@ -2676,9 +2789,86 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       await writeRoomDirectoryBestEffort(publicState);
     },
 
+    async deleteLobbyRoom(roomCode): Promise<void> {
+      const code = normalizeRoomCode(roomCode);
+      if (!isValidRoomCode(code)) return;
+      const roomRoot = `games/${code}`;
+      const subPaths = [
+        `${roomRoot}/state/public`,
+        `${roomRoot}/state/controller`,
+        `${roomRoot}/state/hiderPrivate`,
+        `${roomRoot}/members`,
+        `${roomRoot}/joinRequests`,
+        `${roomRoot}/assignments`,
+        `${roomRoot}/presence`,
+        `${roomRoot}/clues`,
+        `${roomRoot}/requests`,
+        `${roomRoot}/catchRequests`,
+        `${roomRoot}/leaderboard`,
+        ...TEAM_PALETTE.flatMap((p) => [
+          `${roomRoot}/teams/${p.id}/public`,
+          `${roomRoot}/teams/${p.id}/location`,
+        ]),
+        `${ACCOUNTS_ROOT_PATH}/roomDirectory/${code}`,
+      ];
+      await Promise.all(
+        subPaths.map((p) => remove(ref(db, p)).catch(() => {}))
+      );
+    },
+
+    async pruneExpiredLobbies(nowMs = adapter.getServerNow()): Promise<string[]> {
+      const dirSnap = await get(
+        ref(db, `${ACCOUNTS_ROOT_PATH}/roomDirectory`)
+      ).catch(() => null);
+      const dirEntries =
+        (dirSnap?.val() as Record<string, LobbyDirectoryEntry> | null) ?? {};
+      const deleted: string[] = [];
+
+      for (const [rawCode, dirEntry] of Object.entries(dirEntries)) {
+        const code = normalizeRoomCode(rawCode);
+        if (!isValidRoomCode(code) || code === GAME_ID) continue;
+        const [pubSnap, membersSnap, presenceSnap] = await Promise.all([
+          get(ref(db, `games/${code}/state/public`)).catch(() => null),
+          get(ref(db, `games/${code}/members`)).catch(() => null),
+          get(ref(db, `games/${code}/presence`)).catch(() => null),
+        ]);
+        const pubState = pubSnap?.exists()
+          ? (pubSnap.val() as PublicGameState)
+          : null;
+        const members =
+          (membersSnap?.val() as Record<string, MemberRecord> | null) ?? {};
+        const presence =
+          (presenceSnap?.val() as Record<
+            string,
+            Record<string, PresenceSession>
+          > | null) ?? {};
+        const onlineCount = filterOnlineEnabledMembers(members, presence).length;
+        const hasOnline = hasAnyOnlineTabInRoom(members, presence);
+        const lastActivityAt = extractLatestLobbyActivityMs({
+          publicState: pubState,
+          directoryEntry: dirEntry,
+          members,
+          presence,
+        });
+        if (
+          isLobbyExpiredByInactivity({
+            onlineCount,
+            hasAnyOnlineTab: hasOnline,
+            lastActivityAt,
+            nowMs,
+          })
+        ) {
+          await adapter.deleteLobbyRoom(code);
+          deleted.push(code);
+        }
+      }
+      return deleted;
+    },
+
     subscribeAllLobbiesOverview(cb, hintRoomCodes = []): UnsubscribeFn {
       let disposed = false;
       let directoryEntries: Record<string, LobbyDirectoryEntry> = {};
+      const prunedCodes = new Set<string>();
 
       interface RoomLiveRecord {
         publicLoaded: boolean;
@@ -2693,6 +2883,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
       const emit = () => {
         if (disposed) return;
+        const nowMs = adapter.getServerNow();
         const items: AdminLobbyOverviewItem[] = [];
         for (const [code, rec] of watchers.entries()) {
           if (rec.publicLoaded && !rec.publicState) {
@@ -2710,9 +2901,25 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
             presence: rec.presence,
             teamsPublic: rec.teamsPublic,
           });
-          if (built) {
-            items.push(built);
+          if (!built) continue;
+
+          const hasOnline = hasAnyOnlineTabInRoom(rec.members, rec.presence);
+          if (
+            code !== GAME_ID &&
+            isLobbyExpiredByInactivity({
+              onlineCount: built.onlineCount,
+              hasAnyOnlineTab: hasOnline,
+              lastActivityAt: built.updatedAt || built.createdAt,
+              nowMs,
+            })
+          ) {
+            if (!prunedCodes.has(code)) {
+              prunedCodes.add(code);
+              void adapter.deleteLobbyRoom(code).catch(() => {});
+            }
+            continue;
           }
+          items.push(built);
         }
         cb(sortAdminLobbyOverviews(items));
       };

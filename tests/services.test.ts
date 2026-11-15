@@ -1040,6 +1040,70 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(mainEntry).toBeDefined();
     expect(mainEntry?.roomCode).toBe('81247');
 
+    // 8. Admin kann eine Lobby manuell löschen, und inaktive Lobbys (24h niemand online) werden automatisch gelöscht
+    const hostedManual = await store.adapter.createHostedRoom({
+      hostPlayerId: 'anna',
+      hostName: 'Anna',
+    });
+    expect(
+      latestOverview.some((item) => item.roomCode === hostedManual.roomCode)
+    ).toBe(true);
+
+    // Manuelles Löschen durch Admin
+    await store.adapter.deleteLobbyRoom(hostedManual.roomCode);
+    expect(
+      latestOverview.some((item) => item.roomCode === hostedManual.roomCode)
+    ).toBe(false);
+    expect(store.getSnapshot().rooms?.[hostedManual.roomCode]).toBeUndefined();
+
+    // Wenn jemand online ist, läuft die Lobby auch nach > 24h NICHT ab
+    store.adapter.setRoomCode(hosted.roomCode);
+    const unsubAnnaTab = store.adapter.registerTabPresence(
+      annaRejoined.member.uid,
+      'tab_anna_online',
+      'TestBrowser'
+    );
+
+    const hostedStale = await store.adapter.createHostedRoom({
+      hostPlayerId: 'ben',
+      hostName: 'Ben',
+    });
+    // In hostedStale ist niemand online (keine Tab-Presence)
+    expect(store.getSnapshot().rooms?.[hostedStale.roomCode]).toBeDefined();
+
+    // Nach 23 Stunden Inaktivität (< 24h) existiert hostedStale noch
+    store.advanceSimulatedTime(23 * 60 * 60 * 1000);
+    const prunedAt23h = await store.adapter.pruneExpiredLobbies();
+    expect(prunedAt23h).not.toContain(hostedStale.roomCode);
+    expect(store.getSnapshot().rooms?.[hostedStale.roomCode]).toBeDefined();
+
+    // Nach insgesamt 24 Stunden + 1 Minute Inaktivität wird hostedStale automatisch bereinigt,
+    // während hosted (mit aktiver Online-Präsenz von Anna) erhalten bleibt!
+    store.advanceSimulatedTime(61 * 60 * 1000);
+    const prunedAt24h = await store.adapter.pruneExpiredLobbies();
+    expect(prunedAt24h).toContain(hostedStale.roomCode);
+    expect(prunedAt24h).not.toContain(hosted.roomCode);
+    expect(store.getSnapshot().rooms?.[hostedStale.roomCode]).toBeUndefined();
+    expect(store.getSnapshot().rooms?.[hosted.roomCode]).toBeDefined();
+
+    // Auch beim direkten Beitrittsversuch zu einer >24h inaktiven Lobby wird diese automatisch gelöscht & abgelehnt
+    const hostedExpiredOnJoin = await store.adapter.createHostedRoom({
+      hostPlayerId: 'ben',
+      hostName: 'Ben',
+    });
+    store.advanceSimulatedTime(24 * 60 * 60 * 1000 + 5_000);
+    await expect(
+      store.adapter.joinRoomByCode({
+        roomCode: hostedExpiredOnJoin.roomCode,
+        playerId: 'anna',
+        playerName: 'Anna',
+      })
+    ).rejects.toThrow(/24 Stunden/i);
+    expect(
+      store.getSnapshot().rooms?.[hostedExpiredOnJoin.roomCode]
+    ).toBeUndefined();
+
+    unsubAnnaTab();
     unsubOverview();
   });
 });

@@ -214,6 +214,18 @@ export const App: React.FC = () => {
     }
   }, [publicState?.gameMode, activeTab, activePreviewQuestion]);
 
+  const activePostalCode =
+    publicState?.playArea?.postalCode ?? DEFAULT_POSTAL_CODE;
+  const activePlzEntry = getMunichPlzEntry(activePostalCode);
+  const activePlzBoundary = useMemo(
+    () => buildMunichPlzPolygon(activePostalCode),
+    [activePostalCode]
+  );
+
+  useEffect(() => {
+    void preloadGreenPolygonsForPostalCode(activePostalCode);
+  }, [activePostalCode]);
+
   const [bootAdminModalOpen, setBootAdminModalOpen] = useState(false);
   const [bootAdminCode, setBootAdminCode] = useState('');
   const [bootAdminErr, setBootAdminErr] = useState<string | null>(null);
@@ -574,18 +586,6 @@ export const App: React.FC = () => {
               r.status === 'AWAITING_HIDER_MEDIA'
           )
       : [];
-
-  const activePostalCode =
-    publicState.playArea.postalCode ?? DEFAULT_POSTAL_CODE;
-  const activePlzEntry = getMunichPlzEntry(activePostalCode);
-  const activePlzBoundary = useMemo(
-    () => buildMunichPlzPolygon(activePostalCode),
-    [activePostalCode]
-  );
-
-  useEffect(() => {
-    void preloadGreenPolygonsForPostalCode(activePostalCode);
-  }, [activePostalCode]);
 
   const currentCircleCenter =
     publicState.playArea.circle?.center ??

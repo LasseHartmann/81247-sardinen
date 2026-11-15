@@ -512,9 +512,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   {TEAM_PALETTE.map((t) => {
                     const count =
                       teamsPublic[t.id]?.memberPlayerIds.length ?? 0;
+                    const teamName = teamsPublic[t.id]?.name ?? t.name;
                     return (
                       <option key={t.id} value={t.id}>
-                        Sucher: {t.name} ({count} Spieler)
+                        Sucher: {teamName} ({count} Spieler)
                       </option>
                     );
                   })}

@@ -15,6 +15,7 @@ import {
   Crosshair,
   ArrowLeft,
   Link2,
+  Pencil,
 } from 'lucide-react';
 import {
   ALL_MUNICH_POSTAL_CODES,
@@ -129,6 +130,76 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   const roomCode = publicState.roomCode ?? adapter.getRoomCode();
   const [copiedKind, setCopiedKind] = useState<'CODE' | 'LINK' | null>(null);
   const [changingOwnRole, setChangingOwnRole] = useState(false);
+  const [focusedTeamNameId, setFocusedTeamNameId] = useState<string | null>(
+    null
+  );
+  const [savedTeamNameId, setSavedTeamNameId] = useState<string | null>(null);
+  const [teamNameDrafts, setTeamNameDrafts] = useState<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        TEAM_PALETTE.map((t) => [t.id, teamsPublic[t.id]?.name ?? t.name])
+      )
+  );
+
+  useEffect(() => {
+    setTeamNameDrafts((prev) => {
+      const next = { ...prev };
+      for (const t of TEAM_PALETTE) {
+        if (focusedTeamNameId !== t.id) {
+          next[t.id] = teamsPublic[t.id]?.name ?? t.name;
+        }
+      }
+      return next;
+    });
+  }, [teamsPublic, focusedTeamNameId]);
+
+  const handleSaveTeamName = async (teamId: string, rawName: string) => {
+    const paletteEntry = TEAM_PALETTE.find((t) => t.id === teamId);
+    if (!paletteEntry) return;
+    const trimmed = rawName.trim().slice(0, 28);
+    const nextName = trimmed.length > 0 ? trimmed : paletteEntry.name;
+    setTeamNameDrafts((prev) => ({ ...prev, [teamId]: nextName }));
+
+    const currentTeam = teamsPublic[teamId] ?? createDefaultTeams()[teamId];
+    if (!currentTeam) return;
+    if (currentTeam.name === nextName && teamsPublic[teamId]) {
+      return;
+    }
+
+    await adapter.saveTeamPublic(teamId, {
+      ...currentTeam,
+      id: teamId,
+      color: currentTeam.color ?? paletteEntry.color,
+      name: nextName,
+    });
+    setSavedTeamNameId(teamId);
+    setTimeout(() => {
+      setSavedTeamNameId((cur) => (cur === teamId ? null : cur));
+    }, 1800);
+  };
+
+  const handleResetAllTeamNames = async () => {
+    const defaults = createDefaultTeams();
+    const nextDrafts: Record<string, string> = {};
+    await Promise.all(
+      TEAM_PALETTE.map(async (t) => {
+        nextDrafts[t.id] = t.name;
+        const cur = teamsPublic[t.id] ?? defaults[t.id];
+        if (cur && cur.name !== t.name) {
+          await adapter.saveTeamPublic(t.id, {
+            ...cur,
+            id: t.id,
+            name: t.name,
+          });
+        }
+      })
+    );
+    setTeamNameDrafts(nextDrafts);
+  };
+
+  const hasCustomTeamNames = TEAM_PALETTE.some(
+    (t) => (teamsPublic[t.id]?.name ?? t.name) !== t.name
+  );
 
   const handleCopyRoomCode = async () => {
     try {
@@ -416,6 +487,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       : fallbackSecrets.shortCode;
 
     const nextTeams = createDefaultTeams();
+    for (const [id, team] of Object.entries(nextTeams)) {
+      const customName = teamsPublic[id]?.name?.trim();
+      if (customName) {
+        team.name = customName;
+      }
+    }
     for (const m of enabledMembers) {
       if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
         if (!nextTeams[m.teamId].memberPlayerIds.includes(m.playerId)) {
@@ -751,6 +828,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       : buildRadarScheduleForHidingMinutes(classicHidingMin, classicSearchMin);
 
     const resetTeams = createDefaultTeams();
+    for (const [id, team] of Object.entries(resetTeams)) {
+      const customName = teamsPublic[id]?.name?.trim();
+      if (customName) {
+        team.name = customName;
+      }
+    }
     for (const m of enabledMembers) {
       if (m.enabled && m.side === 'SEEKER' && m.teamId && resetTeams[m.teamId]) {
         resetTeams[m.teamId].memberPlayerIds.push(m.playerId);
@@ -1727,12 +1810,102 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 <option value="HIDER">Verstecker (Die Sardinen)</option>
                 {TEAM_PALETTE.map((t) => (
                   <option key={t.id} value={t.id}>
-                    Sucher: {t.name}
+                    Sucher: {teamsPublic[t.id]?.name ?? t.name}
                   </option>
                 ))}
               </select>
             </div>
           )}
+
+          {/* Teamnamen bearbeiten (Team 1 – Team 6) */}
+          <div
+            data-testid="host-team-names-editor"
+            className="cmf-well space-y-2.5 p-3.5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Pencil className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                <span className="font-tech text-[11px] font-bold tracking-wider text-[var(--text-main)] uppercase">
+                  Teamnamen bearbeiten (Sucher-Teams 1–6)
+                </span>
+              </div>
+              {hasCustomTeamNames && (
+                <button
+                  type="button"
+                  data-testid="host-reset-team-names-btn"
+                  onClick={() => void handleResetAllTeamNames()}
+                  className="cmf-btn-secondary font-tech min-h-[28px] px-2.5 py-1 text-[10px] font-bold uppercase"
+                >
+                  Standardnamen
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {TEAM_PALETTE.map((t) => {
+                const draftVal = teamNameDrafts[t.id] ?? t.name;
+                const currentSavedName = teamsPublic[t.id]?.name ?? t.name;
+                const isDirty =
+                  draftVal.trim().length > 0 &&
+                  draftVal.trim() !== currentSavedName;
+                const isJustSaved = savedTeamNameId === t.id;
+                return (
+                  <form
+                    key={t.id}
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void handleSaveTeamName(t.id, draftVal);
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl border border-[var(--shell-border)] bg-[var(--surface-raised)] px-2.5 py-1.5"
+                  >
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-full border border-white/60"
+                      style={{
+                        backgroundColor: teamsPublic[t.id]?.color ?? t.color,
+                      }}
+                    />
+                    <input
+                      type="text"
+                      maxLength={28}
+                      aria-label={`Teamname für ${t.name}`}
+                      data-testid={`host-team-name-input-${t.id}`}
+                      value={draftVal}
+                      onFocus={() => setFocusedTeamNameId(t.id)}
+                      onBlur={() => {
+                        setFocusedTeamNameId((cur) =>
+                          cur === t.id ? null : cur
+                        );
+                        void handleSaveTeamName(t.id, draftVal);
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTeamNameDrafts((prev) => ({
+                          ...prev,
+                          [t.id]: val,
+                        }));
+                      }}
+                      placeholder={t.name}
+                      className="cmf-input min-h-[34px] min-w-0 flex-1 px-2.5 py-1 text-xs font-bold text-[var(--text-main)]"
+                    />
+                    <button
+                      type="submit"
+                      data-testid={`host-team-name-save-${t.id}`}
+                      disabled={!isDirty && !isJustSaved}
+                      className={`font-tech min-h-[32px] shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase transition-all ${
+                        isJustSaved
+                          ? 'cmf-badge-teal'
+                          : isDirty
+                            ? 'cmf-btn-active'
+                            : 'cmf-btn-secondary opacity-50'
+                      }`}
+                    >
+                      {isJustSaved ? '✓' : 'OK'}
+                    </button>
+                  </form>
+                );
+              })}
+            </div>
+          </div>
 
           {/* 4a. Die Sardinen (Verstecker-Team) */}
           <div

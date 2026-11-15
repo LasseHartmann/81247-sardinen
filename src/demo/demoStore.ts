@@ -1749,6 +1749,12 @@ export function createDemoStore(options?: {
       writeTree((t) => {
         const r = requireRoomSlice(t);
         const nextTeams = createDefaultTeams();
+        for (const [id, tm] of Object.entries(nextTeams)) {
+          const existingName = r.teams[id]?.public?.name?.trim();
+          if (existingName) {
+            tm.name = existingName;
+          }
+        }
         for (const m of enabledMembers) {
           if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
             if (!nextTeams[m.teamId].memberPlayerIds.includes(m.playerId)) {

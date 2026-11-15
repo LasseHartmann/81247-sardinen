@@ -2349,6 +2349,23 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       nowMs,
     }): Promise<void> {
       const nextTeams = createDefaultTeams();
+      const existingTeamsSnap = await get(
+        ref(db, `${getRoomRootPath()}/teams`)
+      ).catch(() => null);
+      const existingTeamsVal = existingTeamsSnap?.exists()
+        ? (existingTeamsSnap.val() as Record<
+            string,
+            { public?: Partial<TeamPublic> }
+          >)
+        : null;
+      if (existingTeamsVal) {
+        for (const [id, team] of Object.entries(nextTeams)) {
+          const existingName = existingTeamsVal[id]?.public?.name?.trim();
+          if (existingName) {
+            team.name = existingName;
+          }
+        }
+      }
       for (const m of enabledMembers) {
         if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
           if (!nextTeams[m.teamId].memberPlayerIds.includes(m.playerId)) {

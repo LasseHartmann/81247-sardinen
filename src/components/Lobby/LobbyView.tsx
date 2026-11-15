@@ -648,7 +648,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
             <option value="HIDER">Verstecker (Die Sardinen)</option>
             {TEAM_PALETTE.map((t) => (
               <option key={t.id} value={t.id}>
-                Sucher: {t.name}
+                Sucher: {teamsPublic[t.id]?.name ?? t.name}
               </option>
             ))}
           </select>
@@ -683,7 +683,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                     className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/60"
                     style={{ backgroundColor: t.color }}
                   />
-                  {t.name.replace(/\s*\(.*\)/, '')}
+                  {t.name}
                 </span>
                 <span className="truncate text-[11px] font-medium text-[var(--text-muted)]">
                   {t.assignedNames.join(', ')}
@@ -743,7 +743,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                       ? 'HQ'
                       : 'HQ•OFF'
                     : m.teamId
-                      ? m.teamId.replace('team-', 'T')
+                      ? (teamsPublic[m.teamId]?.name ?? m.teamId.replace('team-', 'T'))
                       : '–'}
                 </span>
                 {playerReady && (

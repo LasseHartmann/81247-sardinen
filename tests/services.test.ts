@@ -988,5 +988,29 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(afterResetPublic?.roomCode).toBe(hosted.roomCode);
     expect(afterResetPublic?.hostPlayerId).toBe('anna');
     expect(afterResetPublic?.hostName).toBe('Anna');
+
+    // 6. Host benennt ein Team um („Team Papaya“) -> bleibt auch nach automatischem Rundenstart (startRoundWhenAllReady) erhalten
+    const team5Before =
+      store.getSnapshot().rooms?.[hosted.roomCode]?.teams['team-5']?.public;
+    expect(team5Before).toBeDefined();
+    await store.adapter.saveTeamPublic('team-5', {
+      ...team5Before!,
+      name: 'Team Papaya',
+    });
+    expect(
+      store.getSnapshot().rooms?.[hosted.roomCode]?.teams['team-5']?.public.name
+    ).toBe('Team Papaya');
+
+    const roomAfterRename = store.getSnapshot().rooms?.[hosted.roomCode]!;
+    await store.adapter.startRoundWhenAllReady({
+      starterUid: annaRejoined.member.uid,
+      publicState: roomAfterRename.state.public,
+      enabledMembers: Object.values(roomAfterRename.members),
+      currentHiderPrivate: roomAfterRename.state.hiderPrivate,
+      nowMs: t0 + 10_000,
+    });
+    expect(
+      store.getSnapshot().rooms?.[hosted.roomCode]?.teams['team-5']?.public.name
+    ).toBe('Team Papaya');
   });
 });

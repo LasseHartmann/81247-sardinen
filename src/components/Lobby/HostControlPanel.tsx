@@ -60,9 +60,7 @@ import {
 } from '../../hooks/useControllerEngine';
 import { HardwareKnob } from '../Common/HardwareKnob';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
-import {
-  isOverviewMember,
-} from '../../config/players';
+import { isOverviewMember } from '../../config/players';
 import {
   deduplicateEnabledMembers,
   getRequiredReadyHiderMembers,
@@ -103,7 +101,6 @@ export interface HostControlPanelProps {
   requestsByTeam?: Record<string, Record<string, ClueRequest>>;
   onNavigateToMap: () => void;
   onOpenCircleMapEditor?: () => void;
-  onSelectOwnRole?: (nextSelection: string) => Promise<void>;
   onLeaveRoom?: () => Promise<void>;
   onLogoutAdmin?: () => void;
 }
@@ -122,14 +119,11 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   requestsByTeam = {},
   onNavigateToMap,
   onOpenCircleMapEditor,
-  onSelectOwnRole,
   onLeaveRoom,
   onLogoutAdmin,
 }) => {
-  const isOverviewAccount = isOverviewMember(ownMember);
   const roomCode = publicState.roomCode ?? adapter.getRoomCode();
   const [copiedKind, setCopiedKind] = useState<'CODE' | 'LINK' | null>(null);
-  const [changingOwnRole, setChangingOwnRole] = useState(false);
   const [focusedTeamNameId, setFocusedTeamNameId] = useState<string | null>(
     null
   );
@@ -881,12 +875,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
-                {isOverviewAccount
-                  ? 'ADMIN // SPIELLEITER-KONSOLE'
-                  : `HOST // ${ownMember.name}`}
+                ADMIN // SPIELLEITER-KONSOLE
               </span>
               <h2 className="font-dot mt-1 text-lg sm:text-xl text-[var(--text-main)]">
-                Spiel-Einstellungen, Grenzen &amp; Zeiten
+                Admin-Konsole &amp; Spielraum-Steuerung
               </h2>
             </div>
             {onLeaveRoom && (
@@ -1764,59 +1756,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             </button>
           </div>
 
-          {/* Eigene Team-Auswahl für spielende Hosts (nicht beim reinen Admin-Konto) */}
-          {!isOverviewAccount && onSelectOwnRole && (
-            <div className="cmf-oled space-y-2 p-3.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <label
-                  htmlFor="host-own-role-select"
-                  className="font-tech text-[10px] font-bold tracking-wider text-[#9AA4AE] uppercase"
-                >
-                  Dein eigenes Team wählen (Host spielt mit)
-                </label>
-                <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
-                  {ownMember.side === 'HIDER'
-                    ? 'Verstecker'
-                    : ownMember.side === 'SEEKER' && ownMember.teamId
-                      ? (teamsPublic[ownMember.teamId]?.name ?? ownMember.teamId)
-                      : 'Nur Spielleiter'}
-                </span>
-              </div>
-              <select
-                id="host-own-role-select"
-                data-testid="host-own-role-select"
-                disabled={changingOwnRole}
-                value={
-                  ownMember.side === 'HIDER'
-                    ? 'HIDER'
-                    : ownMember.side === 'SEEKER' && ownMember.teamId
-                      ? ownMember.teamId
-                      : 'UNASSIGNED'
-                }
-                onChange={async (e) => {
-                  const val = e.target.value;
-                  setChangingOwnRole(true);
-                  try {
-                    await onSelectOwnRole(val);
-                  } finally {
-                    setChangingOwnRole(false);
-                  }
-                }}
-                className="cmf-input min-h-[42px] w-full bg-white px-3 py-2 text-sm font-semibold text-[var(--text-main)]"
-              >
-                <option value="UNASSIGNED">
-                  Kein Team (Nur Spielleiter / Zuschauer)
-                </option>
-                <option value="HIDER">Verstecker (Die Sardinen)</option>
-                {TEAM_PALETTE.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    Sucher: {teamsPublic[t.id]?.name ?? t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           {/* Teamnamen bearbeiten (Team 1 – Team 6) */}
           <div
             data-testid="host-team-names-editor"
@@ -2211,14 +2150,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 className="font-industrial text-sm text-[var(--text-main)]">
-                  {isOverviewAccount
-                    ? 'Admin-Konto wechseln / Abmelden'
-                    : 'Konto wechseln / Abmelden'}
+                  Admin-Konto wechseln / Abmelden
                 </h3>
                 <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                  {isOverviewAccount
-                    ? 'Melde dich hier vom Admin-Konto ab, um zu einem normalen Spielerkonto zu wechseln.'
-                    : `Dein gehosteter Spielraum (${roomCode}) bleibt bestehen, sodass andere mit dem Code weiterspielen können.`}
+                  Melde dich hier vom Admin-Konto ab, um zu einem normalen Spielerkonto zu wechseln.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

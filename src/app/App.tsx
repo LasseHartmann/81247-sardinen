@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
+  Users,
 } from 'lucide-react';
 import {
   ANCHOR_ACCURACY_WARNING_METERS,
@@ -22,6 +23,7 @@ import {
   buildCustomCirclePlayAreaState,
   buildMunichMultiPlzPolygon,
   clampPlayAreaCircleRadius,
+  createDefaultTeams,
   DEFAULT_PLAY_AREA_CIRCLE_CENTER,
   DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS,
   formatPostalCodesLabel,
@@ -61,6 +63,10 @@ import {
   deduplicateEnabledMembers,
 } from '../services/databaseAdapter';
 import {
+  generateRandomId,
+  generateSessionSecrets,
+} from '../services/qrService';
+import {
   applyPowerSaveAttributeToDom,
   createEmptyPlayerStats,
   dispatchSystemNotification,
@@ -95,8 +101,8 @@ import { LeaderboardView } from '../components/Leaderboard/LeaderboardView';
 import { HostControlPanel } from '../components/Lobby/HostControlPanel';
 import { GameHubScreen } from '../components/Lobby/GameHubScreen';
 import { LateJoinTeamPicker } from '../components/Lobby/LateJoinTeamPicker';
+import { LobbyScreen } from '../components/Lobby/LobbyScreen';
 import {
-  LobbyStatusCard,
   LoginScreen,
   PendingApprovalScreen,
 } from '../components/Lobby/LobbyView';
@@ -193,7 +199,7 @@ export const App: React.FC = () => {
   useWakeLock(shouldKeepScreenAwake);
 
   // UI-Navigation & lokale Karten-Interaktionszustände
-  const [activeTab, setActiveTab] = useState<BottomNavTab>('MAP');
+  const [activeTab, setActiveTab] = useState<BottomNavTab>('LOBBY');
   const [hiddenClueIds, setHiddenClueIds] = useState<Set<string>>(new Set());
   const [thermoPointA, setThermoPointA] = useState<LatLng | null>(null);
   const [thermoPointB, setThermoPointB] = useState<LatLng | null>(null);
@@ -243,11 +249,63 @@ export const App: React.FC = () => {
     }
   }, [publicState?.gameMode, activeTab, activePreviewQuestion]);
 
+  const prevStatusAndRoomRef = useRef<{
+    roomCode: string | null;
+    status: string | null;
+  }>({
+    roomCode: null,
+    status: null,
+  });
+
   useEffect(() => {
-    if (activeTab === 'HOST' && ownMember && !ownMember.isHost) {
+    if (!publicState || !activeRoomCode) {
+      prevStatusAndRoomRef.current = {
+        roomCode: activeRoomCode,
+        status: null,
+      };
+      return;
+    }
+    const prev = prevStatusAndRoomRef.current;
+    const roomChanged = prev.roomCode !== activeRoomCode;
+    const statusChanged = prev.status !== publicState.status;
+    prevStatusAndRoomRef.current = {
+      roomCode: activeRoomCode,
+      status: publicState.status,
+    };
+
+    if (roomChanged) {
+      setActiveTab(publicState.status === 'LOBBY' ? 'LOBBY' : 'MAP');
+      return;
+    }
+
+    if (statusChanged) {
+      if (publicState.status === 'LOBBY') {
+        setActiveTab('LOBBY');
+        return;
+      }
+      if (
+        publicState.status === 'RUNNING' &&
+        (prev.status === 'LOBBY' || prev.status === 'FINISHED')
+      ) {
+        setActiveTab('MAP');
+        return;
+      }
+    }
+
+    if (
+      activeTab === 'LOBBY' &&
+      publicState.status !== 'LOBBY' &&
+      publicState.status !== 'FINISHED'
+    ) {
       setActiveTab('MAP');
     }
-  }, [activeTab, ownMember]);
+  }, [activeRoomCode, publicState?.status, activeTab, publicState]);
+
+  useEffect(() => {
+    if (activeTab === 'HOST' && ownMember && !isOverviewMember(ownMember)) {
+      setActiveTab(publicState?.status === 'LOBBY' ? 'LOBBY' : 'MAP');
+    }
+  }, [activeTab, ownMember, publicState?.status]);
 
   const activePostalCodes = getActivePostalCodes(publicState?.playArea);
   const activePostalCode = activePostalCodes[0];
@@ -614,7 +672,7 @@ export const App: React.FC = () => {
   }
 
   const handleLeaveRoom = async () => {
-    setActiveTab('MAP');
+    setActiveTab('LOBBY');
     setMapClickMode({ kind: 'NONE' });
     setActivePreviewQuestion(null);
     await leaveCurrentRoom();
@@ -632,13 +690,13 @@ export const App: React.FC = () => {
         onHostNewGame={async () => {
           const createdCode = await hostNewGame();
           if (createdCode) {
-            setActiveTab('HOST');
+            setActiveTab('LOBBY');
           }
         }}
         onJoinByCode={async (code) => {
           const ok = await joinGameByCode(code);
           if (ok) {
-            setActiveTab('MAP');
+            setActiveTab('LOBBY');
           }
         }}
         onLogout={exitOrLogout}
@@ -731,18 +789,20 @@ export const App: React.FC = () => {
 
   const isJoinedSardines = ownTeam?.status === 'JOINED_SARDINES';
   const isOverviewAccount = isOverviewMember(ownMember);
-  const isPureHostSpectator = Boolean(
-    ownMember.isHost && ownMember.side === 'UNASSIGNED'
+  const isRoomHost = Boolean(
+    ownMember.isHost ||
+      (publicState.hostPlayerId &&
+        publicState.hostPlayerId === ownMember.playerId)
   );
   const isSardineDashboardView =
     ownMember.side === 'HIDER' || isJoinedSardines;
   const isOverviewOrSardineDashboard =
-    isSardineDashboardView || isOverviewAccount || isPureHostSpectator;
+    isSardineDashboardView || isOverviewAccount;
   const isActiveSeeker = Boolean(
     ownMember.side === 'SEEKER' && ownTeam && !isJoinedSardines
   );
   const canUseMapClicks = Boolean(publicState.allowTestClicks);
-  const showHostTab = Boolean(ownMember.isHost);
+  const showHostTab = isOverviewAccount;
 
   const activeRoundTeamIds =
     publicState.status === 'LOBBY'
@@ -839,8 +899,7 @@ export const App: React.FC = () => {
       : null;
 
   const liveHiderLocations =
-    (isOverviewAccount || (!isActiveSeeker && ownMember.isHost)) &&
-    hiderPrivate?.hiderLocations
+    isOverviewAccount && hiderPrivate?.hiderLocations
       ? Object.fromEntries(
           Object.entries(hiderPrivate.hiderLocations)
             .filter(
@@ -863,7 +922,7 @@ export const App: React.FC = () => {
       : undefined;
 
   const openHiderMediaRequests: ClueRequest[] =
-    isSardineDashboardView || (!isActiveSeeker && ownMember.isHost)
+    isSardineDashboardView || isOverviewAccount
       ? Object.values(gameState.requestsByTeam)
           .flatMap((m) => Object.values(m))
           .filter(
@@ -888,7 +947,7 @@ export const App: React.FC = () => {
     explicitPostalCodes?: string | readonly string[]
   ) => {
     const latestPublic = latestPublicStateRef.current;
-    if (!ownMember.isHost || !latestPublic) return;
+    if (!isRoomHost || !latestPublic) return;
     const basePlzList = explicitPostalCodes
       ? parseAndValidateMunichPostalCodes(explicitPostalCodes).validCodes
       : getActivePostalCodes(latestPublic.playArea);
@@ -925,7 +984,7 @@ export const App: React.FC = () => {
 
   const handleMapCoordinateClick = (pt: LatLng) => {
     if (mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE') {
-      if (!ownMember.isHost) return;
+      if (!isRoomHost) return;
       const inCurrentPlz = isPointInMunichPlz(pt, activePostalCodes);
       const detectedPlz = inCurrentPlz
         ? activePostalCodes
@@ -1169,7 +1228,6 @@ export const App: React.FC = () => {
   const mustPickTeamForRunningGame = Boolean(
     (publicState.status === 'RUNNING' || publicState.status === 'PAUSED') &&
       !isOverviewAccount &&
-      !ownMember.isHost &&
       ownMember.side === 'UNASSIGNED'
   );
 
@@ -1257,7 +1315,78 @@ export const App: React.FC = () => {
     timer.hidingRemainingMs > 0;
 
   const isEditingCircleOnMap =
-    mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE' && Boolean(ownMember.isHost);
+    mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE' && isRoomHost;
+
+  const handleOpenCircleMapEditor = () => {
+    if (publicState.playArea.shapeType !== 'CUSTOM_CIRCLE') {
+      void updateCirclePlayArea(
+        currentCircleCenter,
+        currentCircleRadius,
+        activePostalCodes
+      );
+    }
+    setCirclePickError(null);
+    setCircleEditorCollapsed(false);
+    setActivePreviewQuestion(null);
+    setMapClickMode({
+      kind: 'PICK_PLAY_AREA_CIRCLE',
+      label: `Tippe innerhalb von ${activePostalCodesLabel} oder ziehe Pin M, um den Kreis zu platzieren`,
+    });
+    setActiveTab('MAP');
+  };
+
+  const handleReturnToLobbyByHost = async () => {
+    if (!isRoomHost) return;
+    const secrets = generateSessionSecrets();
+    const enabledMembers = deduplicateEnabledMembers(
+      gameState.members,
+      gameState.presence
+    );
+    const resetTeams = createDefaultTeams();
+    for (const [id, team] of Object.entries(resetTeams)) {
+      const customName = gameState.teamsPublic[id]?.name?.trim();
+      if (customName) {
+        team.name = customName;
+      }
+    }
+    for (const m of enabledMembers) {
+      if (
+        m.enabled &&
+        m.side === 'SEEKER' &&
+        m.teamId &&
+        resetTeams[m.teamId]
+      ) {
+        resetTeams[m.teamId].memberPlayerIds.push(m.playerId);
+        resetTeams[m.teamId].beaconPlayerId = m.playerId;
+      }
+    }
+    await adapter.resetRoundByHost(
+      {
+        ...publicState,
+        sessionId: generateRandomId('sess'),
+        status: 'LOBBY',
+        currentPhase: 'LOBBY',
+        gameStartTimestamp: null,
+        searchStartTimestamp: null,
+        pausedAt: null,
+        totalPausedMs: 0,
+        pausedBeforeSearchMs: 0,
+        anchorLocked: false,
+        radarCircle: null,
+        leashAlertActive: false,
+        activeTeamIds: [],
+      },
+      resetTeams,
+      {
+        anchorPoint: null,
+        radarStages: [],
+        qrSecret: secrets.qrSecret,
+        shortCode: secrets.shortCode,
+        hiderLocations: {},
+      }
+    );
+    setActiveTab('LOBBY');
+  };
 
   const showHiderAnchorPanel =
     !isEditingCircleOnMap &&
@@ -1350,6 +1479,31 @@ export const App: React.FC = () => {
 
       {/* Hauptbereich */}
       <main className="relative flex-1 min-h-0 w-full overflow-hidden">
+        {/* TAB 0: ÜBERSICHTLICHE VORBEREITUNGS-LOBBY (TEAMS & SPIEL-EINSTELLUNGEN) */}
+        {activeTab === 'LOBBY' &&
+          (publicState.status === 'LOBBY' ||
+            publicState.status === 'FINISHED') && (
+            <LobbyScreen
+              adapter={adapter}
+              publicState={publicState}
+              hiderPrivate={hiderPrivate}
+              ownMember={ownMember}
+              members={gameState.members}
+              presence={gameState.presence}
+              teamsPublic={gameState.teamsPublic}
+              readyPlayerIds={gameState.readyPlayerIds}
+              ownFix={geo.currentFix}
+              gpsStatus={geo.gpsStatus}
+              gpsError={geo.gpsError}
+              onRetryGps={geo.retryGpsPermission}
+              onSelectOwnRole={handleSelectOwnRole}
+              onToggleOwnReady={handleToggleOwnReady}
+              onViewMap={() => setActiveTab('MAP')}
+              onOpenCircleMapEditor={handleOpenCircleMapEditor}
+              onLeaveRoom={handleLeaveRoom}
+            />
+          )}
+
         <div
           className={`h-full w-full ${
             activeTab === 'MAP' ? 'block' : 'hidden'
@@ -1361,7 +1515,7 @@ export const App: React.FC = () => {
             official81247Boundary={activePlzBoundary}
             circlePlayAreaCenter={currentCircleCenter}
             onChangeCirclePlayAreaCenter={(pt) => {
-              if (!ownMember.isHost) return;
+              if (!isRoomHost) return;
               const inCurrentPlz = isPointInMunichPlz(pt, activePostalCodes);
               const detectedPlz = inCurrentPlz
                 ? activePostalCodes
@@ -1400,9 +1554,7 @@ export const App: React.FC = () => {
             anchorPoint={isManhunt ? null : (hiderPrivate?.anchorPoint ?? null)}
             showAnchorAndLeash={
               !isManhunt &&
-              Boolean(
-                isSardineDashboardView || (!isActiveSeeker && ownMember.isHost)
-              )
+              Boolean(isSardineDashboardView || isOverviewAccount)
             }
             publishedRadar={publicState.radarCircle}
             exposedHiderLocation={exposedHiderLocation}
@@ -1958,40 +2110,56 @@ export const App: React.FC = () => {
 
                   <button
                     type="button"
+                    data-testid="circle-editor-return-btn"
                     onClick={() => {
                       setCirclePickError(null);
                       setMapClickMode({ kind: 'NONE' });
-                      setActiveTab('HOST');
+                      setActiveTab(isOverviewAccount ? 'HOST' : 'LOBBY');
                     }}
                     className="cmf-btn-secondary font-tech min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase"
                   >
-                    Zurück zur Konsole
+                    {isOverviewAccount
+                      ? 'Zurück zur Konsole'
+                      : 'Zurück zur Lobby'}
                   </button>
                 </div>
               </PhysicsBottomSheet>
             )}
 
-            {/* 2. Einklappbares Lobby-Bottom-Sheet in der Daumenzone */}
+            {/* 2. Kompakte Karten-Vorschau-Leiste im Lobby-Modus */}
             {publicState.status === 'LOBBY' && !isEditingCircleOnMap && (
-              <LobbyStatusCard
-                publicState={publicState}
-                ownMember={ownMember}
-                members={gameState.members}
-                presence={gameState.presence}
-                teamsPublic={gameState.teamsPublic}
-                readyPlayerIds={gameState.readyPlayerIds}
-                ownFix={geo.currentFix}
-                gpsStatus={geo.gpsStatus}
-                gpsError={geo.gpsError}
-                onRetryGps={geo.retryGpsPermission}
-                onSelectOwnRole={handleSelectOwnRole}
-                onToggleOwnReady={handleToggleOwnReady}
-                onOpenHostTab={
-                  showHostTab ? () => setActiveTab('HOST') : undefined
-                }
-                onLeaveRoom={handleLeaveRoom}
-                onLogout={exitOrLogout}
-              />
+              <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 shadow-xl">
+                <div className="min-w-0 flex-1">
+                  <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase">
+                    GEBIETS-VORSCHAU // LOBBY
+                  </span>
+                  <span className="block truncate font-industrial text-xs font-bold text-[var(--text-main)] sm:text-sm">
+                    {publicState.playArea.name}
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {isRoomHost &&
+                    publicState.playArea.shapeType === 'CUSTOM_CIRCLE' && (
+                      <button
+                        type="button"
+                        onClick={handleOpenCircleMapEditor}
+                        className="cmf-btn-secondary font-tech inline-flex min-h-[40px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+                      >
+                        <Crosshair className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                        <span>Kreis ändern</span>
+                      </button>
+                    )}
+                  <button
+                    type="button"
+                    data-testid="map-return-to-lobby-btn"
+                    onClick={() => setActiveTab('LOBBY')}
+                    className="cmf-btn-primary font-dot inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold"
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                    <span>Zurück zur Lobby</span>
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* 3. Einklappbares Sucher-Bottom-Sheet während der Versteckphase (mit Zieh-Physik!) */}
@@ -2327,7 +2495,9 @@ export const App: React.FC = () => {
               teamsPublic={gameState.teamsPublic}
               activeTeamIds={activeRoundTeamIds}
               sardineGroupMemberNames={sardineGroupMemberNames}
-              canRerollSecrets={ownMember.side === 'HIDER' || ownMember.isHost}
+              canRerollSecrets={
+                ownMember.side === 'HIDER' || isOverviewAccount
+              }
               onRerollSecrets={handleRerollHiderSecrets}
             />
           ) : (
@@ -2350,6 +2520,12 @@ export const App: React.FC = () => {
             teamsPublic={gameState.teamsPublic}
             activeTeamIds={activeRoundTeamIds}
             gameMode={publicState.gameMode ?? 'CLASSIC'}
+            gameStatus={publicState.status}
+            onReturnToLobbyByHost={
+              isRoomHost && publicState.status !== 'LOBBY'
+                ? handleReturnToLobbyByHost
+                : undefined
+            }
           />
         )}
 
@@ -2373,15 +2549,20 @@ export const App: React.FC = () => {
             onSelectAvatar={handleSelectAvatar}
             onRetryGps={geo.retryGpsPermission}
             onSelectOwnRole={handleSelectOwnRole}
+            onReturnToLobbyByHost={
+              isRoomHost && publicState.status !== 'LOBBY'
+                ? handleReturnToLobbyByHost
+                : undefined
+            }
             onLeaveRoom={handleLeaveRoom}
             onLogout={async () => {
-              setActiveTab('MAP');
+              setActiveTab('LOBBY');
               await exitOrLogout();
             }}
           />
         )}
 
-        {/* TAB 6: SPIELLEITER (HOST) */}
+        {/* TAB 6: ADMIN-KONSOLE (STRIKT NUR FÜR DAS ADMIN-KONTO) */}
         {activeTab === 'HOST' && showHostTab && (
           <HostControlPanel
             adapter={adapter}
@@ -2396,27 +2577,10 @@ export const App: React.FC = () => {
             cluesByTeam={gameState.cluesByTeam}
             requestsByTeam={gameState.requestsByTeam}
             onNavigateToMap={() => setActiveTab('MAP')}
-            onSelectOwnRole={handleSelectOwnRole}
             onLeaveRoom={handleLeaveRoom}
-            onOpenCircleMapEditor={() => {
-              if (publicState.playArea.shapeType !== 'CUSTOM_CIRCLE') {
-                void updateCirclePlayArea(
-                  currentCircleCenter,
-                  currentCircleRadius,
-                  activePostalCode
-                );
-              }
-              setCirclePickError(null);
-              setCircleEditorCollapsed(false);
-              setActivePreviewQuestion(null);
-              setMapClickMode({
-                kind: 'PICK_PLAY_AREA_CIRCLE',
-                label: `Tippe innerhalb von ${activePostalCode} oder ziehe Pin M, um den Kreis zu platzieren`,
-              });
-              setActiveTab('MAP');
-            }}
+            onOpenCircleMapEditor={handleOpenCircleMapEditor}
             onLogoutAdmin={() => {
-              setActiveTab('MAP');
+              setActiveTab('LOBBY');
               void exitOrLogout();
             }}
           />
@@ -2441,8 +2605,12 @@ export const App: React.FC = () => {
       <BottomNav
         activeTab={activeTab}
         onSelectTab={setActiveTab}
+        showLobbyTab={
+          publicState.status === 'LOBBY' || publicState.status === 'FINISHED'
+        }
+        inLobbyMode={publicState.status === 'LOBBY'}
         showHostTab={showHostTab}
-        hostTabLabel={isOverviewAccount ? 'Admin' : 'Host'}
+        hostTabLabel="Admin"
         hideQuestionsTab={isManhunt}
         hasActiveEmergency={hasActiveEmergency}
         pendingQuestionsBadgeCount={isManhunt ? 0 : openHiderMediaRequests.length}

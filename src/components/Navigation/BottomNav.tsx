@@ -1,10 +1,12 @@
 import React from 'react';
-import { Compass, HelpCircle, QrCode, Shield, Trophy, User } from 'lucide-react';
+import { Compass, HelpCircle, QrCode, Shield, Trophy, User, Users } from 'lucide-react';
 import type { BottomNavTab } from '../../types/game';
 
 export interface BottomNavProps {
   activeTab: BottomNavTab;
   onSelectTab: (tab: BottomNavTab) => void;
+  showLobbyTab?: boolean;
+  inLobbyMode?: boolean;
   showHostTab: boolean;
   hostTabLabel?: string;
   hideQuestionsTab?: boolean;
@@ -16,8 +18,10 @@ export interface BottomNavProps {
 export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   onSelectTab,
+  showLobbyTab = false,
+  inLobbyMode = false,
   showHostTab,
-  hostTabLabel = 'Host',
+  hostTabLabel = 'Admin',
   hideQuestionsTab = false,
   hasActiveEmergency = false,
   pendingQuestionsBadgeCount = 0,
@@ -29,12 +33,21 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     icon: React.ReactNode;
     badge?: number;
   }> = [
+    ...(showLobbyTab
+      ? [
+          {
+            id: 'LOBBY' as BottomNavTab,
+            label: 'Lobby',
+            icon: <Users className="h-5 w-5" />,
+          },
+        ]
+      : []),
     {
       id: 'MAP',
       label: 'Karte',
       icon: <Compass className="h-5 w-5" />,
     },
-    ...(hideQuestionsTab
+    ...(hideQuestionsTab || inLobbyMode
       ? []
       : [
           {
@@ -44,11 +57,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             badge: pendingQuestionsBadgeCount,
           },
         ]),
-    {
-      id: 'QR',
-      label: 'QR / Catch',
-      icon: <QrCode className="h-5 w-5" />,
-    },
+    ...(inLobbyMode
+      ? []
+      : [
+          {
+            id: 'QR' as BottomNavTab,
+            label: 'QR / Catch',
+            icon: <QrCode className="h-5 w-5" />,
+          },
+        ]),
     {
       id: 'LEADERBOARD',
       label: 'Rangliste',

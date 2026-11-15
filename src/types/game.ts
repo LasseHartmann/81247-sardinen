@@ -423,6 +423,7 @@ export interface AuthUserSummary {
 }
 
 export type BottomNavTab =
+  | 'LOBBY'
   | 'MAP'
   | 'QUESTIONS'
   | 'QR'

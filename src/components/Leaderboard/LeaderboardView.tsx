@@ -1,6 +1,11 @@
-import React from 'react';
-import { Trophy, Clock, AlertCircle, Users } from 'lucide-react';
-import type { GameMode, LeaderboardEntry, TeamPublic } from '../../types/game';
+import React, { useState } from 'react';
+import { Trophy, Clock, AlertCircle, Users, RotateCcw } from 'lucide-react';
+import type {
+  GameMode,
+  GameStatus,
+  LeaderboardEntry,
+  TeamPublic,
+} from '../../types/game';
 import {
   formatDurationClock,
   formatPenaltyMinutes,
@@ -12,6 +17,8 @@ export interface LeaderboardViewProps {
   teamsPublic: Record<string, TeamPublic>;
   activeTeamIds?: string[];
   gameMode?: GameMode;
+  gameStatus?: GameStatus;
+  onReturnToLobbyByHost?: () => Promise<void>;
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
@@ -19,7 +26,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   teamsPublic,
   activeTeamIds,
   gameMode = 'CLASSIC',
+  gameStatus,
+  onReturnToLobbyByHost,
 }) => {
+  const [returningToLobby, setReturningToLobby] = useState(false);
   const isManhunt = gameMode === 'MANHUNT';
   const activeSet = activeTeamIds ? new Set(activeTeamIds) : null;
   const ranked = sortLeaderboardEntries(
@@ -41,23 +51,49 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   return (
     <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-2xl space-y-4 sm:space-y-5 pb-10">
-        <div className="cmf-chassis cmf-card-enter flex items-center gap-3 p-4 sm:p-5">
-          <div className="cmf-oled flex h-12 w-12 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
-            <Trophy className="h-6 w-6" />
+        <div className="cmf-chassis cmf-card-enter flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
+          <div className="flex items-center gap-3">
+            <div className="cmf-oled flex h-12 w-12 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
+              <Trophy className="h-6 w-6" />
+            </div>
+            <div>
+              <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                TELEMETRIE // WERTUNG {isManhunt ? '// MANHUNT' : ''}
+              </span>
+              <h2 className="font-dot text-lg text-[var(--text-main)] sm:text-xl">
+                Offizielle Rangliste — 81247
+              </h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                {isManhunt
+                  ? 'Wertung nach Netto-Jagdzeit bis zum Fang der Verstecker'
+                  : 'Gesamtzeit = Netto-Suchzeit + gültige Hinweis-Strafzeiten'}
+              </p>
+            </div>
           </div>
-          <div>
-            <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              TELEMETRIE // WERTUNG {isManhunt ? '// MANHUNT' : ''}
-            </span>
-            <h2 className="font-dot text-lg text-[var(--text-main)] sm:text-xl">
-              Offizielle Rangliste — 81247
-            </h2>
-            <p className="text-xs text-[var(--text-muted)]">
-              {isManhunt
-                ? 'Wertung nach Netto-Jagdzeit bis zum Fang der Verstecker'
-                : 'Gesamtzeit = Netto-Suchzeit + gültige Hinweis-Strafzeiten'}
-            </p>
-          </div>
+
+          {onReturnToLobbyByHost && gameStatus === 'FINISHED' && (
+            <button
+              type="button"
+              data-testid="leaderboard-host-new-round-btn"
+              disabled={returningToLobby}
+              onClick={async () => {
+                setReturningToLobby(true);
+                try {
+                  await onReturnToLobbyByHost();
+                } finally {
+                  setReturningToLobby(false);
+                }
+              }}
+              className="cmf-btn-primary font-dot inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold disabled:opacity-50"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>
+                {returningToLobby
+                  ? 'Öffne Lobby ...'
+                  : 'Neue Runde in der Lobby starten'}
+              </span>
+            </button>
+          )}
         </div>
 
         {ranked.length === 0 ? (

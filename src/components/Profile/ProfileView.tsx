@@ -14,6 +14,7 @@ import {
   LogOut,
   Navigation,
   Radio,
+  RotateCcw,
   Shield,
   Smartphone,
   Sparkles,
@@ -78,6 +79,7 @@ export interface ProfileViewProps {
   onSelectAvatar: (nextAvatar: string) => Promise<void>;
   onRetryGps: () => void;
   onSelectOwnRole?: (nextSelection: string) => Promise<void>;
+  onReturnToLobbyByHost?: () => Promise<void>;
   onLeaveRoom?: () => Promise<void>;
   onLogout: () => Promise<void>;
 }
@@ -107,11 +109,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onSelectAvatar,
   onRetryGps,
   onSelectOwnRole,
+  onReturnToLobbyByHost,
   onLeaveRoom,
   onLogout,
 }) => {
   const roomCode = publicState.roomCode ?? GAME_ID;
   const [copiedRoomCode, setCopiedRoomCode] = useState(false);
+  const [returningToLobby, setReturningToLobby] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -1145,6 +1149,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <span>{copiedRoomCode ? 'Kopiert!' : 'Code kopieren'}</span>
                 </button>
               </div>
+              {onReturnToLobbyByHost && (
+                <button
+                  type="button"
+                  data-testid="profile-host-return-lobby-btn"
+                  disabled={returningToLobby}
+                  onClick={async () => {
+                    setReturningToLobby(true);
+                    try {
+                      await onReturnToLobbyByHost();
+                    } finally {
+                      setReturningToLobby(false);
+                    }
+                  }}
+                  className="cmf-btn-secondary font-tech mt-1.5 inline-flex min-h-[36px] w-full items-center justify-center gap-1.5 border-[var(--cmf-orange)]/35 px-3 py-1.5 text-[10px] font-bold text-[var(--cmf-orange)] uppercase disabled:opacity-50"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>
+                    {returningToLobby
+                      ? 'Öffne Lobby ...'
+                      : 'Als Host: Runde beenden & zurück zur Lobby'}
+                  </span>
+                </button>
+              )}
             </div>
           </div>
         </section>

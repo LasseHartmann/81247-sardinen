@@ -1,4 +1,4 @@
-import type { Feature, Polygon } from 'geojson';
+import type { Feature, MultiPolygon, Polygon } from 'geojson';
 import * as turf from '@turf/turf';
 import defaultPlayAreaJson from './playArea.geojson';
 import munichPlzBoundariesJson from './munichPlzBoundaries.json';
@@ -48,8 +48,76 @@ export function isValidMunichPostalCode(
   return Boolean(postalCode && MUNICH_PLZ_BY_CODE.has(postalCode.trim()));
 }
 
+export interface ParsedMunichPostalCodes {
+  validCodes: string[];
+  notFoundCodes: string[];
+  entries: MunichPlzEntry[];
+}
+
+/**
+ * Zerlegt eine Texteingabe (z. B. "81247, 81245 89999") oder ein Array von PLZ-Strings
+ * in gefundene Münchner PLZ (`validCodes`) und nicht gefundene PLZ (`notFoundCodes`).
+ */
+export function parseAndValidateMunichPostalCodes(
+  rawInput?: string | readonly string[] | null
+): ParsedMunichPostalCodes {
+  if (!rawInput) {
+    return { validCodes: [], notFoundCodes: [], entries: [] };
+  }
+  const tokens = Array.isArray(rawInput)
+    ? rawInput.flatMap((item) =>
+        String(item ?? '')
+          .split(/[\s,;+/|]+/)
+          .map((t) => t.trim())
+      )
+    : String(rawInput)
+        .split(/[\s,;+/|]+/)
+        .map((t) => t.trim());
+
+  const validCodes: string[] = [];
+  const notFoundCodes: string[] = [];
+  const seenValid = new Set<string>();
+  const seenInvalid = new Set<string>();
+
+  for (const token of tokens) {
+    if (!token) continue;
+    if (MUNICH_PLZ_BY_CODE.has(token)) {
+      if (!seenValid.has(token)) {
+        seenValid.add(token);
+        validCodes.push(token);
+      }
+    } else if (!seenInvalid.has(token)) {
+      seenInvalid.add(token);
+      notFoundCodes.push(token);
+    }
+  }
+
+  return {
+    validCodes,
+    notFoundCodes,
+    entries: validCodes
+      .map((code) => MUNICH_PLZ_BY_CODE.get(code))
+      .filter((e): e is MunichPlzEntry => Boolean(e)),
+  };
+}
+
+export function getActivePostalCodes(
+  playArea?: Pick<PlayAreaState, 'postalCode' | 'postalCodes'> | null
+): string[] {
+  if (Array.isArray(playArea?.postalCodes) && playArea.postalCodes.length > 0) {
+    const parsed = parseAndValidateMunichPostalCodes(playArea.postalCodes);
+    if (parsed.validCodes.length > 0) return parsed.validCodes;
+  }
+  if (playArea?.postalCode) {
+    const parsed = parseAndValidateMunichPostalCodes(playArea.postalCode);
+    if (parsed.validCodes.length > 0) return parsed.validCodes;
+  }
+  return [DEFAULT_POSTAL_CODE];
+}
+
 export function getMunichPlzEntry(postalCode?: string | null): MunichPlzEntry {
-  const code = postalCode?.trim() || DEFAULT_POSTAL_CODE;
+  const parsed = parseAndValidateMunichPostalCodes(postalCode);
+  const code = parsed.validCodes[0] ?? DEFAULT_POSTAL_CODE;
   return (
     MUNICH_PLZ_BY_CODE.get(code) ??
     MUNICH_PLZ_BY_CODE.get(DEFAULT_POSTAL_CODE) ?? {
@@ -70,12 +138,62 @@ export function buildMunichPlzPolygon(
 ): Feature<Polygon> {
   const entry = getMunichPlzEntry(postalCode);
   if (entry.postalCode === DEFAULT_POSTAL_CODE) {
-    return structuredClone(DEFAULT_PLAY_AREA_FEATURE);
+    const clone = structuredClone(DEFAULT_PLAY_AREA_FEATURE);
+    clone.properties = {
+      ...(clone.properties ?? {}),
+      postalCode: DEFAULT_POSTAL_CODE,
+      postalCodes: [DEFAULT_POSTAL_CODE],
+    };
+    return clone;
   }
   return turf.polygon([entry.ring.map(([lng, lat]) => [lng, lat])], {
     name: entry.name,
     postalCode: entry.postalCode,
+    postalCodes: [entry.postalCode],
   });
+}
+
+export function buildMunichMultiPlzPolygon(
+  postalCodesInput?: string | readonly string[] | null
+): Feature<Polygon | MultiPolygon> {
+  const parsed = parseAndValidateMunichPostalCodes(postalCodesInput);
+  const codes =
+    parsed.validCodes.length > 0 ? parsed.validCodes : [DEFAULT_POSTAL_CODE];
+
+  if (codes.length === 1) {
+    return buildMunichPlzPolygon(codes[0]);
+  }
+
+  const singlePolys = codes.map((code) => buildMunichPlzPolygon(code));
+  const combinedLabel = codes.join(', ');
+  let merged: Feature<Polygon | MultiPolygon> | null = null;
+  try {
+    merged = turf.union(turf.featureCollection(singlePolys));
+  } catch {
+    let acc: Feature<Polygon | MultiPolygon> = singlePolys[0];
+    for (let i = 1; i < singlePolys.length; i++) {
+      try {
+        const next = turf.union(turf.featureCollection([acc, singlePolys[i]]));
+        if (next) acc = next;
+      } catch {
+        // Fallback weiter unten
+      }
+    }
+    merged = acc;
+  }
+
+  if (!merged) {
+    merged = turf.multiPolygon(
+      singlePolys.map((p) => p.geometry.coordinates)
+    );
+  }
+
+  merged.properties = {
+    name: `PLZ ${combinedLabel}`,
+    postalCode: combinedLabel,
+    postalCodes: codes,
+  };
+  return merged;
 }
 
 export const PLAY_AREA_CIRCLE_MIN_RADIUS_METERS = 100;
@@ -103,35 +221,55 @@ export function clampPlayAreaCircleRadius(radiusMeters: number): number {
 export function buildCirclePlayAreaPolygon(
   center: LatLng,
   radiusMeters: number,
-  postalCode: string = DEFAULT_POSTAL_CODE
+  postalCodesInput: string | readonly string[] = DEFAULT_POSTAL_CODE
 ): Feature<Polygon> {
+  const parsed = parseAndValidateMunichPostalCodes(postalCodesInput);
+  const codes =
+    parsed.validCodes.length > 0 ? parsed.validCodes : [DEFAULT_POSTAL_CODE];
+  const combinedLabel = codes.join(', ');
   const clampedRadius = clampPlayAreaCircleRadius(radiusMeters);
   return turf.circle([center.lng, center.lat], clampedRadius, {
     steps: 72,
     units: 'meters',
     properties: {
-      name: `${postalCode} Kreis-Spielfeld (${clampedRadius} m)`,
-      postalCode,
+      name: `${combinedLabel} Kreis-Spielfeld (${clampedRadius} m)`,
+      postalCode: combinedLabel,
+      postalCodes: codes,
     },
   });
 }
 
 export function buildMunichPlzPlayAreaState(
-  postalCode: string,
+  postalCodesInput: string | readonly string[],
   confirmedByUid = 'osm_official_munich',
   nowMs = Date.now()
 ): PlayAreaState {
-  const entry = getMunichPlzEntry(postalCode);
-  const is81247 = entry.postalCode === DEFAULT_POSTAL_CODE;
+  const parsed = parseAndValidateMunichPostalCodes(postalCodesInput);
+  const codes =
+    parsed.validCodes.length > 0 ? parsed.validCodes : [DEFAULT_POSTAL_CODE];
+  const entries = codes.map((c) => getMunichPlzEntry(c));
+  const isSingle81247 =
+    codes.length === 1 && codes[0] === DEFAULT_POSTAL_CODE;
+  const combinedLabel = codes.join(', ');
+  const areaName = isSingle81247
+    ? OFFICIAL_81247_AREA_NAME
+    : codes.length === 1
+      ? entries[0].name
+      : `PLZ ${combinedLabel} (${entries
+          .map((e) => e.district.split(' / ')[0])
+          .join(' + ')})`;
+
   return {
-    polygon: buildMunichPlzPolygon(entry.postalCode),
+    polygon: buildMunichMultiPlzPolygon(codes),
     confirmed: true,
     confirmedAt: nowMs,
-    confirmedByUid: is81247 && confirmedByUid === 'osm_official_munich'
-      ? 'osm_official_81247'
-      : confirmedByUid,
-    name: is81247 ? OFFICIAL_81247_AREA_NAME : entry.name,
-    postalCode: entry.postalCode,
+    confirmedByUid:
+      isSingle81247 && confirmedByUid === 'osm_official_munich'
+        ? 'osm_official_81247'
+        : confirmedByUid,
+    name: areaName,
+    postalCode: combinedLabel,
+    postalCodes: codes,
     shapeType: 'OFFICIAL_81247',
     circle: null,
   };
@@ -140,9 +278,9 @@ export function buildMunichPlzPlayAreaState(
 export function buildOfficial81247PlayAreaState(
   confirmedByUid = 'osm_official_81247',
   nowMs = Date.now(),
-  postalCode: string = DEFAULT_POSTAL_CODE
+  postalCodesInput: string | readonly string[] = DEFAULT_POSTAL_CODE
 ): PlayAreaState {
-  return buildMunichPlzPlayAreaState(postalCode, confirmedByUid, nowMs);
+  return buildMunichPlzPlayAreaState(postalCodesInput, confirmedByUid, nowMs);
 }
 
 export function buildCustomCirclePlayAreaState(params: {
@@ -150,25 +288,28 @@ export function buildCustomCirclePlayAreaState(params: {
   radiusMeters: number;
   confirmedByUid: string;
   nowMs?: number;
-  postalCode?: string;
+  postalCode?: string | readonly string[];
+  postalCodes?: readonly string[];
 }): PlayAreaState {
-  const entry = getMunichPlzEntry(params.postalCode);
+  const parsed = parseAndValidateMunichPostalCodes(
+    params.postalCodes ?? params.postalCode
+  );
+  const codes =
+    parsed.validCodes.length > 0 ? parsed.validCodes : [DEFAULT_POSTAL_CODE];
+  const combinedLabel = codes.join(', ');
   const clampedRadius = clampPlayAreaCircleRadius(params.radiusMeters);
   const roundedCenter: LatLng = {
     lat: Math.round(params.center.lat * 100_000) / 100_000,
     lng: Math.round(params.center.lng * 100_000) / 100_000,
   };
   return {
-    polygon: buildCirclePlayAreaPolygon(
-      roundedCenter,
-      clampedRadius,
-      entry.postalCode
-    ),
+    polygon: buildCirclePlayAreaPolygon(roundedCenter, clampedRadius, codes),
     confirmed: true,
     confirmedAt: params.nowMs ?? Date.now(),
     confirmedByUid: params.confirmedByUid,
-    name: `Kreis-Spielfeld in ${entry.postalCode} (${clampedRadius} m)`,
-    postalCode: entry.postalCode,
+    name: `Kreis-Spielfeld in ${combinedLabel} (${clampedRadius} m)`,
+    postalCode: combinedLabel,
+    postalCodes: codes,
     shapeType: 'CUSTOM_CIRCLE',
     circle: {
       center: roundedCenter,
@@ -182,8 +323,20 @@ export function isLegacyPlaceholderPlayArea(
 ): boolean {
   if (!playArea || !playArea.polygon) return true;
   if (playArea.shapeType === 'CUSTOM_CIRCLE') return false;
-  if (isValidMunichPostalCode(playArea.postalCode)) return false;
+  if (
+    Array.isArray(playArea.postalCodes) &&
+    parseAndValidateMunichPostalCodes(playArea.postalCodes).validCodes.length > 0
+  ) {
+    return false;
+  }
+  if (
+    playArea.postalCode &&
+    parseAndValidateMunichPostalCodes(playArea.postalCode).validCodes.length > 0
+  ) {
+    return false;
+  }
   if (playArea.name === LEGACY_PLACEHOLDER_AREA_NAME) return true;
+  if (playArea.polygon.geometry?.type === 'MultiPolygon') return false;
   const ringLen = playArea.polygon.geometry?.coordinates?.[0]?.length ?? 0;
   // Altes Platzhalter-Polygon aus der Erstinitialisierung hatte nur 9 Eckpunkte (10 Ring-Koordinaten)
   if (

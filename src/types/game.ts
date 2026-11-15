@@ -1,4 +1,9 @@
-import type { Feature, FeatureCollection, Polygon } from 'geojson';
+import type {
+  Feature,
+  FeatureCollection,
+  MultiPolygon,
+  Polygon,
+} from 'geojson';
 
 export type PlayerSide = 'HIDER' | 'SEEKER' | 'UNASSIGNED';
 
@@ -192,12 +197,13 @@ export interface PlayAreaCircleConfig {
 }
 
 export interface PlayAreaState {
-  polygon: Feature<Polygon>;
+  polygon: Feature<Polygon | MultiPolygon>;
   confirmed: boolean;
   confirmedAt: number | null;
   confirmedByUid: string | null;
   name: string;
   postalCode?: string;
+  postalCodes?: string[];
   shapeType?: PlayAreaShapeType;
   circle?: PlayAreaCircleConfig | null;
 }

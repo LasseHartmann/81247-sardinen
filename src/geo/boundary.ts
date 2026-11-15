@@ -1,6 +1,7 @@
 import * as turf from '@turf/turf';
-import type { Feature, Polygon } from 'geojson';
+import type { Feature, MultiPolygon, Polygon } from 'geojson';
 import {
+  buildMunichMultiPlzPolygon,
   buildMunichPlzPolygon,
   DEFAULT_PLAY_AREA_FEATURE,
   MUNICH_PLZ_LIST,
@@ -23,23 +24,23 @@ export function snapPointIntoOfficial81247(pt: LatLng): LatLng {
 }
 
 /**
- * Prüft, ob ein Punkt innerhalb oder auf dem Rand des gewählten Münchner PLZ-Gebiets liegt.
+ * Prüft, ob ein Punkt innerhalb oder auf dem Rand des gewählten Münchner PLZ-Gebiets (auch mehrerer PLZ) liegt.
  */
 export function isPointInMunichPlz(
   pt: LatLng,
-  postalCode?: string | null
+  postalCodes?: string | readonly string[] | null
 ): boolean {
-  return isPointInPlayArea(pt, buildMunichPlzPolygon(postalCode));
+  return isPointInPlayArea(pt, buildMunichMultiPlzPolygon(postalCodes));
 }
 
 /**
- * Zieht einen Punkt bei Bedarf in das gewählte Münchner PLZ-Gebiet hinein.
+ * Zieht einen Punkt bei Bedarf in das gewählte Münchner PLZ-Gebiet (auch mehrerer PLZ) hinein.
  */
 export function snapPointIntoMunichPlz(
   pt: LatLng,
-  postalCode?: string | null
+  postalCodes?: string | readonly string[] | null
 ): LatLng {
-  return snapPointIntoPlayArea(pt, buildMunichPlzPolygon(postalCode));
+  return snapPointIntoPlayArea(pt, buildMunichMultiPlzPolygon(postalCodes));
 }
 
 /**
@@ -58,7 +59,10 @@ export function findMunichPlzAtPoint(pt: LatLng): string | null {
 /**
  * Prüft, ob ein Punkt innerhalb oder auf dem Rand des bestätigten Spielpolygons liegt.
  */
-export function isPointInPlayArea(pt: LatLng, playArea: Feature<Polygon>): boolean {
+export function isPointInPlayArea(
+  pt: LatLng,
+  playArea: Feature<Polygon | MultiPolygon>
+): boolean {
   return turf.booleanPointInPolygon([pt.lng, pt.lat], playArea, {
     ignoreBoundary: false,
   });
@@ -70,26 +74,50 @@ export function isPointInPlayArea(pt: LatLng, playArea: Feature<Polygon>): boole
  * - keine Selbstüberschneidungen (kinks === 0)
  * - Mindestfläche >= 10.000 m²
  */
-export function isValidPlayAreaPolygon(playArea: Feature<Polygon>): {
+export function isValidPlayAreaPolygon(
+  playArea: Feature<Polygon | MultiPolygon>
+): {
   valid: boolean;
   reason?: string;
 } {
   try {
-    const coords = playArea?.geometry?.coordinates?.[0];
-    if (!coords || coords.length < 4) {
+    const geom = playArea?.geometry;
+    if (!geom) {
+      return {
+        valid: false,
+        reason: 'Ungültige Polygon-Geometrie.',
+      };
+    }
+
+    const outerRings =
+      geom.type === 'MultiPolygon'
+        ? geom.coordinates.map((polyCoords) => polyCoords[0])
+        : [geom.coordinates[0]];
+
+    if (outerRings.length === 0) {
       return {
         valid: false,
         reason: 'Das Spielgebiet benötigt mindestens 3 Eckpunkte.',
       };
     }
-    const first = coords[0];
-    const last = coords[coords.length - 1];
-    if (first[0] !== last[0] || first[1] !== last[1]) {
-      return {
-        valid: false,
-        reason: 'Der Polygon-Ring muss geschlossen sein.',
-      };
+
+    for (const coords of outerRings) {
+      if (!coords || coords.length < 4) {
+        return {
+          valid: false,
+          reason: 'Das Spielgebiet benötigt mindestens 3 Eckpunkte.',
+        };
+      }
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) {
+        return {
+          valid: false,
+          reason: 'Der Polygon-Ring muss geschlossen sein.',
+        };
+      }
     }
+
     const kinks = turf.kinks(playArea);
     if (kinks.features.length > 0) {
       return {
@@ -133,8 +161,13 @@ export function buildPolygonFromVertices(vertices: LatLng[]): Feature<Polygon> {
 /**
  * Extrahiert die offenen Eckpunkte (ohne duplizierten Schlusspunkt) aus einem Polygon.
  */
-export function extractPolygonVertices(playArea: Feature<Polygon>): LatLng[] {
-  const ring = playArea.geometry.coordinates[0] ?? [];
+export function extractPolygonVertices(
+  playArea: Feature<Polygon | MultiPolygon>
+): LatLng[] {
+  const ring =
+    playArea.geometry.type === 'MultiPolygon'
+      ? (playArea.geometry.coordinates[0]?.[0] ?? [])
+      : (playArea.geometry.coordinates[0] ?? []);
   if (ring.length <= 1) return [];
   return ring.slice(0, -1).map(([lng, lat]) => ({ lat, lng }));
 }
@@ -143,7 +176,9 @@ export function extractPolygonVertices(playArea: Feature<Polygon>): LatLng[] {
  * Erzeugt eine invertierte Weltmaske (Außenring Welt, Innenring = Spielpolygon)
  * für die abgedunkelte Kartendarstellung außerhalb von 81247.
  */
-export function buildInvertedWorldMask(playArea: Feature<Polygon>): Feature<Polygon> {
+export function buildInvertedWorldMask(
+  playArea: Feature<Polygon | MultiPolygon>
+): Feature<Polygon> {
   const outerWorldRing: [number, number][] = [
     [-180, -85],
     [180, -85],
@@ -151,8 +186,13 @@ export function buildInvertedWorldMask(playArea: Feature<Polygon>): Feature<Poly
     [-180, 85],
     [-180, -85],
   ];
-  const innerHole = playArea.geometry.coordinates[0] as [number, number][];
-  return turf.polygon([outerWorldRing, innerHole], {
+  const innerHoles =
+    playArea.geometry.type === 'MultiPolygon'
+      ? playArea.geometry.coordinates.map(
+          (polyCoords) => polyCoords[0] as [number, number][]
+        )
+      : [playArea.geometry.coordinates[0] as [number, number][]];
+  return turf.polygon([outerWorldRing, ...innerHoles], {
     role: 'world-mask',
   });
 }
@@ -163,16 +203,38 @@ export function buildInvertedWorldMask(playArea: Feature<Polygon>): Feature<Poly
  */
 export function snapPointIntoPlayArea(
   pt: LatLng,
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): LatLng {
   if (isPointInPlayArea(pt, playArea)) {
     return pt;
   }
   const line = turf.polygonToLine(playArea);
-  const nearest =
-    line.type === 'FeatureCollection'
-      ? turf.nearestPointOnLine(line.features[0], [pt.lng, pt.lat])
-      : turf.nearestPointOnLine(line, [pt.lng, pt.lat]);
+  const flatLines = turf.flatten(line);
+  let nearest = turf.nearestPointOnLine(
+    flatLines.features[0] as Feature<GeoJSON.LineString>,
+    [pt.lng, pt.lat]
+  );
+  let bestDist = distanceMeters(pt, {
+    lat: nearest.geometry.coordinates[1],
+    lng: nearest.geometry.coordinates[0],
+  });
+  for (let i = 1; i < flatLines.features.length; i++) {
+    const f = flatLines.features[i];
+    if (f.geometry.type !== 'LineString') continue;
+    const cand = turf.nearestPointOnLine(
+      f as Feature<GeoJSON.LineString>,
+      [pt.lng, pt.lat]
+    );
+    const d = distanceMeters(pt, {
+      lat: cand.geometry.coordinates[1],
+      lng: cand.geometry.coordinates[0],
+    });
+    if (d < bestDist) {
+      bestDist = d;
+      nearest = cand;
+    }
+  }
+
   const center = turf.pointOnFeature(playArea);
   // 2 % Richtung innerer Referenzpunkt verschieben, damit der Punkt sicher im Polygon liegt
   const lng =
@@ -199,7 +261,7 @@ export function snapPointIntoPlayArea(
 export function validateManualAnchorSelection(params: {
   candidate: LatLng;
   gpsPosition: LatLng | null;
-  playArea: Feature<Polygon>;
+  playArea: Feature<Polygon | MultiPolygon>;
   maxDistanceMeters: number;
 }): { valid: true; distanceMeters: number } | { valid: false; reason: string; distanceMeters?: number } {
   const { candidate, gpsPosition, playArea, maxDistanceMeters } = params;

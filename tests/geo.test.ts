@@ -6,16 +6,19 @@ import { safeFitGeoJsonBounds } from '../src/components/Map/GameMap';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
   buildCustomCirclePlayAreaState,
+  buildMunichMultiPlzPolygon,
   buildMunichPlzPlayAreaState,
   buildMunichPlzPolygon,
   buildOfficial81247PlayAreaState,
   clampPlayAreaCircleRadius,
   createDefaultPublicState,
   DEFAULT_PLAY_AREA_FEATURE,
+  getActivePostalCodes,
   getMunichPlzEntry,
   isLegacyPlaceholderPlayArea,
   LEASH_RADIUS_METERS,
   MUNICH_PLZ_LIST,
+  parseAndValidateMunichPostalCodes,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
 } from '../src/config/gameConfig';
@@ -615,5 +618,38 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
       '80331'
     );
     expect(isPointInMunichPlz(snappedTo80331, '80331')).toBe(true);
+  });
+
+  it('unterstützt die Auswahl mehrerer Münchner PLZ per Texteingabe und meldet nicht gefundene PLZ exakt zurück', () => {
+    const parsed = parseAndValidateMunichPostalCodes(
+      '81247, 81245, 99999; 80331 12345 81247'
+    );
+    expect(parsed.validCodes).toEqual(['81247', '81245', '80331']);
+    expect(parsed.notFoundCodes).toEqual(['99999', '12345']);
+
+    // Nachbar-PLZ (81247 + 81245) verschmelzen zu einem gemeinsamen gültigen Spielfeld
+    const multiAdjacent = buildMunichPlzPlayAreaState(
+      ['81247', '81245'],
+      'host-uid',
+      3000
+    );
+    expect(getActivePostalCodes(multiAdjacent)).toEqual(['81247', '81245']);
+    expect(isValidPlayAreaPolygon(multiAdjacent.polygon).valid).toBe(true);
+    expect(
+      isPointInPlayArea(getMunichPlzEntry('81247').center, multiAdjacent.polygon)
+    ).toBe(true);
+    expect(
+      isPointInPlayArea(getMunichPlzEntry('81245').center, multiAdjacent.polygon)
+    ).toBe(true);
+
+    // Auch räumlich getrennte PLZ (81247 + 80331) funktionieren als MultiPolygon-Spielfeld
+    const multiDisjointPoly = buildMunichMultiPlzPolygon(['81247', '80331']);
+    expect(isValidPlayAreaPolygon(multiDisjointPoly).valid).toBe(true);
+    expect(
+      isPointInMunichPlz(getMunichPlzEntry('81247').center, ['81247', '80331'])
+    ).toBe(true);
+    expect(
+      isPointInMunichPlz(getMunichPlzEntry('80331').center, ['81247', '80331'])
+    ).toBe(true);
   });
 });

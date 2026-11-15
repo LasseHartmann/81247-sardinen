@@ -67,7 +67,7 @@ function safeClipWithPlayArea(
 export function evaluateSplitNorthSouth(
   splitPoint: LatLng,
   anchorPoint: LatLng,
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): EvaluatedClueResult {
   const isNorth = anchorPoint.lat >= splitPoint.lat;
   const answerText = isNorth ? 'NORDEN' : 'SÜDEN';
@@ -104,7 +104,7 @@ export function evaluateSplitNorthSouth(
 export function evaluateSplitEastWest(
   splitPoint: LatLng,
   anchorPoint: LatLng,
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): EvaluatedClueResult {
   const isEast = anchorPoint.lng >= splitPoint.lng;
   const answerText = isEast ? 'OSTEN' : 'WESTEN';
@@ -143,7 +143,7 @@ export function evaluateThermometer(
   pointA: LatLng,
   pointB: LatLng,
   anchorPoint: LatLng,
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): EvaluatedClueResult {
   const distA = distanceMeters(pointA, anchorPoint);
   const distB = distanceMeters(pointB, anchorPoint);
@@ -242,7 +242,7 @@ export function evaluateCone45(
   seekerOrigin: LatLng,
   bearingDeg: number,
   anchorPoint: LatLng,
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): EvaluatedClueResult {
   const normalizedTargetBearing = ((bearingDeg % 360) + 360) % 360;
   const dist = distanceMeters(seekerOrigin, anchorPoint);
@@ -274,7 +274,7 @@ export function evaluateCone45(
 export function evaluateOsmTransit(
   anchorPoint: LatLng,
   transitStops: LatLng[],
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): EvaluatedClueResult {
   const isWithin150m = transitStops.some(
     (stop) => distanceMeters(anchorPoint, stop) <= 150
@@ -335,7 +335,7 @@ export function evaluateOsmTransit(
 export function evaluateOsmRecycling(
   anchorPoint: LatLng,
   recyclingPoints: LatLng[],
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): EvaluatedClueResult {
   const isWithin150m = recyclingPoints.some(
     (pt) => distanceMeters(anchorPoint, pt) <= 150
@@ -421,7 +421,7 @@ export function isPointInOrNearGreenPolygon(
 export function evaluateOsmGreen(
   anchorPoint: LatLng,
   greenPolygons: Feature<Polygon | MultiPolygon>[],
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): EvaluatedClueResult {
   const inGreen = greenPolygons.some((poly) =>
     isPointInOrNearGreenPolygon(anchorPoint, poly, 20)
@@ -454,7 +454,7 @@ export function evaluateRadiusRadar(
   seekerOrigin: LatLng,
   radiusMeters: RadiusOptionMeters,
   anchorPoint: LatLng,
-  playArea: Feature<Polygon>
+  playArea: Feature<Polygon | MultiPolygon>
 ): EvaluatedClueResult {
   const dist = distanceMeters(seekerOrigin, anchorPoint);
   const isInside = dist <= radiusMeters;
@@ -508,7 +508,7 @@ export function classifyDonutBand(distMeters: number): {
 export function evaluateDonutRing(
   seekerOrigin: LatLng,
   anchorPoint: LatLng,
-  playArea: Feature<Polygon>,
+  playArea: Feature<Polygon | MultiPolygon>,
   isCompensation = false
 ): EvaluatedClueResult {
   const dist = distanceMeters(seekerOrigin, anchorPoint);
@@ -574,7 +574,7 @@ export function evaluateDeterministicQuestion(
   params: QuestionParams,
   seekerSnapshot: LatLng,
   anchorPoint: LatLng,
-  playArea: Feature<Polygon>,
+  playArea: Feature<Polygon | MultiPolygon>,
   osmData?: OsmEnvironmentData
 ): EvaluatedClueResult {
   switch (questionType) {

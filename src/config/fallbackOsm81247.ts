@@ -10,7 +10,10 @@ import greenAreasGeoJson from './greenAreas81247.geojson';
 import munichTransitAndRecyclingJson from './munichTransitAndRecycling.json';
 import recyclingGeoJson from './recycling81247.geojson';
 import transitStopsGeoJson from './transitStops81247.geojson';
-import { DEFAULT_POSTAL_CODE, MUNICH_PLZ_LIST } from './gameConfig';
+import {
+  DEFAULT_POSTAL_CODE,
+  parseAndValidateMunichPostalCodes,
+} from './gameConfig';
 import { findMunichPlzAtPoint } from '../geo/boundary';
 import type { LatLng } from '../types/game';
 
@@ -198,17 +201,32 @@ const inFlightGreenLoads = new Map<
  */
 export function resolvePlayAreaPostalCodes(
   playArea: Feature<Polygon | MultiPolygon>,
-  explicitPostalCode?: string | null
+  explicitPostalCode?: string | readonly string[] | null
 ): string[] {
-  const propPlz =
-    explicitPostalCode?.trim() ||
-    (typeof playArea?.properties?.postalCode === 'string'
-      ? playArea.properties.postalCode.trim()
-      : '');
-
   const codes = new Set<string>();
-  if (propPlz && MUNICH_PLZ_LIST.some((p) => p.postalCode === propPlz)) {
-    codes.add(propPlz);
+
+  if (explicitPostalCode) {
+    for (const c of parseAndValidateMunichPostalCodes(explicitPostalCode)
+      .validCodes) {
+      codes.add(c);
+    }
+  }
+
+  const propCodes = playArea?.properties?.postalCodes;
+  if (Array.isArray(propCodes)) {
+    for (const c of parseAndValidateMunichPostalCodes(propCodes).validCodes) {
+      codes.add(c);
+    }
+  }
+
+  const propPlz =
+    typeof playArea?.properties?.postalCode === 'string'
+      ? playArea.properties.postalCode
+      : '';
+  if (propPlz) {
+    for (const c of parseAndValidateMunichPostalCodes(propPlz).validCodes) {
+      codes.add(c);
+    }
   }
 
   try {
@@ -298,7 +316,7 @@ export async function preloadGreenPolygonsForPostalCode(
  */
 export function getLoadedGreenPolygonsForPlayArea(
   playArea: Feature<Polygon | MultiPolygon>,
-  explicitPostalCode?: string | null
+  explicitPostalCode?: string | readonly string[] | null
 ): Feature<Polygon | MultiPolygon>[] {
   const codes = resolvePlayAreaPostalCodes(playArea, explicitPostalCode);
   const collected: Feature<Polygon | MultiPolygon>[] = [];

@@ -21,13 +21,13 @@ import {
   ANCHOR_ACCURACY_WARNING_METERS,
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
   buildCustomCirclePlayAreaState,
-  buildMunichPlzPolygon,
+  buildMunichMultiPlzPolygon,
   clampPlayAreaCircleRadius,
   DEFAULT_PLAY_AREA_CIRCLE_CENTER,
   DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS,
-  DEFAULT_POSTAL_CODE,
+  getActivePostalCodes,
   getMunichPlzEntry,
-  MUNICH_PLZ_LIST,
+  parseAndValidateMunichPostalCodes,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
   PLAY_AREA_CIRCLE_STEP_METERS,
@@ -214,17 +214,29 @@ export const App: React.FC = () => {
     }
   }, [publicState?.gameMode, activeTab, activePreviewQuestion]);
 
-  const activePostalCode =
-    publicState?.playArea?.postalCode ?? DEFAULT_POSTAL_CODE;
+  const activePostalCodes = getActivePostalCodes(publicState?.playArea);
+  const activePostalCode = activePostalCodes[0];
+  const activePostalCodesLabel = activePostalCodes.join(', ');
   const activePlzEntry = getMunichPlzEntry(activePostalCode);
   const activePlzBoundary = useMemo(
-    () => buildMunichPlzPolygon(activePostalCode),
-    [activePostalCode]
+    () => buildMunichMultiPlzPolygon(activePostalCodes),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activePostalCodesLabel]
   );
 
+  const [mapCirclePlzInput, setMapCirclePlzInput] = useState(
+    activePostalCodesLabel
+  );
   useEffect(() => {
-    void preloadGreenPolygonsForPostalCode(activePostalCode);
-  }, [activePostalCode]);
+    setMapCirclePlzInput(activePostalCodesLabel);
+  }, [activePostalCodesLabel]);
+
+  useEffect(() => {
+    for (const code of activePostalCodes) {
+      void preloadGreenPolygonsForPostalCode(code);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePostalCodesLabel]);
 
   const [bootAdminModalOpen, setBootAdminModalOpen] = useState(false);
   const [bootAdminCode, setBootAdminCode] = useState('');
@@ -599,19 +611,27 @@ export const App: React.FC = () => {
   const updateCirclePlayArea = async (
     nextCenter: LatLng,
     nextRadiusMeters: number,
-    explicitPostalCode?: string
+    explicitPostalCodes?: string | readonly string[]
   ) => {
     const latestPublic = latestPublicStateRef.current;
     if (!ownMember.isHost || !latestPublic) return;
-    const basePlz =
-      explicitPostalCode ??
-      latestPublic.playArea.postalCode ??
-      DEFAULT_POSTAL_CODE;
-    const targetPlz = isPointInMunichPlz(nextCenter, basePlz)
-      ? basePlz
-      : (findMunichPlzAtPoint(nextCenter) ?? basePlz);
-    const snappedCenter = snapPointIntoMunichPlz(nextCenter, targetPlz);
-    void preloadGreenPolygonsForPostalCode(targetPlz);
+    const basePlzList = explicitPostalCodes
+      ? parseAndValidateMunichPostalCodes(explicitPostalCodes).validCodes
+      : getActivePostalCodes(latestPublic.playArea);
+    const activeCodes =
+      basePlzList.length > 0
+        ? basePlzList
+        : getActivePostalCodes(latestPublic.playArea);
+    const inCurrent = isPointInMunichPlz(nextCenter, activeCodes);
+    const detectedSingle = inCurrent
+      ? null
+      : findMunichPlzAtPoint(nextCenter);
+    const targetCodes =
+      inCurrent || !detectedSingle ? activeCodes : [detectedSingle];
+    const snappedCenter = snapPointIntoMunichPlz(nextCenter, targetCodes);
+    for (const code of targetCodes) {
+      void preloadGreenPolygonsForPostalCode(code);
+    }
     await adapter
       .savePublicStateByHost({
         ...latestPublic,
@@ -620,7 +640,8 @@ export const App: React.FC = () => {
           radiusMeters: nextRadiusMeters,
           confirmedByUid: ownMember.uid,
           nowMs: adapter.getServerNow(),
-          postalCode: targetPlz,
+          postalCode: targetCodes[0],
+          postalCodes: targetCodes,
         }),
       })
       .catch(() => {});
@@ -629,13 +650,13 @@ export const App: React.FC = () => {
   const handleMapCoordinateClick = (pt: LatLng) => {
     if (mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE') {
       if (!ownMember.isHost) return;
-      const inCurrentPlz = isPointInMunichPlz(pt, activePostalCode);
+      const inCurrentPlz = isPointInMunichPlz(pt, activePostalCodes);
       const detectedPlz = inCurrentPlz
-        ? activePostalCode
+        ? activePostalCodes
         : findMunichPlzAtPoint(pt);
       if (!detectedPlz) {
         setCirclePickError(
-          `Der Kreismittelpunkt muss innerhalb von ${activePostalCode} (bzw. München) liegen!`
+          `Der Kreismittelpunkt muss innerhalb von ${activePostalCodesLabel} (bzw. München) liegen!`
         );
         return;
       }
@@ -944,23 +965,25 @@ export const App: React.FC = () => {
             circlePlayAreaCenter={currentCircleCenter}
             onChangeCirclePlayAreaCenter={(pt) => {
               if (!ownMember.isHost) return;
-              const inCurrentPlz = isPointInMunichPlz(pt, activePostalCode);
+              const inCurrentPlz = isPointInMunichPlz(pt, activePostalCodes);
               const detectedPlz = inCurrentPlz
-                ? activePostalCode
+                ? activePostalCodes
                 : findMunichPlzAtPoint(pt);
               setCirclePickError(
                 detectedPlz
                   ? null
-                  : `An die ${activePostalCode}-Grenze angepasst (Mittelpunkt bleibt in ${activePostalCode}).`
+                  : `An die ${activePostalCodesLabel}-Grenze angepasst (Mittelpunkt bleibt in ${activePostalCodesLabel}).`
               );
               const latestRadius = clampPlayAreaCircleRadius(
                 latestPublicStateRef.current?.playArea.circle?.radiusMeters ??
                   DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
               );
               void updateCirclePlayArea(
-                detectedPlz ? pt : snapPointIntoMunichPlz(pt, activePostalCode),
+                detectedPlz
+                  ? pt
+                  : snapPointIntoMunichPlz(pt, activePostalCodes),
                 latestRadius,
-                detectedPlz ?? activePostalCode
+                detectedPlz ?? activePostalCodes
               );
             }}
             ownFix={
@@ -1386,10 +1409,10 @@ export const App: React.FC = () => {
                       <Crosshair className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
                       <div className="min-w-0 text-left">
                         <span className="block truncate font-industrial text-sm text-[var(--text-main)]">
-                          Kreis-Spielfeld in {activePostalCode}
+                          Kreis-Spielfeld in {activePostalCodesLabel}
                         </span>
                         <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
-                          Tippe in {activePostalCode} ({activePlzEntry.district}) oder ziehe Pin M
+                          Tippe in {activePostalCodesLabel} ({activePlzEntry.district}) oder ziehe Pin M
                         </span>
                       </div>
                     </div>
@@ -1424,31 +1447,62 @@ export const App: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex items-center gap-2">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const { validCodes, notFoundCodes } =
+                      parseAndValidateMunichPostalCodes(mapCirclePlzInput);
+                    if (notFoundCodes.length > 0) {
+                      setCirclePickError(
+                        notFoundCodes.length === 1
+                          ? `PLZ nicht in München gefunden: "${notFoundCodes[0]}".`
+                          : `Folgende PLZ wurden nicht in München gefunden: ${notFoundCodes
+                              .map((c) => `"${c}"`)
+                              .join(', ')}.`
+                      );
+                    } else if (validCodes.length === 0) {
+                      setCirclePickError(
+                        'Bitte mindestens eine gültige Münchner PLZ eingeben (z. B. 81247).'
+                      );
+                    } else {
+                      setCirclePickError(null);
+                    }
+                    if (validCodes.length > 0) {
+                      const nextEntry = getMunichPlzEntry(validCodes[0]);
+                      const nextCenter = isPointInMunichPlz(
+                        currentCircleCenter,
+                        validCodes
+                      )
+                        ? currentCircleCenter
+                        : nextEntry.center;
+                      void updateCirclePlayArea(
+                        nextCenter,
+                        currentCircleRadius,
+                        validCodes
+                      );
+                    }
+                  }}
+                  className="flex items-center gap-2"
+                >
                   <span className="shrink-0 font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
                     PLZ:
                   </span>
-                  <select
-                    data-testid="map-circle-plz-select"
-                    value={activePostalCode}
-                    onChange={(e) => {
-                      const nextEntry = getMunichPlzEntry(e.target.value);
-                      setCirclePickError(null);
-                      void updateCirclePlayArea(
-                        nextEntry.center,
-                        currentCircleRadius,
-                        nextEntry.postalCode
-                      );
-                    }}
+                  <input
+                    type="text"
+                    data-testid="map-circle-plz-input"
+                    value={mapCirclePlzInput}
+                    onChange={(e) => setMapCirclePlzInput(e.target.value)}
+                    placeholder="z. B. 81247, 81245"
                     className="cmf-input min-h-[38px] flex-1 px-2.5 py-1 font-tech text-xs font-bold"
+                  />
+                  <button
+                    type="submit"
+                    data-testid="map-circle-plz-apply-btn"
+                    className="cmf-btn-active font-tech min-h-[38px] shrink-0 px-3 py-1 text-[11px] font-bold uppercase"
                   >
-                    {MUNICH_PLZ_LIST.map((entry) => (
-                      <option key={entry.postalCode} value={entry.postalCode}>
-                        {entry.postalCode} — {entry.district}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    OK
+                  </button>
+                </form>
 
                 <HardwareKnob
                   label="KREIS-RADIUS (100M SCHRITTE)"
@@ -1466,7 +1520,7 @@ export const App: React.FC = () => {
                     void updateCirclePlayArea(
                       latestCenter,
                       nextRadius,
-                      activePostalCode
+                      activePostalCodes
                     );
                   }}
                 />
@@ -1476,20 +1530,20 @@ export const App: React.FC = () => {
                     type="button"
                     disabled={
                       !geo.currentFix ||
-                      (!isPointInMunichPlz(geo.currentFix, activePostalCode) &&
+                      (!isPointInMunichPlz(geo.currentFix, activePostalCodes) &&
                         !findMunichPlzAtPoint(geo.currentFix))
                     }
                     onClick={() => {
                       if (!geo.currentFix) return;
                       const gpsPlz = isPointInMunichPlz(
                         geo.currentFix,
-                        activePostalCode
+                        activePostalCodes
                       )
-                        ? activePostalCode
+                        ? activePostalCodes
                         : findMunichPlzAtPoint(geo.currentFix);
                       if (!gpsPlz) {
                         setCirclePickError(
-                          `Dein GPS liegt aktuell außerhalb von ${activePostalCode} (München).`
+                          `Dein GPS liegt aktuell außerhalb von ${activePostalCodesLabel} (München).`
                         );
                         return;
                       }

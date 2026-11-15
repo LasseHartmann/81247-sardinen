@@ -148,7 +148,7 @@ function safeUnionAll(
  * Es existiert nur noch die saubere Grenze des verbleibenden Suchbereichs.
  */
 export function computePossibleHidingArea(params: {
-  playArea: Feature<Polygon>;
+  playArea: Feature<Polygon | MultiPolygon>;
   clues: ClueRecord[];
   hiddenClueIds: Set<string>;
   publishedRadar: PublishedRadarCircle | null;

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import { LocateFixed, Maximize2 } from 'lucide-react';
-import type { Feature, Polygon } from 'geojson';
+import type { Feature, MultiPolygon, Polygon } from 'geojson';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
   LEASH_RADIUS_METERS,
@@ -67,7 +67,7 @@ function hasUsableMapViewport(map: L.Map): boolean {
 
 export function safeFitGeoJsonBounds(
   map: L.Map,
-  geojson: Feature<Polygon>,
+  geojson: Feature<Polygon | MultiPolygon>,
   options: { padding: [number, number]; maxZoom: number; animate?: boolean }
 ): boolean {
   try {
@@ -116,9 +116,9 @@ function safeCenterMapOnLatLng(
 }
 
 export interface GameMapProps {
-  playArea: Feature<Polygon>;
+  playArea: Feature<Polygon | MultiPolygon>;
   playAreaConfirmed: boolean;
-  official81247Boundary?: Feature<Polygon> | null;
+  official81247Boundary?: Feature<Polygon | MultiPolygon> | null;
   circlePlayAreaCenter?: LatLng | null;
   onChangeCirclePlayAreaCenter?: (pt: LatLng) => void;
   ownFix: GeoFix | null;

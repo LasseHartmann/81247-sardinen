@@ -35,8 +35,8 @@ export function getCuratedFallbackOsmData(
  * Grünflächen) passend zum gewählten PLZ-/Kreis-Spielfeld.
  */
 export async function fetchOsmEnvironment81247(
-  playArea: Feature<Polygon>,
-  options?: { forceOffline?: boolean; postalCode?: string }
+  playArea: Feature<Polygon | MultiPolygon>,
+  options?: { forceOffline?: boolean; postalCode?: string | readonly string[] }
 ): Promise<OsmEnvironmentData> {
   const postalCodes = resolvePlayAreaPostalCodes(
     playArea,

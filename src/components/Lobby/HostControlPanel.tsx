@@ -31,11 +31,11 @@ import {
   DEFAULT_MANHUNT_SHRINK_MINUTES,
   DEFAULT_PLAY_AREA_CIRCLE_CENTER,
   DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS,
-  DEFAULT_POSTAL_CODE,
+  getActivePostalCodes,
   getManhuntPingStatusAtElapsedMs,
   getMunichPlzEntry,
   getQuestionPenaltyMs,
-  MUNICH_PLZ_LIST,
+  parseAndValidateMunichPostalCodes,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
   PLAY_AREA_CIRCLE_STEP_METERS,
@@ -116,27 +116,26 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   onLeaveAndLockConsole,
 }) => {
   const isCirclePlayArea = publicState.playArea.shapeType === 'CUSTOM_CIRCLE';
-  const activePostalCode =
-    publicState.playArea.postalCode ?? DEFAULT_POSTAL_CODE;
-  const activePlzEntry = getMunichPlzEntry(activePostalCode);
-  const [plzSearchQuery, setPlzSearchQuery] = useState('');
+  const activePostalCodes = getActivePostalCodes(publicState.playArea);
+  const activePostalCode = activePostalCodes[0];
+  const activePostalCodesLabel = activePostalCodes.join(', ');
+  const activePlzEntries = activePostalCodes.map((c) => getMunichPlzEntry(c));
+  const activePlzEntry = activePlzEntries[0];
+  const activeDistrictsSummary = Array.from(
+    new Set(activePlzEntries.map((e) => e.district))
+  ).join(' / ');
 
-  const normalizedPlzQuery = plzSearchQuery.trim().toLowerCase();
-  const searchMatchedPlzList = MUNICH_PLZ_LIST.filter((entry) => {
-    if (!normalizedPlzQuery) return true;
-    return (
-      entry.postalCode.includes(normalizedPlzQuery) ||
-      entry.district.toLowerCase().includes(normalizedPlzQuery) ||
-      entry.name.toLowerCase().includes(normalizedPlzQuery)
-    );
-  });
+  const [plzInputText, setPlzInputText] = useState(activePostalCodesLabel);
+  const [isPlzInputFocused, setIsPlzInputFocused] = useState(false);
+  const [plzValidationError, setPlzValidationError] = useState<string | null>(
+    null
+  );
 
-  const selectOptionsPlzList =
-    searchMatchedPlzList.length > 0
-      ? searchMatchedPlzList.some((e) => e.postalCode === activePostalCode)
-        ? searchMatchedPlzList
-        : [activePlzEntry, ...searchMatchedPlzList]
-      : [activePlzEntry];
+  useEffect(() => {
+    if (!isPlzInputFocused) {
+      setPlzInputText(activePostalCodesLabel);
+    }
+  }, [activePostalCodesLabel, isPlzInputFocused]);
 
   const circleCenter =
     publicState.playArea.circle?.center ??
@@ -147,13 +146,25 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
   );
 
-  const handleSelectPostalCode = (nextPostalCode: string) => {
-    const nextEntry = getMunichPlzEntry(nextPostalCode);
-    void preloadGreenPolygonsForPostalCode(nextEntry.postalCode);
+  const formatNotFoundPlzMessage = (notFoundCodes: string[]): string => {
+    if (notFoundCodes.length === 1) {
+      return `PLZ nicht in München gefunden: "${notFoundCodes[0]}".`;
+    }
+    return `Folgende PLZ wurden nicht in München gefunden: ${notFoundCodes
+      .map((c) => `"${c}"`)
+      .join(', ')}.`;
+  };
+
+  const applyPostalCodes = (nextCodes: string[]) => {
+    if (nextCodes.length === 0) return;
+    for (const code of nextCodes) {
+      void preloadGreenPolygonsForPostalCode(code);
+    }
+    const primaryEntry = getMunichPlzEntry(nextCodes[0]);
     if (isCirclePlayArea) {
-      const nextCenter = isPointInMunichPlz(circleCenter, nextEntry.postalCode)
+      const nextCenter = isPointInMunichPlz(circleCenter, nextCodes)
         ? circleCenter
-        : nextEntry.center;
+        : primaryEntry.center;
       void adapter
         .savePublicStateByHost({
           ...publicState,
@@ -162,7 +173,8 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             radiusMeters: circleRadiusMeters,
             confirmedByUid: ownMember.uid,
             nowMs: adapter.getServerNow(),
-            postalCode: nextEntry.postalCode,
+            postalCode: nextCodes[0],
+            postalCodes: nextCodes,
           }),
         })
         .catch(() => {});
@@ -173,7 +185,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       .savePublicStateByHost({
         ...publicState,
         playArea: buildMunichPlzPlayAreaState(
-          nextEntry.postalCode,
+          nextCodes,
           ownMember.uid,
           adapter.getServerNow()
         ),
@@ -181,25 +193,51 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       .catch(() => {});
   };
 
+  const handleApplyPlzTextInput = (rawText: string, syncInputText: boolean) => {
+    const { validCodes, notFoundCodes } =
+      parseAndValidateMunichPostalCodes(rawText);
+
+    if (notFoundCodes.length > 0) {
+      setPlzValidationError(formatNotFoundPlzMessage(notFoundCodes));
+    } else if (validCodes.length === 0) {
+      setPlzValidationError(
+        'Bitte mindestens eine gültige Münchner PLZ eingeben (z. B. 81247 oder 81247, 81245).'
+      );
+    } else {
+      setPlzValidationError(null);
+    }
+
+    if (validCodes.length > 0) {
+      applyPostalCodes(validCodes);
+      if (syncInputText && notFoundCodes.length === 0) {
+        setPlzInputText(validCodes.join(', '));
+      }
+    }
+  };
+
   const handleSelectOfficial81247Area = () => {
-    void preloadGreenPolygonsForPostalCode(activePostalCode);
+    for (const code of activePostalCodes) {
+      void preloadGreenPolygonsForPostalCode(code);
+    }
     void adapter
       .savePublicStateByHost({
         ...publicState,
         playArea: buildOfficial81247PlayAreaState(
           ownMember.uid,
           adapter.getServerNow(),
-          activePostalCode
+          activePostalCodes
         ),
       })
       .catch(() => {});
   };
 
   const handleSelectOrResizeCircleArea = (nextRadiusMeters: number) => {
-    const snappedCenter = isPointInMunichPlz(circleCenter, activePostalCode)
+    const snappedCenter = isPointInMunichPlz(circleCenter, activePostalCodes)
       ? circleCenter
-      : snapPointIntoMunichPlz(activePlzEntry.center, activePostalCode);
-    void preloadGreenPolygonsForPostalCode(activePostalCode);
+      : snapPointIntoMunichPlz(activePlzEntry.center, activePostalCodes);
+    for (const code of activePostalCodes) {
+      void preloadGreenPolygonsForPostalCode(code);
+    }
     void adapter
       .savePublicStateByHost({
         ...publicState,
@@ -209,6 +247,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           confirmedByUid: ownMember.uid,
           nowMs: adapter.getServerNow(),
           postalCode: activePostalCode,
+          postalCodes: activePostalCodes,
         }),
       })
       .catch(() => {});
@@ -1221,7 +1260,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </div>
         </section>
 
-        {/* 2b. Spielfeld / Kartengebiet (Alle 75 Münchner PLZ oder frei platzierbarer Kreis mit 100m-Knob) */}
+        {/* 2b. Spielfeld / Kartengebiet (Alle 75 Münchner PLZ einzeln oder kombiniert per Textfeld oder frei platzierbarer Kreis mit 100m-Knob) */}
         <section className="cmf-module p-4 sm:p-5 space-y-3.5">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
             <div>
@@ -1229,7 +1268,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 Spielfeld / Kartengebiet (München PLZ)
               </h3>
               <p className="text-xs text-[var(--text-muted)]">
-                Wähle jede beliebige Münchner Postleitzahl ({MUNICH_PLZ_LIST.length} PLZ-Gebiete inkl. Haltestellen, Wertstoffinseln & Grünflächen) oder platziere einen Kreis in 100m-Schritten.
+                Gib eine oder mehrere Münchner Postleitzahlen ein (z. B. <code className="font-tech">81247</code> oder <code className="font-tech">81247, 81245</code>) oder platziere einen Kreis in 100m-Schritten.
               </p>
             </div>
             <span
@@ -1238,124 +1277,116 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               }`}
             >
               {isCirclePlayArea
-                ? `${activePostalCode} KREIS // R=${circleRadiusMeters}M`
-                : `GANZES ${activePostalCode}`}
+                ? `${activePostalCodesLabel} KREIS // R=${circleRadiusMeters}M`
+                : `GANZES ${activePostalCodesLabel}`}
             </span>
           </div>
 
-          <div className="cmf-well p-3 space-y-2">
+          <div className="cmf-well p-3 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label
-                htmlFor="playarea-plz-select"
+                htmlFor="playarea-plz-input"
                 className="font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
               >
-                Postleitzahl (PLZ) in München ({MUNICH_PLZ_LIST.length} Gebiete)
+                Postleitzahl(en) eingeben (mehrere mit Komma oder Leerzeichen trennen)
               </label>
               <span className="font-tech text-[11px] font-bold text-[var(--cmf-teal)]">
-                AKTIV: {activePlzEntry.postalCode} — {activePlzEntry.district}
+                AKTIV ({activePostalCodes.length}): {activePostalCodesLabel} —{' '}
+                {activeDistrictsSummary}
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-2">
-              <div className="relative flex items-center">
-                <input
-                  type="text"
-                  data-testid="playarea-plz-search"
-                  value={plzSearchQuery}
-                  onChange={(e) => {
-                    const nextVal = e.target.value;
-                    setPlzSearchQuery(nextVal);
-                    const trimmed = nextVal.trim();
-                    const exactMatch = MUNICH_PLZ_LIST.find(
-                      (item) => item.postalCode === trimmed
-                    );
-                    if (exactMatch) {
-                      handleSelectPostalCode(exactMatch.postalCode);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      if (searchMatchedPlzList.length > 0) {
-                        handleSelectPostalCode(
-                          searchMatchedPlzList[0].postalCode
-                        );
-                        setPlzSearchQuery('');
-                      }
-                    } else if (e.key === 'Escape') {
-                      setPlzSearchQuery('');
-                    }
-                  }}
-                  placeholder="PLZ oder Stadtteil suchen…"
-                  className="cmf-input min-h-[42px] w-full pr-8 pl-3 py-1.5 font-tech text-xs font-semibold"
-                />
-                {plzSearchQuery && (
-                  <button
-                    type="button"
-                    aria-label="Suche löschen"
-                    onClick={() => setPlzSearchQuery('')}
-                    className="absolute right-2 rounded px-1.5 py-0.5 font-tech text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-main)]"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-              <select
-                id="playarea-plz-select"
-                data-testid="playarea-plz-select"
-                value={activePostalCode}
-                onChange={(e) => {
-                  handleSelectPostalCode(e.target.value);
-                  setPlzSearchQuery('');
-                }}
-                className="cmf-input min-h-[42px] w-full px-3 py-1.5 font-tech text-xs font-bold"
-              >
-                {selectOptionsPlzList.map((entry) => (
-                  <option key={entry.postalCode} value={entry.postalCode}>
-                    {entry.postalCode} — {entry.district}
-                  </option>
-                ))}
-              </select>
-            </div>
 
-            {normalizedPlzQuery.length > 0 && (
-              <div
-                data-testid="playarea-plz-search-results"
-                className="max-h-48 overflow-y-auto rounded-xl border border-[var(--shell-border)] bg-[var(--surface-raised)] p-1.5 space-y-1"
-              >
-                {searchMatchedPlzList.length === 0 ? (
-                  <div className="px-2.5 py-2 font-tech text-xs text-[var(--text-muted)]">
-                    Keine Münchner PLZ für „{plzSearchQuery.trim()}“ gefunden.
-                  </div>
-                ) : (
-                  searchMatchedPlzList.map((entry) => {
-                    const isSelected = entry.postalCode === activePostalCode;
-                    return (
-                      <button
-                        key={entry.postalCode}
-                        type="button"
-                        data-testid={`playarea-plz-option-${entry.postalCode}`}
-                        onClick={() => {
-                          handleSelectPostalCode(entry.postalCode);
-                          setPlzSearchQuery('');
-                        }}
-                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left font-tech text-xs transition-colors ${
-                          isSelected
-                            ? 'bg-[var(--cmf-teal)] text-white font-bold'
-                            : 'hover:bg-black/5 text-[var(--text-main)] font-semibold'
-                        }`}
-                      >
-                        <span>
-                          <strong>{entry.postalCode}</strong> — {entry.district}
-                        </span>
-                        <span className="text-[10px] uppercase opacity-80">
-                          {isSelected ? 'Aktiv' : 'Auswählen'}
-                        </span>
-                      </button>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleApplyPlzTextInput(plzInputText, true);
+              }}
+              className="flex flex-col sm:flex-row gap-2"
+            >
+              <input
+                id="playarea-plz-input"
+                type="text"
+                data-testid="playarea-plz-input"
+                value={plzInputText}
+                onFocus={() => setIsPlzInputFocused(true)}
+                onBlur={() => {
+                  setIsPlzInputFocused(false);
+                  handleApplyPlzTextInput(plzInputText, true);
+                }}
+                onChange={(e) => {
+                  const nextText = e.target.value;
+                  setPlzInputText(nextText);
+                  const { validCodes, notFoundCodes } =
+                    parseAndValidateMunichPostalCodes(nextText);
+                  const completedUnknowns = notFoundCodes.filter(
+                    (tok) =>
+                      tok.length >= 5 ||
+                      !/^\d+$/.test(tok) ||
+                      nextText.trimEnd().length >
+                        nextText.lastIndexOf(tok) + tok.length
+                  );
+                  if (completedUnknowns.length > 0) {
+                    setPlzValidationError(
+                      formatNotFoundPlzMessage(completedUnknowns)
                     );
-                  })
-                )}
+                  } else {
+                    setPlzValidationError(null);
+                  }
+                  if (validCodes.length > 0 && notFoundCodes.length === 0) {
+                    applyPostalCodes(validCodes);
+                  }
+                }}
+                placeholder="z. B. 81247 oder 81247, 81245, 81249"
+                className="cmf-input min-h-[42px] flex-1 px-3 py-1.5 font-tech text-xs font-bold"
+              />
+              <button
+                type="submit"
+                data-testid="playarea-plz-apply-btn"
+                className="cmf-btn-active font-tech min-h-[42px] shrink-0 px-4 py-1.5 text-xs font-bold uppercase"
+              >
+                PLZ übernehmen
+              </button>
+            </form>
+
+            {plzValidationError && (
+              <div
+                data-testid="playarea-plz-error"
+                className="cmf-badge-orange cmf-shake rounded-xl px-3 py-2 font-tech text-xs font-bold"
+              >
+                {plzValidationError}
               </div>
             )}
+
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+              {activePlzEntries.map((entry) => (
+                <span
+                  key={entry.postalCode}
+                  data-testid={`playarea-active-plz-chip-${entry.postalCode}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-[var(--surface-raised)] px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--text-main)]"
+                >
+                  <span>
+                    {entry.postalCode} ({entry.district})
+                  </span>
+                  {activePostalCodes.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label={`PLZ ${entry.postalCode} entfernen`}
+                      onClick={() => {
+                        const remaining = activePostalCodes.filter(
+                          (c) => c !== entry.postalCode
+                        );
+                        setPlzValidationError(null);
+                        setPlzInputText(remaining.join(', '));
+                        applyPostalCodes(remaining);
+                      }}
+                      className="rounded px-1 text-xs font-bold text-[var(--cmf-orange)] hover:bg-black/10"
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1370,10 +1401,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               }`}
             >
               <span className="font-dot text-xs font-bold uppercase">
-                Ganzes {activePostalCode}-Gebiet
+                Ganzes {activePostalCodesLabel}-Gebiet
               </span>
               <span className="text-[11px] leading-snug opacity-80">
-                Offizielle PLZ-Grenze ({activePlzEntry.district})
+                Offizielle PLZ-Grenze ({activeDistrictsSummary})
               </span>
             </button>
 
@@ -1388,10 +1419,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               }`}
             >
               <span className="font-dot text-xs font-bold uppercase">
-                Kreis in {activePostalCode}
+                Kreis in {activePostalCodesLabel}
               </span>
               <span className="text-[11px] leading-snug opacity-80">
-                Überall in {activePostalCode} (oder ganz München) platzierbar • 100m-Schritte
+                Überall in {activePostalCodesLabel} (oder ganz München) platzierbar • 100m-Schritte
               </span>
             </button>
           </div>
@@ -1416,7 +1447,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 <div className="cmf-well flex flex-col justify-between gap-3 p-3.5">
                   <div className="space-y-1.5">
                     <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                      AKTIVER KREIS IN {activePostalCode} ({activePlzEntry.district})
+                      AKTIVER KREIS IN {activePostalCodesLabel} ({activeDistrictsSummary})
                     </span>
                     <div className="cmf-oled flex items-center justify-between gap-2 px-3 py-2">
                       <span className="font-dot text-base text-[#F8FAFC]">
@@ -1431,7 +1462,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                       {circleCenter.lng.toFixed(5)}]
                     </p>
                     <p className="text-xs text-[var(--text-muted)]">
-                      Tippe auf den Button unten, um den Mittelpunkt direkt auf der Karte ({activePostalCode}) anzutippen oder per Pin [M] zu ziehen.
+                      Tippe auf den Button unten, um den Mittelpunkt direkt auf der Karte ({activePostalCodesLabel}) anzutippen oder per Pin [M] zu ziehen.
                     </p>
                   </div>
 

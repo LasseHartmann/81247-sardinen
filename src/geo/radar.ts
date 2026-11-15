@@ -1,4 +1,4 @@
-import type { Feature, Polygon } from 'geojson';
+import type { Feature, MultiPolygon, Polygon } from 'geojson';
 import type {
   GamePhase,
   LatLng,
@@ -199,7 +199,7 @@ export interface ComputeNextManhuntZoneParams {
   stage: RadarStageId;
   nextRadiusMeters: number;
   previousCircle: { center: LatLng; radiusMeters: number } | null;
-  playArea?: Feature<Polygon> | null;
+  playArea?: Feature<Polygon | MultiPolygon> | null;
   publishedAt?: number;
   rng?: () => number;
 }

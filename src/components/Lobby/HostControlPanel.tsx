@@ -121,16 +121,22 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   const activePlzEntry = getMunichPlzEntry(activePostalCode);
   const [plzSearchQuery, setPlzSearchQuery] = useState('');
 
-  const filteredMunichPlzList = MUNICH_PLZ_LIST.filter((entry) => {
-    const q = plzSearchQuery.trim().toLowerCase();
-    if (!q) return true;
+  const normalizedPlzQuery = plzSearchQuery.trim().toLowerCase();
+  const searchMatchedPlzList = MUNICH_PLZ_LIST.filter((entry) => {
+    if (!normalizedPlzQuery) return true;
     return (
-      entry.postalCode.includes(q) ||
-      entry.district.toLowerCase().includes(q) ||
-      entry.name.toLowerCase().includes(q) ||
-      entry.postalCode === activePostalCode
+      entry.postalCode.includes(normalizedPlzQuery) ||
+      entry.district.toLowerCase().includes(normalizedPlzQuery) ||
+      entry.name.toLowerCase().includes(normalizedPlzQuery)
     );
   });
+
+  const selectOptionsPlzList =
+    searchMatchedPlzList.length > 0
+      ? searchMatchedPlzList.some((e) => e.postalCode === activePostalCode)
+        ? searchMatchedPlzList
+        : [activePlzEntry, ...searchMatchedPlzList]
+      : [activePlzEntry];
 
   const circleCenter =
     publicState.playArea.circle?.center ??
@@ -1249,29 +1255,107 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 AKTIV: {activePlzEntry.postalCode} — {activePlzEntry.district}
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2">
-              <input
-                type="text"
-                data-testid="playarea-plz-search"
-                value={plzSearchQuery}
-                onChange={(e) => setPlzSearchQuery(e.target.value)}
-                placeholder="PLZ oder Stadtteil filtern…"
-                className="cmf-input min-h-[42px] px-3 py-1.5 font-tech text-xs font-semibold"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-2">
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  data-testid="playarea-plz-search"
+                  value={plzSearchQuery}
+                  onChange={(e) => {
+                    const nextVal = e.target.value;
+                    setPlzSearchQuery(nextVal);
+                    const trimmed = nextVal.trim();
+                    const exactMatch = MUNICH_PLZ_LIST.find(
+                      (item) => item.postalCode === trimmed
+                    );
+                    if (exactMatch) {
+                      handleSelectPostalCode(exactMatch.postalCode);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (searchMatchedPlzList.length > 0) {
+                        handleSelectPostalCode(
+                          searchMatchedPlzList[0].postalCode
+                        );
+                        setPlzSearchQuery('');
+                      }
+                    } else if (e.key === 'Escape') {
+                      setPlzSearchQuery('');
+                    }
+                  }}
+                  placeholder="PLZ oder Stadtteil suchen…"
+                  className="cmf-input min-h-[42px] w-full pr-8 pl-3 py-1.5 font-tech text-xs font-semibold"
+                />
+                {plzSearchQuery && (
+                  <button
+                    type="button"
+                    aria-label="Suche löschen"
+                    onClick={() => setPlzSearchQuery('')}
+                    className="absolute right-2 rounded px-1.5 py-0.5 font-tech text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
               <select
                 id="playarea-plz-select"
                 data-testid="playarea-plz-select"
                 value={activePostalCode}
-                onChange={(e) => handleSelectPostalCode(e.target.value)}
+                onChange={(e) => {
+                  handleSelectPostalCode(e.target.value);
+                  setPlzSearchQuery('');
+                }}
                 className="cmf-input min-h-[42px] w-full px-3 py-1.5 font-tech text-xs font-bold"
               >
-                {filteredMunichPlzList.map((entry) => (
+                {selectOptionsPlzList.map((entry) => (
                   <option key={entry.postalCode} value={entry.postalCode}>
                     {entry.postalCode} — {entry.district}
                   </option>
                 ))}
               </select>
             </div>
+
+            {normalizedPlzQuery.length > 0 && (
+              <div
+                data-testid="playarea-plz-search-results"
+                className="max-h-48 overflow-y-auto rounded-xl border border-[var(--shell-border)] bg-[var(--surface-raised)] p-1.5 space-y-1"
+              >
+                {searchMatchedPlzList.length === 0 ? (
+                  <div className="px-2.5 py-2 font-tech text-xs text-[var(--text-muted)]">
+                    Keine Münchner PLZ für „{plzSearchQuery.trim()}“ gefunden.
+                  </div>
+                ) : (
+                  searchMatchedPlzList.map((entry) => {
+                    const isSelected = entry.postalCode === activePostalCode;
+                    return (
+                      <button
+                        key={entry.postalCode}
+                        type="button"
+                        data-testid={`playarea-plz-option-${entry.postalCode}`}
+                        onClick={() => {
+                          handleSelectPostalCode(entry.postalCode);
+                          setPlzSearchQuery('');
+                        }}
+                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left font-tech text-xs transition-colors ${
+                          isSelected
+                            ? 'bg-[var(--cmf-teal)] text-white font-bold'
+                            : 'hover:bg-black/5 text-[var(--text-main)] font-semibold'
+                        }`}
+                      >
+                        <span>
+                          <strong>{entry.postalCode}</strong> — {entry.district}
+                        </span>
+                        <span className="text-[10px] uppercase opacity-80">
+                          {isSelected ? 'Aktiv' : 'Auswählen'}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

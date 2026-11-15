@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALL_MUNICH_POSTAL_CODES,
+  buildFullMunichPlayAreaState,
   buildManhuntRadarScheduleForHidingMs,
   buildRadarScheduleForHidingMinutes,
   buildRadarScheduleForHidingMs,
@@ -8,10 +10,13 @@ import {
   DEFAULT_CLASSIC_SEARCH_MINUTES,
   DEFAULT_PLAY_AREA_FEATURE,
   DEFAULT_RADAR_SCHEDULE,
+  formatPostalCodesLabel,
   getMediaRefundMs,
   getQuestionPenaltyMs,
+  isAllMunichPostalCodes,
   isLegacyPlaceholderPlayArea,
   LEGACY_PLACEHOLDER_AREA_NAME,
+  parseAndValidateMunichPostalCodes,
   TEAM_PALETTE,
 } from '../src/config/gameConfig';
 import {
@@ -298,6 +303,23 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(skippedManhunt.stage5Ms).toBe(95_000 + 40 * 60_000);
     expect(getQuestionPenaltyMs('RADIUS_RADAR')).toBe(15 * 60_000);
     expect(getQuestionPenaltyMs('DONUT_RING')).toBe(4 * 60_000);
+
+    // Ganz München als Versteck-Zone (alle 75 Münchner PLZ)
+    expect(ALL_MUNICH_POSTAL_CODES).toHaveLength(75);
+    expect(isAllMunichPostalCodes(ALL_MUNICH_POSTAL_CODES)).toBe(true);
+    expect(isAllMunichPostalCodes(['81247'])).toBe(false);
+    expect(formatPostalCodesLabel(ALL_MUNICH_POSTAL_CODES)).toBe('Ganz München');
+    expect(formatPostalCodesLabel(['81247', '81245'])).toBe('81247, 81245');
+    expect(
+      parseAndValidateMunichPostalCodes('Ganz München')
+    ).toMatchObject({
+      validCodes: ALL_MUNICH_POSTAL_CODES,
+      notFoundCodes: [],
+    });
+    const fullMunichArea = buildFullMunichPlayAreaState('admin-uid', 123456);
+    expect(fullMunichArea.postalCodes).toHaveLength(75);
+    expect(isAllMunichPostalCodes(fullMunichArea.postalCodes)).toBe(true);
+    expect(fullMunichArea.polygon.properties?.postalCode).toBe('Ganz München');
   });
 
   it('unterstützt 6 Teams, berechnet die Durchschnittsposition aller aktiven Teammitglieder und sperrt doppelte Spieler-Sitzungen', async () => {

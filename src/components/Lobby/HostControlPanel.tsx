@@ -4,7 +4,6 @@ import {
   Pause,
   RotateCcw,
   UserPlus,
-  UserX,
   Radio,
   MousePointerClick,
   Trash2,
@@ -15,6 +14,7 @@ import {
   Crosshair,
 } from 'lucide-react';
 import {
+  ALL_MUNICH_POSTAL_CODES,
   buildCustomCirclePlayAreaState,
   buildManhuntRadarSchedule,
   buildManhuntRadarScheduleForHidingMs,
@@ -31,10 +31,13 @@ import {
   DEFAULT_MANHUNT_SHRINK_MINUTES,
   DEFAULT_PLAY_AREA_CIRCLE_CENTER,
   DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS,
+  DEFAULT_POSTAL_CODE,
+  formatPostalCodesLabel,
   getActivePostalCodes,
   getManhuntPingStatusAtElapsedMs,
   getMunichPlzEntry,
   getQuestionPenaltyMs,
+  isAllMunichPostalCodes,
   parseAndValidateMunichPostalCodes,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
@@ -70,7 +73,6 @@ import type {
   HiderPrivateState,
   JoinRequest,
   MemberRecord,
-  PlayerSide,
   PresenceSession,
   PublicGameState,
   RadarStageId,
@@ -117,13 +119,14 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
 }) => {
   const isCirclePlayArea = publicState.playArea.shapeType === 'CUSTOM_CIRCLE';
   const activePostalCodes = getActivePostalCodes(publicState.playArea);
+  const isFullMunich = isAllMunichPostalCodes(activePostalCodes);
   const activePostalCode = activePostalCodes[0];
-  const activePostalCodesLabel = activePostalCodes.join(', ');
+  const activePostalCodesLabel = formatPostalCodesLabel(activePostalCodes);
   const activePlzEntries = activePostalCodes.map((c) => getMunichPlzEntry(c));
   const activePlzEntry = activePlzEntries[0];
-  const activeDistrictsSummary = Array.from(
-    new Set(activePlzEntries.map((e) => e.district))
-  ).join(' / ');
+  const activeDistrictsSummary = isFullMunich
+    ? 'Alle 75 Münchner PLZ-Gebiete'
+    : Array.from(new Set(activePlzEntries.map((e) => e.district))).join(' / ');
 
   const [plzInputText, setPlzInputText] = useState(activePostalCodesLabel);
   const [isPlzInputFocused, setIsPlzInputFocused] = useState(false);
@@ -157,8 +160,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
 
   const applyPostalCodes = (nextCodes: string[]) => {
     if (nextCodes.length === 0) return;
-    for (const code of nextCodes) {
-      void preloadGreenPolygonsForPostalCode(code);
+    if (nextCodes.length <= 8) {
+      for (const code of nextCodes) {
+        void preloadGreenPolygonsForPostalCode(code);
+      }
     }
     const primaryEntry = getMunichPlzEntry(nextCodes[0]);
     if (isCirclePlayArea) {
@@ -193,6 +198,21 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       .catch(() => {});
   };
 
+  const handleSelectFullMunichArea = () => {
+    setPlzValidationError(null);
+    setPlzInputText('Ganz München');
+    void adapter
+      .savePublicStateByHost({
+        ...publicState,
+        playArea: buildMunichPlzPlayAreaState(
+          ALL_MUNICH_POSTAL_CODES,
+          ownMember.uid,
+          adapter.getServerNow()
+        ),
+      })
+      .catch(() => {});
+  };
+
   const handleApplyPlzTextInput = (rawText: string, syncInputText: boolean) => {
     const { validCodes, notFoundCodes } =
       parseAndValidateMunichPostalCodes(rawText);
@@ -201,7 +221,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       setPlzValidationError(formatNotFoundPlzMessage(notFoundCodes));
     } else if (validCodes.length === 0) {
       setPlzValidationError(
-        'Bitte mindestens eine gültige Münchner PLZ eingeben (z. B. 81247 oder 81247, 81245).'
+        'Bitte mindestens eine gültige Münchner PLZ eingeben (z. B. 81247, 81247, 81245 oder "Ganz München").'
       );
     } else {
       setPlzValidationError(null);
@@ -210,14 +230,16 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     if (validCodes.length > 0) {
       applyPostalCodes(validCodes);
       if (syncInputText && notFoundCodes.length === 0) {
-        setPlzInputText(validCodes.join(', '));
+        setPlzInputText(formatPostalCodesLabel(validCodes));
       }
     }
   };
 
   const handleSelectOfficial81247Area = () => {
-    for (const code of activePostalCodes) {
-      void preloadGreenPolygonsForPostalCode(code);
+    if (activePostalCodes.length <= 8) {
+      for (const code of activePostalCodes) {
+        void preloadGreenPolygonsForPostalCode(code);
+      }
     }
     void adapter
       .savePublicStateByHost({
@@ -235,8 +257,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     const snappedCenter = isPointInMunichPlz(circleCenter, activePostalCodes)
       ? circleCenter
       : snapPointIntoMunichPlz(activePlzEntry.center, activePostalCodes);
-    for (const code of activePostalCodes) {
-      void preloadGreenPolygonsForPostalCode(code);
+    if (activePostalCodes.length <= 8) {
+      for (const code of activePostalCodes) {
+        void preloadGreenPolygonsForPostalCode(code);
+      }
     }
     void adapter
       .savePublicStateByHost({
@@ -706,65 +730,11 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     });
   };
 
-  const handleAssignMember = async (
-    member: MemberRecord,
-    nextSelection: string
-  ) => {
-    let side: PlayerSide = 'UNASSIGNED';
-    let teamId: string | null = null;
-    if (nextSelection === 'HIDER') {
-      side = 'HIDER';
-    } else if (nextSelection.startsWith('team-')) {
-      side = 'SEEKER';
-      teamId = nextSelection;
-    }
-
-    for (const m of Object.values(members)) {
-      if (m.playerId === member.playerId) {
-        await adapter.updateMember(m.uid, {
-          ...m,
-          side,
-          teamId,
-        });
-      }
-    }
-    await adapter.savePlayerAssignment(member.playerId, side, teamId);
-
-    for (const palette of TEAM_PALETTE) {
-      const curTeam = teamsPublic[palette.id];
-      if (!curTeam) continue;
-      const filtered = curTeam.memberPlayerIds.filter(
-        (pid) => pid !== member.playerId
-      );
-      if (teamId === palette.id && !filtered.includes(member.playerId)) {
-        filtered.push(member.playerId);
-      }
-      const nextBeacon =
-        filtered.length === 0
-          ? null
-          : curTeam.beaconPlayerId && filtered.includes(curTeam.beaconPlayerId)
-            ? curTeam.beaconPlayerId
-            : filtered[0];
-
-      await adapter.saveTeamPublic(palette.id, {
-        ...curTeam,
-        memberPlayerIds: filtered,
-        beaconPlayerId: nextBeacon,
-      });
-    }
-  };
-
-  const handleKickMember = async (member: MemberRecord) => {
-    const matchingUids = Object.values(members)
-      .filter((m) => m.playerId === member.playerId)
-      .map((m) => m.uid);
-    if (!matchingUids.includes(member.uid)) {
-      matchingUids.push(member.uid);
-    }
-    await adapter.kickPlayerByHost(member.playerId, matchingUids);
-  };
-
-  // NUR besetzte Teams anzeigen (vor Start ausschließlich mit aktuell online verbundenen Spielern!)
+  // Alle Teams und ihre Mitglieder für die Admin-Übersicht (inklusive Sardinen)
+  const hiderMembers = activeGroupMembers.filter((m) => m.side === 'HIDER');
+  const unassignedMembers = activeGroupMembers.filter(
+    (m) => m.side === 'UNASSIGNED' || (m.side === 'SEEKER' && !m.teamId)
+  );
   const occupiedTeams = TEAM_PALETTE.map((palette) => {
     const team = teamsPublic[palette.id];
     const assignedMembers = activeGroupMembers.filter(
@@ -774,6 +744,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       id: palette.id,
       name: team?.name ?? palette.name,
       color: team?.color ?? palette.color,
+      members: assignedMembers,
       memberNames: assignedMembers.map((m) => m.name),
     };
   }).filter((t) => t.memberNames.length > 0);
@@ -1288,6 +1259,44 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
 
           <div className="cmf-well p-3 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                Schnellauswahl Versteck-Zone
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  data-testid="playarea-shortcut-all-munich-btn"
+                  onClick={handleSelectFullMunichArea}
+                  className={`font-tech min-h-[34px] rounded-xl px-3 py-1.5 text-[11px] font-bold uppercase transition-all ${
+                    isFullMunich && !isCirclePlayArea
+                      ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
+                      : 'cmf-btn-secondary'
+                  }`}
+                >
+                  Ganz München als Versteck-Zone (Alle 75 PLZ)
+                </button>
+                <button
+                  type="button"
+                  data-testid="playarea-shortcut-81247-btn"
+                  onClick={() => {
+                    setPlzValidationError(null);
+                    setPlzInputText(DEFAULT_POSTAL_CODE);
+                    applyPostalCodes([DEFAULT_POSTAL_CODE]);
+                  }}
+                  className={`font-tech min-h-[34px] rounded-xl px-3 py-1.5 text-[11px] font-bold uppercase transition-all ${
+                    activePostalCodes.length === 1 &&
+                    activePostalCodes[0] === DEFAULT_POSTAL_CODE &&
+                    !isCirclePlayArea
+                      ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
+                      : 'cmf-btn-secondary'
+                  }`}
+                >
+                  Standard: 81247 (Obermenzing)
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t cmf-divider">
               <label
                 htmlFor="playarea-plz-input"
                 className="font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
@@ -1340,7 +1349,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                     applyPostalCodes(validCodes);
                   }
                 }}
-                placeholder="z. B. 81247 oder 81247, 81245, 81249"
+                placeholder="z. B. 81247, 81245 oder Ganz München"
                 className="cmf-input min-h-[42px] flex-1 px-3 py-1.5 font-tech text-xs font-bold"
               />
               <button
@@ -1362,34 +1371,43 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             )}
 
             <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-              {activePlzEntries.map((entry) => (
+              {isFullMunich ? (
                 <span
-                  key={entry.postalCode}
-                  data-testid={`playarea-active-plz-chip-${entry.postalCode}`}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-[var(--surface-raised)] px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--text-main)]"
+                  data-testid="playarea-active-plz-chip-all-munich"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-[var(--surface-raised)] px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--cmf-teal)]"
                 >
-                  <span>
-                    {entry.postalCode} ({entry.district})
-                  </span>
-                  {activePostalCodes.length > 1 && (
-                    <button
-                      type="button"
-                      aria-label={`PLZ ${entry.postalCode} entfernen`}
-                      onClick={() => {
-                        const remaining = activePostalCodes.filter(
-                          (c) => c !== entry.postalCode
-                        );
-                        setPlzValidationError(null);
-                        setPlzInputText(remaining.join(', '));
-                        applyPostalCodes(remaining);
-                      }}
-                      className="rounded px-1 text-xs font-bold text-[var(--cmf-orange)] hover:bg-black/10"
-                    >
-                      ×
-                    </button>
-                  )}
+                  <span>Ganz München (Alle 75 PLZ-Gebiete)</span>
                 </span>
-              ))}
+              ) : (
+                activePlzEntries.map((entry) => (
+                  <span
+                    key={entry.postalCode}
+                    data-testid={`playarea-active-plz-chip-${entry.postalCode}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-[var(--surface-raised)] px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--text-main)]"
+                  >
+                    <span>
+                      {entry.postalCode} ({entry.district})
+                    </span>
+                    {activePostalCodes.length > 1 && (
+                      <button
+                        type="button"
+                        aria-label={`PLZ ${entry.postalCode} entfernen`}
+                        onClick={() => {
+                          const remaining = activePostalCodes.filter(
+                            (c) => c !== entry.postalCode
+                          );
+                          setPlzValidationError(null);
+                          setPlzInputText(remaining.join(', '));
+                          applyPostalCodes(remaining);
+                        }}
+                        className="rounded px-1 text-xs font-bold text-[var(--cmf-orange)] hover:bg-black/10"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </span>
+                ))
+              )}
             </div>
           </div>
 
@@ -1526,15 +1544,18 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </div>
         </section>
 
-        {/* 4. Spieler- & Team-Zuweisung + Nur besetzte Teams anzeigen */}
-        <section className="cmf-module p-4 sm:p-5 space-y-4">
+        {/* 4. Teams & Mitglieder (Reine Live-Übersicht inklusive Die Sardinen) */}
+        <section
+          data-testid="host-teams-overview-section"
+          className="cmf-module p-4 sm:p-5 space-y-4"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
             <div>
               <h3 className="font-industrial text-base text-[var(--text-main)]">
-                Spieler- & Team-Zuweisung
+                Teams &amp; Mitglieder (Übersicht)
               </h3>
               <p className="text-xs text-[var(--text-muted)]">
-                Unten werden automatisch nur die Teams angezeigt, in denen mindestens ein Spieler eingeteilt ist.
+                Jeder Spieler wählt sein Team selbst in der Lobby. Hier siehst du alle Teams und ihre Mitglieder inklusive der Sardinen.
               </p>
             </div>
             <button
@@ -1547,86 +1568,69 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             </button>
           </div>
 
-          <div className="space-y-2">
-            {activeGroupMembers.map((m) => {
-              const currentValue =
-                m.side === 'HIDER'
-                  ? 'HIDER'
-                  : m.side === 'SEEKER' && m.teamId
-                    ? m.teamId
-                    : 'UNASSIGNED';
-              const online = isPlayerOnline(
-                m.playerId,
-                members,
-                presence,
-                ownMember.uid
-              );
-              const isReady = readySet.has(m.playerId);
+          {/* 4a. Die Sardinen (Verstecker-Team) */}
+          <div
+            data-testid="host-sardinen-team-overview"
+            className="cmf-well p-3.5 text-xs space-y-2.5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-industrial flex items-center gap-2 text-sm text-[var(--text-main)]">
+                <span className="h-3 w-3 rounded-full border border-white/60 bg-[var(--cmf-orange)]" />
+                Die Sardinen (Verstecker)
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="cmf-badge-orange rounded px-2 py-0.5 text-[10px] font-bold uppercase">
+                  {hiderMembers.length} Spieler
+                </span>
+                <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
+                  {readyCount}/{hiderCount} Bereit
+                </span>
+              </div>
+            </div>
 
-              return (
-                <div
-                  key={m.uid}
-                  className="cmf-well flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 text-xs"
-                >
-                  <div className="flex items-center gap-2">
+            {hiderMembers.length === 0 ? (
+              <p className="text-xs text-[var(--text-muted)]">
+                Aktuell hat sich noch kein Spieler für Die Sardinen (Verstecker) eingetragen.
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                {hiderMembers.map((m) => {
+                  const online = isPlayerOnline(
+                    m.playerId,
+                    members,
+                    presence,
+                    ownMember.uid
+                  );
+                  const isReady = readySet.has(m.playerId);
+                  return (
                     <span
-                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                        online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
-                      }`}
-                    />
-                    <span className="text-sm font-bold text-[var(--text-main)]">{m.name}</span>
-                    {m.isHost && (
-                      <span className="cmf-badge-teal rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
-                        Host
-                      </span>
-                    )}
-                    {!online && (
-                      <span className="cmf-badge-amber rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
-                        Offline
-                      </span>
-                    )}
-                    {m.side === 'HIDER' && isReady && (
-                      <span className="cmf-badge-teal rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
-                        ✓ Bereit
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex w-full min-w-0 sm:w-auto items-center gap-2">
-                    <select
-                      aria-label={`Rolle für ${m.name}`}
-                      value={currentValue}
-                      onChange={(e) => void handleAssignMember(m, e.target.value)}
-                      className="cmf-input min-h-[44px] min-w-0 flex-1 sm:flex-initial sm:max-w-[220px] px-3 py-2 text-base sm:text-xs font-semibold"
+                      key={m.uid}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--shell-border)] bg-[var(--surface-raised)] px-2.5 py-1.5 text-xs font-bold text-[var(--text-main)]"
                     >
-                      <option value="HIDER">Verstecker (Die Sardinen)</option>
-                      {TEAM_PALETTE.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          Sucher: {t.name}
-                        </option>
-                      ))}
-                      <option value="UNASSIGNED">Nicht zugewiesen</option>
-                    </select>
-
-                    {m.uid !== ownMember.uid && (
-                      <button
-                        type="button"
-                        data-testid={`kick-player-${m.playerId}`}
-                        onClick={() => void handleKickMember(m)}
-                        title={`${m.name} aus der Runde kicken`}
-                        className="cmf-btn-secondary font-tech inline-flex min-h-[44px] shrink-0 items-center gap-1 px-3 py-2 text-[11px] font-bold text-[var(--cmf-orange)] uppercase"
-                      >
-                        <UserX className="h-4 w-4" />
-                        <span>Kicken</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${
+                          online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
+                        }`}
+                      />
+                      <span>{m.name}</span>
+                      {isReady && (
+                        <span className="cmf-badge-teal rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
+                          ✓ Bereit
+                        </span>
+                      )}
+                      {!online && (
+                        <span className="cmf-badge-amber rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
+                          Offline
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Teams-Anzeige: zeigt ausschließlich Teams an, in denen jemand drinnen ist! */}
+          {/* 4b. Besetzte Sucher-Teams */}
           <div className="space-y-2 border-t cmf-divider pt-3">
             <h4 className="font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
               Besetzte Sucher-Teams ({occupiedTeams.length})
@@ -1653,6 +1657,29 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                         <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
                           {team.memberNames.length} Spieler
                         </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {team.members.map((m) => {
+                          const online = isPlayerOnline(
+                            m.playerId,
+                            members,
+                            presence,
+                            ownMember.uid
+                          );
+                          return (
+                            <span
+                              key={m.uid}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-[var(--surface-raised)] px-2 py-1 text-xs font-bold text-[var(--text-main)]"
+                            >
+                              <span
+                                className={`h-2 w-2 shrink-0 rounded-full ${
+                                  online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
+                                }`}
+                              />
+                              <span>{m.name}</span>
+                            </span>
+                          );
+                        })}
                       </div>
                       <div className="flex items-center gap-1.5 font-tech text-[11px] text-[var(--text-muted)]">
                         <Radio className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
@@ -1708,6 +1735,43 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               </div>
             )}
           </div>
+
+          {/* 4c. Noch ohne Team (falls Spieler noch kein Team gewählt haben) */}
+          {unassignedMembers.length > 0 && (
+            <div className="space-y-2 border-t cmf-divider pt-3">
+              <h4 className="font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                Noch ohne Team ({unassignedMembers.length})
+              </h4>
+              <div className="flex flex-wrap items-center gap-2">
+                {unassignedMembers.map((m) => {
+                  const online = isPlayerOnline(
+                    m.playerId,
+                    members,
+                    presence,
+                    ownMember.uid
+                  );
+                  return (
+                    <span
+                      key={m.uid}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--shell-border)] bg-[var(--surface-raised)] px-2.5 py-1.5 text-xs font-bold text-[var(--text-main)]"
+                    >
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${
+                          online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
+                        }`}
+                      />
+                      <span>{m.name}</span>
+                      {!online && (
+                        <span className="cmf-badge-amber rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
+                          Offline
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* 4b. Gekaufte Tipps verwalten / Rückgängig machen (nur im klassischen Modus) */}

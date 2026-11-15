@@ -24,6 +24,7 @@ import {
   clampPlayAreaCircleRadius,
   DEFAULT_PLAY_AREA_CIRCLE_CENTER,
   DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS,
+  formatPostalCodesLabel,
   getActivePostalCodes,
   getMunichPlzEntry,
   parseAndValidateMunichPostalCodes,
@@ -64,6 +65,7 @@ import type {
   ClueRecord,
   ClueRequest,
   LatLng,
+  PlayerSide,
   QuestionType,
   RadiusOptionMeters,
 } from '../types/game';
@@ -201,7 +203,7 @@ export const App: React.FC = () => {
 
   const activePostalCodes = getActivePostalCodes(publicState?.playArea);
   const activePostalCode = activePostalCodes[0];
-  const activePostalCodesLabel = activePostalCodes.join(', ');
+  const activePostalCodesLabel = formatPostalCodesLabel(activePostalCodes);
   const activePlzEntry = getMunichPlzEntry(activePostalCode);
   const activePlzBoundary = useMemo(
     () => buildMunichMultiPlzPolygon(activePostalCodes),
@@ -217,8 +219,10 @@ export const App: React.FC = () => {
   }, [activePostalCodesLabel]);
 
   useEffect(() => {
-    for (const code of activePostalCodes) {
-      void preloadGreenPolygonsForPostalCode(code);
+    if (activePostalCodes.length <= 8) {
+      for (const code of activePostalCodes) {
+        void preloadGreenPolygonsForPostalCode(code);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePostalCodesLabel]);
@@ -534,8 +538,10 @@ export const App: React.FC = () => {
     const targetCodes =
       inCurrent || !detectedSingle ? activeCodes : [detectedSingle];
     const snappedCenter = snapPointIntoMunichPlz(nextCenter, targetCodes);
-    for (const code of targetCodes) {
-      void preloadGreenPolygonsForPostalCode(code);
+    if (targetCodes.length <= 8) {
+      for (const code of targetCodes) {
+        void preloadGreenPolygonsForPostalCode(code);
+      }
     }
     await adapter
       .savePublicStateByHost({
@@ -700,6 +706,66 @@ export const App: React.FC = () => {
 
   const handleRerollHiderSecrets = async () => {
     await adapter.rerollHiderSecrets();
+  };
+
+  const handleSelectOwnRole = async (nextSelection: string) => {
+    if (isOverviewAccount) return;
+    let side: PlayerSide = 'UNASSIGNED';
+    let teamId: string | null = null;
+    if (nextSelection === 'HIDER') {
+      side = 'HIDER';
+    } else if (nextSelection.startsWith('team-')) {
+      side = 'SEEKER';
+      teamId = nextSelection;
+    }
+
+    for (const m of Object.values(gameState.members)) {
+      if (m.playerId === ownMember.playerId) {
+        await adapter.updateMember(m.uid, {
+          ...m,
+          side,
+          teamId,
+        });
+      }
+    }
+    await adapter.savePlayerAssignment(ownMember.playerId, side, teamId);
+
+    if (side !== 'HIDER') {
+      await adapter.setPlayerReadyState(
+        ownMember.uid,
+        ownMember.playerId,
+        null,
+        adapter.getServerNow()
+      );
+    }
+
+    for (const palette of TEAM_PALETTE) {
+      const curTeam = gameState.teamsPublic[palette.id];
+      if (!curTeam) continue;
+      const filtered = curTeam.memberPlayerIds.filter(
+        (pid) => pid !== ownMember.playerId
+      );
+      if (teamId === palette.id && !filtered.includes(ownMember.playerId)) {
+        filtered.push(ownMember.playerId);
+      }
+      const nextBeacon =
+        filtered.length === 0
+          ? null
+          : curTeam.beaconPlayerId && filtered.includes(curTeam.beaconPlayerId)
+            ? curTeam.beaconPlayerId
+            : filtered[0];
+
+      const membersChanged =
+        filtered.length !== curTeam.memberPlayerIds.length ||
+        filtered.some((pid, idx) => pid !== curTeam.memberPlayerIds[idx]);
+      if (membersChanged || nextBeacon !== curTeam.beaconPlayerId) {
+        await adapter.saveTeamPublic(palette.id, {
+          ...curTeam,
+          memberPlayerIds: filtered,
+          beaconPlayerId: nextBeacon,
+        });
+      }
+    }
   };
 
   const handleToggleOwnReady = async (nextReady: boolean) => {
@@ -1462,6 +1528,7 @@ export const App: React.FC = () => {
                 gpsStatus={geo.gpsStatus}
                 gpsError={geo.gpsError}
                 onRetryGps={geo.retryGpsPermission}
+                onSelectOwnRole={handleSelectOwnRole}
                 onToggleOwnReady={handleToggleOwnReady}
                 onOpenHostTab={
                   showHostTab ? () => setActiveTab('HOST') : undefined

@@ -318,6 +318,7 @@ export interface LobbyStatusCardProps {
   gpsStatus?: GpsPermissionState;
   gpsError?: string | null;
   onRetryGps?: () => Promise<GeoFix | null> | void;
+  onSelectOwnRole?: (nextSelection: string) => Promise<void>;
   onToggleOwnReady: (nextReady: boolean) => Promise<void>;
   onOpenHostTab?: () => void;
   onLogout: () => Promise<void>;
@@ -334,6 +335,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   gpsStatus = 'IDLE',
   gpsError = null,
   onRetryGps,
+  onSelectOwnRole,
   onToggleOwnReady,
   onOpenHostTab,
   onLogout,
@@ -383,7 +385,17 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   }).filter((t) => t.assignedNames.length > 0);
 
   const [togglingReady, setTogglingReady] = useState(false);
-  const [sheetCollapsed, setSheetCollapsed] = useState(true);
+  const [changingRole, setChangingRole] = useState(false);
+  const [sheetCollapsed, setSheetCollapsed] = useState(
+    () => isOverviewAccount || ownMember.side !== 'UNASSIGNED'
+  );
+
+  const ownRoleSelectionValue =
+    ownMember.side === 'HIDER'
+      ? 'HIDER'
+      : ownMember.side === 'SEEKER' && ownMember.teamId
+        ? ownMember.teamId
+        : 'UNASSIGNED';
 
   const isOwnHider = ownMember.side === 'HIDER' && !isOverviewAccount;
 
@@ -491,7 +503,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs">
             <span className="font-tech text-[10px] tracking-wider text-[#9AA4AE] uppercase block">
-              ZUGEWIESENE ROLLE
+              AKTUELLES TEAM / ROLLE
             </span>
             <strong
               className={`font-industrial text-sm ${
@@ -508,7 +520,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                   ? 'VERSTECKER // DIE SARDINEN'
                   : ownMember.teamId
                     ? (teamsPublic[ownMember.teamId]?.name ?? ownMember.teamId)
-                    : 'Wartet auf Zuteilung durch Admin'}
+                    : 'Bitte wähle unten dein Team'}
             </strong>
           </div>
 
@@ -538,13 +550,61 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
         )}
       </div>
 
-      {/* Besetzte Teams Übersicht (nur Teams, in denen jemand ist!) */}
-      {occupiedTeams.length > 0 && (
+      {/* Eigene Team-Auswahl für jeden Spieler direkt in der Lobby */}
+      {!isOverviewAccount && onSelectOwnRole && (
+        <div className="cmf-well mt-3 p-3 space-y-1.5">
+          <label
+            htmlFor="lobby-own-role-select"
+            className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
+          >
+            Dein Team / Deine Rolle wählen
+          </label>
+          <select
+            id="lobby-own-role-select"
+            data-testid="own-role-select"
+            aria-label="Eigenes Team wählen"
+            disabled={changingRole}
+            value={ownRoleSelectionValue}
+            onChange={async (e) => {
+              const nextVal = e.target.value;
+              setChangingRole(true);
+              try {
+                await onSelectOwnRole(nextVal);
+              } finally {
+                setChangingRole(false);
+              }
+            }}
+            className="cmf-input min-h-[44px] w-full px-3 py-2 text-base font-semibold sm:text-xs"
+          >
+            <option value="UNASSIGNED">— Bitte Team wählen —</option>
+            <option value="HIDER">Verstecker (Die Sardinen)</option>
+            {TEAM_PALETTE.map((t) => (
+              <option key={t.id} value={t.id}>
+                Sucher: {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Besetzte Teams Übersicht (inkl. Die Sardinen & aktive Sucher-Teams) */}
+      {(requiredHiderMembers.length > 0 || occupiedTeams.length > 0) && (
         <div className="mt-3.5 space-y-1.5">
           <div className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-            Aktive Sucher-Teams ({occupiedTeams.length})
+            Aktuelle Teams ({occupiedTeams.length + (requiredHiderMembers.length > 0 ? 1 : 0)})
           </div>
           <div className="grid gap-1.5 sm:grid-cols-2">
+            {requiredHiderMembers.length > 0 && (
+              <div className="cmf-well flex items-center justify-between gap-2 px-3 py-2 text-xs">
+                <span className="font-tech flex items-center gap-1.5 text-[11px] font-bold text-[var(--cmf-orange)] uppercase">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/60 bg-[var(--cmf-orange)]" />
+                  Die Sardinen
+                </span>
+                <span className="truncate text-[11px] font-medium text-[var(--text-main)]">
+                  {requiredHiderMembers.map((m) => m.name).join(', ')}
+                </span>
+              </div>
+            )}
             {occupiedTeams.map((t) => (
               <div
                 key={t.id}
@@ -712,7 +772,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
             </div>
           ) : (
             <div className="cmf-well p-2.5 text-center text-xs text-[var(--text-muted)]">
-              Wartet darauf, dass der Admin die Verstecker und Sucher-Teams einteilt.
+              Wähle oben dein Team! Mindestens ein Spieler muss „Verstecker (Die Sardinen)“ und mindestens ein Spieler ein Sucher-Team wählen.
             </div>
           )}
         </div>

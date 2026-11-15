@@ -29,7 +29,7 @@
           ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true",
           "$uid": {
             ".read": "auth != null && (auth.uid === $uid || root.child('games/81247/members/' + auth.uid + '/enabled').val() === true)",
-            ".write": "auth != null && ((root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true) || (auth.uid === $uid && newData.exists() && newData.child('enabled').val() === true && newData.child('isHost').val() === (newData.child('playerId').val() === 'admin') && root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === newData.child('playerId').val() && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === root.child('games/81247/accountSecrets/' + newData.child('playerId').val() + '/passwordHash').val() && ((!data.exists() && (newData.child('side').val() === 'UNASSIGNED' || newData.child('side').val() === root.child('games/81247/assignments/' + newData.child('playerId').val() + '/side').val())) || (data.exists() && (newData.child('side').val() === data.child('side').val() || newData.child('side').val() === root.child('games/81247/assignments/' + newData.child('playerId').val() + '/side').val())))))",
+            ".write": "auth != null && ((root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true) || ((auth.uid === $uid || root.child('games/81247/members/' + auth.uid + '/playerId').val() === newData.child('playerId').val()) && newData.exists() && newData.child('enabled').val() === true && newData.child('isHost').val() === (newData.child('playerId').val() === 'admin') && root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === newData.child('playerId').val() && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === root.child('games/81247/accountSecrets/' + newData.child('playerId').val() + '/passwordHash').val()))",
             ".validate": "!newData.exists() || (newData.hasChildren(['playerId', 'name', 'isHost', 'enabled', 'side']) && newData.child('playerId').isString() && newData.child('name').isString() && newData.child('isHost').isBoolean() && newData.child('enabled').isBoolean() && (newData.child('side').val() === 'HIDER' || newData.child('side').val() === 'SEEKER' || newData.child('side').val() === 'UNASSIGNED'))"
           }
         },
@@ -51,7 +51,7 @@
         "assignments": {
           ".read": "auth != null",
           "$playerId": {
-            ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+            ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/playerId').val() === $playerId || root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
             ".validate": "!newData.exists() || (newData.hasChildren(['side']) && (newData.child('side').val() === 'HIDER' || newData.child('side').val() === 'SEEKER' || newData.child('side').val() === 'UNASSIGNED'))"
           }
         },
@@ -68,7 +68,7 @@
           "$teamId": {
             "public": {
               ".read": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true",
-              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER')",
+              ".write": "auth != null && root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || root.child('games/81247/members/' + auth.uid + '/side').val() === 'HIDER' || (data.exists() && newData.exists() && newData.child('status').val() === data.child('status').val() && newData.child('penaltyMs').val() === data.child('penaltyMs').val() && newData.child('clueCount').val() === data.child('clueCount').val()))",
               ".validate": "!newData.exists() || (newData.hasChildren(['id', 'name', 'color', 'status', 'penaltyMs', 'clueCount']) && newData.child('id').val() === $teamId && newData.child('penaltyMs').isNumber() && (newData.child('status').val() === 'ACTIVE' || newData.child('status').val() === 'JOINED_SARDINES'))"
             },
             "location": {

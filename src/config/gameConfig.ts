@@ -27,9 +27,29 @@ export interface MunichPlzEntry {
 export const MUNICH_PLZ_LIST: readonly MunichPlzEntry[] =
   munichPlzBoundariesJson as unknown as MunichPlzEntry[];
 
+export const ALL_MUNICH_POSTAL_CODES: readonly string[] = MUNICH_PLZ_LIST.map(
+  (entry) => entry.postalCode
+);
+
 const MUNICH_PLZ_BY_CODE = new Map<string, MunichPlzEntry>(
   MUNICH_PLZ_LIST.map((entry) => [entry.postalCode, entry])
 );
+
+export function isAllMunichPostalCodes(
+  codes?: readonly string[] | null
+): boolean {
+  if (!codes || codes.length < MUNICH_PLZ_LIST.length) return false;
+  const set = new Set(codes);
+  return MUNICH_PLZ_LIST.every((entry) => set.has(entry.postalCode));
+}
+
+export function formatPostalCodesLabel(
+  codes?: readonly string[] | null
+): string {
+  if (!codes || codes.length === 0) return DEFAULT_POSTAL_CODE;
+  if (isAllMunichPostalCodes(codes)) return 'Ganz München';
+  return codes.join(', ');
+}
 
 export const MAP_DEFAULT_CENTER: [number, number] = [48.1682, 11.465];
 export const MAP_DEFAULT_ZOOM = 14;
@@ -64,12 +84,41 @@ export function parseAndValidateMunichPostalCodes(
   if (!rawInput) {
     return { validCodes: [], notFoundCodes: [], entries: [] };
   }
+  if (!Array.isArray(rawInput)) {
+    const normalizedWhole = String(rawInput)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+    if (
+      normalizedWhole === 'ganz münchen' ||
+      normalizedWhole === 'ganz muenchen' ||
+      normalizedWhole === 'münchen' ||
+      normalizedWhole === 'muenchen' ||
+      normalizedWhole === 'alle' ||
+      normalizedWhole === 'alle plz'
+    ) {
+      return {
+        validCodes: [...ALL_MUNICH_POSTAL_CODES],
+        notFoundCodes: [],
+        entries: [...MUNICH_PLZ_LIST],
+      };
+    }
+  }
   const tokens = Array.isArray(rawInput)
-    ? rawInput.flatMap((item) =>
-        String(item ?? '')
-          .split(/[\s,;+/|]+/)
-          .map((t) => t.trim())
-      )
+    ? rawInput.flatMap((item) => {
+        const s = String(item ?? '').trim();
+        const lower = s.toLowerCase().replace(/\s+/g, ' ');
+        if (
+          lower === 'ganz münchen' ||
+          lower === 'ganz muenchen' ||
+          lower === 'münchen' ||
+          lower === 'muenchen' ||
+          lower === 'alle'
+        ) {
+          return [...ALL_MUNICH_POSTAL_CODES];
+        }
+        return s.split(/[\s,;+/|]+/).map((t) => t.trim());
+      })
     : String(rawInput)
         .split(/[\s,;+/|]+/)
         .map((t) => t.trim());
@@ -153,6 +202,11 @@ export function buildMunichPlzPolygon(
   });
 }
 
+const multiPlzPolygonCache = new Map<
+  string,
+  Feature<Polygon | MultiPolygon>
+>();
+
 export function buildMunichMultiPlzPolygon(
   postalCodesInput?: string | readonly string[] | null
 ): Feature<Polygon | MultiPolygon> {
@@ -164,8 +218,23 @@ export function buildMunichMultiPlzPolygon(
     return buildMunichPlzPolygon(codes[0]);
   }
 
+  const cacheKey = [...codes].sort().join(',');
+  const cached = multiPlzPolygonCache.get(cacheKey);
+  if (cached) {
+    const clone = structuredClone(cached);
+    const label = formatPostalCodesLabel(codes);
+    clone.properties = {
+      name: isAllMunichPostalCodes(codes)
+        ? 'Ganz München (Alle 75 PLZ-Gebiete)'
+        : `PLZ ${label}`,
+      postalCode: label,
+      postalCodes: codes,
+    };
+    return clone;
+  }
+
   const singlePolys = codes.map((code) => buildMunichPlzPolygon(code));
-  const combinedLabel = codes.join(', ');
+  const combinedLabel = formatPostalCodesLabel(codes);
   let merged: Feature<Polygon | MultiPolygon> | null = null;
   try {
     merged = turf.union(turf.featureCollection(singlePolys));
@@ -189,10 +258,13 @@ export function buildMunichMultiPlzPolygon(
   }
 
   merged.properties = {
-    name: `PLZ ${combinedLabel}`,
+    name: isAllMunichPostalCodes(codes)
+      ? 'Ganz München (Alle 75 PLZ-Gebiete)'
+      : `PLZ ${combinedLabel}`,
     postalCode: combinedLabel,
     postalCodes: codes,
   };
+  multiPlzPolygonCache.set(cacheKey, structuredClone(merged));
   return merged;
 }
 
@@ -226,7 +298,7 @@ export function buildCirclePlayAreaPolygon(
   const parsed = parseAndValidateMunichPostalCodes(postalCodesInput);
   const codes =
     parsed.validCodes.length > 0 ? parsed.validCodes : [DEFAULT_POSTAL_CODE];
-  const combinedLabel = codes.join(', ');
+  const combinedLabel = formatPostalCodesLabel(codes);
   const clampedRadius = clampPlayAreaCircleRadius(radiusMeters);
   return turf.circle([center.lng, center.lat], clampedRadius, {
     steps: 72,
@@ -250,14 +322,17 @@ export function buildMunichPlzPlayAreaState(
   const entries = codes.map((c) => getMunichPlzEntry(c));
   const isSingle81247 =
     codes.length === 1 && codes[0] === DEFAULT_POSTAL_CODE;
-  const combinedLabel = codes.join(', ');
+  const isFullMunich = isAllMunichPostalCodes(codes);
+  const combinedLabel = formatPostalCodesLabel(codes);
   const areaName = isSingle81247
     ? OFFICIAL_81247_AREA_NAME
-    : codes.length === 1
-      ? entries[0].name
-      : `PLZ ${combinedLabel} (${entries
-          .map((e) => e.district.split(' / ')[0])
-          .join(' + ')})`;
+    : isFullMunich
+      ? 'Ganz München (Alle 75 PLZ-Gebiete)'
+      : codes.length === 1
+        ? entries[0].name
+        : `PLZ ${combinedLabel} (${entries
+            .map((e) => e.district.split(' / ')[0])
+            .join(' + ')})`;
 
   return {
     polygon: buildMunichMultiPlzPolygon(codes),
@@ -273,6 +348,17 @@ export function buildMunichPlzPlayAreaState(
     shapeType: 'OFFICIAL_81247',
     circle: null,
   };
+}
+
+export function buildFullMunichPlayAreaState(
+  confirmedByUid = 'osm_official_munich',
+  nowMs = Date.now()
+): PlayAreaState {
+  return buildMunichPlzPlayAreaState(
+    ALL_MUNICH_POSTAL_CODES,
+    confirmedByUid,
+    nowMs
+  );
 }
 
 export function buildOfficial81247PlayAreaState(
@@ -296,7 +382,7 @@ export function buildCustomCirclePlayAreaState(params: {
   );
   const codes =
     parsed.validCodes.length > 0 ? parsed.validCodes : [DEFAULT_POSTAL_CODE];
-  const combinedLabel = codes.join(', ');
+  const combinedLabel = formatPostalCodesLabel(codes);
   const clampedRadius = clampPlayAreaCircleRadius(params.radiusMeters);
   const roundedCenter: LatLng = {
     lat: Math.round(params.center.lat * 100_000) / 100_000,

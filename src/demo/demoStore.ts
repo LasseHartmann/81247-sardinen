@@ -4,6 +4,7 @@ import {
   GAME_ID,
   MEDIA_AUTO_EXPIRE_MS,
   MEDIA_POST_DOWNLOAD_EXPIRE_MS,
+  sanitizePlayAreaState,
 } from '../config/gameConfig';
 import {
   computeAccountPasswordHash,
@@ -1193,6 +1194,7 @@ export function createDemoStore(options?: {
         return {
           ...pub,
           roomCode: pub.roomCode ?? currentRoomCode,
+          playArea: sanitizePlayAreaState(pub.playArea),
         };
       }, cb);
     },

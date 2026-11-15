@@ -24,6 +24,7 @@ import {
   MEDIA_AUTO_EXPIRE_MS,
   MEDIA_POST_DOWNLOAD_EXPIRE_MS,
   OFFICIAL_81247_AREA_NAME,
+  sanitizePlayAreaState,
   TEAM_MEMBER_FIX_MAX_AGE_MS,
   TEAM_PALETTE,
 } from '../config/gameConfig';
@@ -1653,7 +1654,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
                 confirmedByUid: 'osm_official_81247',
                 name: OFFICIAL_81247_AREA_NAME,
               }
-            : val.playArea;
+            : sanitizePlayAreaState(val.playArea);
 
           const rawSched = val.radarSchedule;
           const normalizedSchedule = {

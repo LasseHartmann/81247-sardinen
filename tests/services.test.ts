@@ -463,6 +463,8 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(fullMunichArea.postalCodes).toHaveLength(75);
     expect(isAllMunichPostalCodes(fullMunichArea.postalCodes)).toBe(true);
     expect(fullMunichArea.polygon.properties?.postalCode).toBe('Ganz München');
+    expect(fullMunichArea.polygon.geometry.type).toBe('Polygon');
+    expect(fullMunichArea.polygon.geometry.coordinates).toHaveLength(1);
   });
 
   it('unterstützt 6 Teams, berechnet die Durchschnittsposition aller aktiven Teammitglieder und sperrt doppelte Spieler-Sitzungen', async () => {

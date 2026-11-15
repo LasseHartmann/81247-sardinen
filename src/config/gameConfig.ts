@@ -233,7 +233,22 @@ export function buildMunichMultiPlzPolygon(
     return clone;
   }
 
-  const singlePolys = codes.map((code) => buildMunichPlzPolygon(code));
+  const singlePolys = codes.map((code) => {
+    const entry = getMunichPlzEntry(code);
+    return turf.polygon(
+      [
+        entry.ring.map(([lng, lat]) => [
+          Math.round(lng * 1e5) / 1e5,
+          Math.round(lat * 1e5) / 1e5,
+        ]),
+      ],
+      {
+        name: entry.name,
+        postalCode: entry.postalCode,
+        postalCodes: [entry.postalCode],
+      }
+    );
+  });
   const combinedLabel = formatPostalCodesLabel(codes);
   let merged: Feature<Polygon | MultiPolygon> | null = null;
   try {
@@ -255,6 +270,14 @@ export function buildMunichMultiPlzPolygon(
     merged = turf.multiPolygon(
       singlePolys.map((p) => p.geometry.coordinates)
     );
+  }
+
+  if (
+    isAllMunichPostalCodes(codes) &&
+    merged.geometry.type === 'Polygon' &&
+    merged.geometry.coordinates.length > 1
+  ) {
+    merged.geometry.coordinates = [merged.geometry.coordinates[0]];
   }
 
   merged.properties = {
@@ -434,6 +457,28 @@ export function isLegacyPlaceholderPlayArea(
     return true;
   }
   return false;
+}
+
+/**
+ * Bereinigt gespeicherte Mehr-PLZ- oder „Ganz München“-Polygone, falls diese aus älteren Sitzungen
+ * noch interne Sliver-Ringe rund um 81247 enthalten.
+ */
+export function sanitizePlayAreaState(playArea: PlayAreaState): PlayAreaState {
+  if (!playArea || playArea.shapeType === 'CUSTOM_CIRCLE') {
+    return playArea;
+  }
+  const activeCodes = getActivePostalCodes(playArea);
+  if (
+    activeCodes.length > 1 &&
+    playArea.polygon?.geometry?.type === 'Polygon' &&
+    playArea.polygon.geometry.coordinates.length > 1
+  ) {
+    return {
+      ...playArea,
+      polygon: buildMunichMultiPlzPolygon(activeCodes),
+    };
+  }
+  return playArea;
 }
 
 export const DEFAULT_SAFETY_POINT: SafetyPoint = {

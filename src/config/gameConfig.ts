@@ -1,6 +1,7 @@
 import type { Feature, Polygon } from 'geojson';
 import * as turf from '@turf/turf';
 import defaultPlayAreaJson from './playArea.geojson';
+import munichPlzBoundariesJson from './munichPlzBoundaries.json';
 import type {
   LatLng,
   PlayAreaState,
@@ -13,6 +14,22 @@ import type {
 } from '../types/game';
 
 export const GAME_ID = '81247' as const;
+export const DEFAULT_POSTAL_CODE = '81247' as const;
+
+export interface MunichPlzEntry {
+  postalCode: string;
+  district: string;
+  name: string;
+  center: LatLng;
+  ring: [number, number][];
+}
+
+export const MUNICH_PLZ_LIST: readonly MunichPlzEntry[] =
+  munichPlzBoundariesJson as unknown as MunichPlzEntry[];
+
+const MUNICH_PLZ_BY_CODE = new Map<string, MunichPlzEntry>(
+  MUNICH_PLZ_LIST.map((entry) => [entry.postalCode, entry])
+);
 
 export const MAP_DEFAULT_CENTER: [number, number] = [48.1682, 11.465];
 export const MAP_DEFAULT_ZOOM = 14;
@@ -24,6 +41,42 @@ export const LEGACY_PLACEHOLDER_AREA_NAME =
 
 export const DEFAULT_PLAY_AREA_FEATURE =
   defaultPlayAreaJson as unknown as Feature<Polygon>;
+
+export function isValidMunichPostalCode(
+  postalCode?: string | null
+): postalCode is string {
+  return Boolean(postalCode && MUNICH_PLZ_BY_CODE.has(postalCode.trim()));
+}
+
+export function getMunichPlzEntry(postalCode?: string | null): MunichPlzEntry {
+  const code = postalCode?.trim() || DEFAULT_POSTAL_CODE;
+  return (
+    MUNICH_PLZ_BY_CODE.get(code) ??
+    MUNICH_PLZ_BY_CODE.get(DEFAULT_POSTAL_CODE) ?? {
+      postalCode: DEFAULT_POSTAL_CODE,
+      district: 'Obermenzing / Blutenburg / Pipping',
+      name: OFFICIAL_81247_AREA_NAME,
+      center: { lat: MAP_DEFAULT_CENTER[0], lng: MAP_DEFAULT_CENTER[1] },
+      ring: DEFAULT_PLAY_AREA_FEATURE.geometry.coordinates[0] as [
+        number,
+        number,
+      ][],
+    }
+  );
+}
+
+export function buildMunichPlzPolygon(
+  postalCode?: string | null
+): Feature<Polygon> {
+  const entry = getMunichPlzEntry(postalCode);
+  if (entry.postalCode === DEFAULT_POSTAL_CODE) {
+    return structuredClone(DEFAULT_PLAY_AREA_FEATURE);
+  }
+  return turf.polygon([entry.ring.map(([lng, lat]) => [lng, lat])], {
+    name: entry.name,
+    postalCode: entry.postalCode,
+  });
+}
 
 export const PLAY_AREA_CIRCLE_MIN_RADIUS_METERS = 100;
 export const PLAY_AREA_CIRCLE_MAX_RADIUS_METERS = 2500;
@@ -49,31 +102,47 @@ export function clampPlayAreaCircleRadius(radiusMeters: number): number {
 
 export function buildCirclePlayAreaPolygon(
   center: LatLng,
-  radiusMeters: number
+  radiusMeters: number,
+  postalCode: string = DEFAULT_POSTAL_CODE
 ): Feature<Polygon> {
   const clampedRadius = clampPlayAreaCircleRadius(radiusMeters);
   return turf.circle([center.lng, center.lat], clampedRadius, {
     steps: 72,
     units: 'meters',
     properties: {
-      name: `81247 Kreis-Spielfeld (${clampedRadius} m)`,
+      name: `${postalCode} Kreis-Spielfeld (${clampedRadius} m)`,
+      postalCode,
     },
   });
 }
 
-export function buildOfficial81247PlayAreaState(
-  confirmedByUid = 'osm_official_81247',
+export function buildMunichPlzPlayAreaState(
+  postalCode: string,
+  confirmedByUid = 'osm_official_munich',
   nowMs = Date.now()
 ): PlayAreaState {
+  const entry = getMunichPlzEntry(postalCode);
+  const is81247 = entry.postalCode === DEFAULT_POSTAL_CODE;
   return {
-    polygon: structuredClone(DEFAULT_PLAY_AREA_FEATURE),
+    polygon: buildMunichPlzPolygon(entry.postalCode),
     confirmed: true,
     confirmedAt: nowMs,
-    confirmedByUid,
-    name: OFFICIAL_81247_AREA_NAME,
+    confirmedByUid: is81247 && confirmedByUid === 'osm_official_munich'
+      ? 'osm_official_81247'
+      : confirmedByUid,
+    name: is81247 ? OFFICIAL_81247_AREA_NAME : entry.name,
+    postalCode: entry.postalCode,
     shapeType: 'OFFICIAL_81247',
     circle: null,
   };
+}
+
+export function buildOfficial81247PlayAreaState(
+  confirmedByUid = 'osm_official_81247',
+  nowMs = Date.now(),
+  postalCode: string = DEFAULT_POSTAL_CODE
+): PlayAreaState {
+  return buildMunichPlzPlayAreaState(postalCode, confirmedByUid, nowMs);
 }
 
 export function buildCustomCirclePlayAreaState(params: {
@@ -81,18 +150,25 @@ export function buildCustomCirclePlayAreaState(params: {
   radiusMeters: number;
   confirmedByUid: string;
   nowMs?: number;
+  postalCode?: string;
 }): PlayAreaState {
+  const entry = getMunichPlzEntry(params.postalCode);
   const clampedRadius = clampPlayAreaCircleRadius(params.radiusMeters);
   const roundedCenter: LatLng = {
     lat: Math.round(params.center.lat * 100_000) / 100_000,
     lng: Math.round(params.center.lng * 100_000) / 100_000,
   };
   return {
-    polygon: buildCirclePlayAreaPolygon(roundedCenter, clampedRadius),
+    polygon: buildCirclePlayAreaPolygon(
+      roundedCenter,
+      clampedRadius,
+      entry.postalCode
+    ),
     confirmed: true,
     confirmedAt: params.nowMs ?? Date.now(),
     confirmedByUid: params.confirmedByUid,
-    name: `Kreis-Spielfeld in 81247 (${clampedRadius} m)`,
+    name: `Kreis-Spielfeld in ${entry.postalCode} (${clampedRadius} m)`,
+    postalCode: entry.postalCode,
     shapeType: 'CUSTOM_CIRCLE',
     circle: {
       center: roundedCenter,
@@ -106,12 +182,14 @@ export function isLegacyPlaceholderPlayArea(
 ): boolean {
   if (!playArea || !playArea.polygon) return true;
   if (playArea.shapeType === 'CUSTOM_CIRCLE') return false;
+  if (isValidMunichPostalCode(playArea.postalCode)) return false;
   if (playArea.name === LEGACY_PLACEHOLDER_AREA_NAME) return true;
   const ringLen = playArea.polygon.geometry?.coordinates?.[0]?.length ?? 0;
   // Altes Platzhalter-Polygon aus der Erstinitialisierung hatte nur 9 Eckpunkte (10 Ring-Koordinaten)
   if (
     ringLen <= 12 &&
     playArea.confirmedByUid !== 'osm_official_81247' &&
+    playArea.confirmedByUid !== 'osm_official_munich' &&
     playArea.name !== OFFICIAL_81247_AREA_NAME
   ) {
     return true;
@@ -555,6 +633,9 @@ export function createDefaultPublicState(
             confirmedAt: Date.now(),
             confirmedByUid: 'osm_official_81247',
             name: OFFICIAL_81247_AREA_NAME,
+            postalCode: DEFAULT_POSTAL_CODE,
+            shapeType: 'OFFICIAL_81247',
+            circle: null,
           },
     safetyPoint: { ...DEFAULT_SAFETY_POINT },
     emergencyStopReason: null,

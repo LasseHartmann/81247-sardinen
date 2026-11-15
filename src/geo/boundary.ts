@@ -1,6 +1,10 @@
 import * as turf from '@turf/turf';
 import type { Feature, Polygon } from 'geojson';
-import { DEFAULT_PLAY_AREA_FEATURE } from '../config/gameConfig';
+import {
+  buildMunichPlzPolygon,
+  DEFAULT_PLAY_AREA_FEATURE,
+  MUNICH_PLZ_LIST,
+} from '../config/gameConfig';
 import type { LatLng } from '../types/game';
 import { distanceMeters } from './distance';
 
@@ -16,6 +20,39 @@ export function isPointInOfficial81247(pt: LatLng): boolean {
  */
 export function snapPointIntoOfficial81247(pt: LatLng): LatLng {
   return snapPointIntoPlayArea(pt, DEFAULT_PLAY_AREA_FEATURE);
+}
+
+/**
+ * Prüft, ob ein Punkt innerhalb oder auf dem Rand des gewählten Münchner PLZ-Gebiets liegt.
+ */
+export function isPointInMunichPlz(
+  pt: LatLng,
+  postalCode?: string | null
+): boolean {
+  return isPointInPlayArea(pt, buildMunichPlzPolygon(postalCode));
+}
+
+/**
+ * Zieht einen Punkt bei Bedarf in das gewählte Münchner PLZ-Gebiet hinein.
+ */
+export function snapPointIntoMunichPlz(
+  pt: LatLng,
+  postalCode?: string | null
+): LatLng {
+  return snapPointIntoPlayArea(pt, buildMunichPlzPolygon(postalCode));
+}
+
+/**
+ * Ermittelt, in welchem der 75 Münchner PLZ-Gebiete ein Punkt liegt (oder null außerhalb Münchens).
+ */
+export function findMunichPlzAtPoint(pt: LatLng): string | null {
+  for (const entry of MUNICH_PLZ_LIST) {
+    const poly = buildMunichPlzPolygon(entry.postalCode);
+    if (isPointInPlayArea(pt, poly)) {
+      return entry.postalCode;
+    }
+  }
+  return null;
 }
 
 /**

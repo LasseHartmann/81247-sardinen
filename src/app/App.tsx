@@ -21,16 +21,20 @@ import {
   ANCHOR_ACCURACY_WARNING_METERS,
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
   buildCustomCirclePlayAreaState,
+  buildMunichPlzPolygon,
   clampPlayAreaCircleRadius,
   DEFAULT_PLAY_AREA_CIRCLE_CENTER,
   DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS,
-  DEFAULT_PLAY_AREA_FEATURE,
+  DEFAULT_POSTAL_CODE,
+  getMunichPlzEntry,
+  MUNICH_PLZ_LIST,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
   PLAY_AREA_CIRCLE_STEP_METERS,
   TEAM_PALETTE,
   THERMOMETER_MIN_DISTANCE_METERS,
 } from '../config/gameConfig';
+import { preloadGreenPolygonsForPostalCode } from '../config/fallbackOsm81247';
 import {
   computeHiderPasswordHash,
   findPresetPlayerById,
@@ -38,9 +42,10 @@ import {
   isOverviewMember,
 } from '../config/players';
 import {
-  isPointInOfficial81247,
+  findMunichPlzAtPoint,
+  isPointInMunichPlz,
   isPointInPlayArea,
-  snapPointIntoOfficial81247,
+  snapPointIntoMunichPlz,
   validateManualAnchorSelection,
 } from '../geo/boundary';
 import { destinationPoint, distanceMeters } from '../geo/distance';
@@ -570,8 +575,22 @@ export const App: React.FC = () => {
           )
       : [];
 
+  const activePostalCode =
+    publicState.playArea.postalCode ?? DEFAULT_POSTAL_CODE;
+  const activePlzEntry = getMunichPlzEntry(activePostalCode);
+  const activePlzBoundary = useMemo(
+    () => buildMunichPlzPolygon(activePostalCode),
+    [activePostalCode]
+  );
+
+  useEffect(() => {
+    void preloadGreenPolygonsForPostalCode(activePostalCode);
+  }, [activePostalCode]);
+
   const currentCircleCenter =
-    publicState.playArea.circle?.center ?? DEFAULT_PLAY_AREA_CIRCLE_CENTER;
+    publicState.playArea.circle?.center ??
+    activePlzEntry.center ??
+    DEFAULT_PLAY_AREA_CIRCLE_CENTER;
   const currentCircleRadius = clampPlayAreaCircleRadius(
     publicState.playArea.circle?.radiusMeters ??
       DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
@@ -579,11 +598,20 @@ export const App: React.FC = () => {
 
   const updateCirclePlayArea = async (
     nextCenter: LatLng,
-    nextRadiusMeters: number
+    nextRadiusMeters: number,
+    explicitPostalCode?: string
   ) => {
     const latestPublic = latestPublicStateRef.current;
     if (!ownMember.isHost || !latestPublic) return;
-    const snappedCenter = snapPointIntoOfficial81247(nextCenter);
+    const basePlz =
+      explicitPostalCode ??
+      latestPublic.playArea.postalCode ??
+      DEFAULT_POSTAL_CODE;
+    const targetPlz = isPointInMunichPlz(nextCenter, basePlz)
+      ? basePlz
+      : (findMunichPlzAtPoint(nextCenter) ?? basePlz);
+    const snappedCenter = snapPointIntoMunichPlz(nextCenter, targetPlz);
+    void preloadGreenPolygonsForPostalCode(targetPlz);
     await adapter
       .savePublicStateByHost({
         ...latestPublic,
@@ -592,6 +620,7 @@ export const App: React.FC = () => {
           radiusMeters: nextRadiusMeters,
           confirmedByUid: ownMember.uid,
           nowMs: adapter.getServerNow(),
+          postalCode: targetPlz,
         }),
       })
       .catch(() => {});
@@ -600,9 +629,13 @@ export const App: React.FC = () => {
   const handleMapCoordinateClick = (pt: LatLng) => {
     if (mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE') {
       if (!ownMember.isHost) return;
-      if (!isPointInOfficial81247(pt)) {
+      const inCurrentPlz = isPointInMunichPlz(pt, activePostalCode);
+      const detectedPlz = inCurrentPlz
+        ? activePostalCode
+        : findMunichPlzAtPoint(pt);
+      if (!detectedPlz) {
         setCirclePickError(
-          'Der Kreismittelpunkt muss innerhalb von 81247 liegen!'
+          `Der Kreismittelpunkt muss innerhalb von ${activePostalCode} (bzw. München) liegen!`
         );
         return;
       }
@@ -611,7 +644,7 @@ export const App: React.FC = () => {
         latestPublicStateRef.current?.playArea.circle?.radiusMeters ??
           DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
       );
-      void updateCirclePlayArea(pt, latestRadius);
+      void updateCirclePlayArea(pt, latestRadius, detectedPlz);
       return;
     }
     if (mapClickMode.kind === 'PICK_ANCHOR_POINT') {
@@ -907,23 +940,27 @@ export const App: React.FC = () => {
           <GameMap
             playArea={publicState.playArea.polygon}
             playAreaConfirmed={publicState.playArea.confirmed}
-            official81247Boundary={DEFAULT_PLAY_AREA_FEATURE}
+            official81247Boundary={activePlzBoundary}
             circlePlayAreaCenter={currentCircleCenter}
             onChangeCirclePlayAreaCenter={(pt) => {
               if (!ownMember.isHost) return;
-              const inside = isPointInOfficial81247(pt);
+              const inCurrentPlz = isPointInMunichPlz(pt, activePostalCode);
+              const detectedPlz = inCurrentPlz
+                ? activePostalCode
+                : findMunichPlzAtPoint(pt);
               setCirclePickError(
-                inside
+                detectedPlz
                   ? null
-                  : 'An die 81247-Grenze angepasst (Mittelpunkt bleibt in 81247).'
+                  : `An die ${activePostalCode}-Grenze angepasst (Mittelpunkt bleibt in ${activePostalCode}).`
               );
               const latestRadius = clampPlayAreaCircleRadius(
                 latestPublicStateRef.current?.playArea.circle?.radiusMeters ??
                   DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
               );
               void updateCirclePlayArea(
-                snapPointIntoOfficial81247(pt),
-                latestRadius
+                detectedPlz ? pt : snapPointIntoMunichPlz(pt, activePostalCode),
+                latestRadius,
+                detectedPlz ?? activePostalCode
               );
             }}
             ownFix={
@@ -1332,7 +1369,7 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            {/* 1b. Admin Kreis-Spielfeld-Editor direkt auf der Karte (inkl. 100m-Knob) */}
+            {/* 1b. Admin Kreis-Spielfeld-Editor direkt auf der Karte (inkl. PLZ-Wahl & 100m-Knob) */}
             {isEditingCircleOnMap && (
               <PhysicsBottomSheet
                 collapsed={circleEditorCollapsed}
@@ -1349,10 +1386,10 @@ export const App: React.FC = () => {
                       <Crosshair className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
                       <div className="min-w-0 text-left">
                         <span className="block truncate font-industrial text-sm text-[var(--text-main)]">
-                          Kreis-Spielfeld in 81247
+                          Kreis-Spielfeld in {activePostalCode}
                         </span>
                         <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
-                          Tippe in 81247 oder ziehe Pin M
+                          Tippe in {activePostalCode} ({activePlzEntry.district}) oder ziehe Pin M
                         </span>
                       </div>
                     </div>
@@ -1387,6 +1424,32 @@ export const App: React.FC = () => {
                   </div>
                 )}
 
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0 font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
+                    PLZ:
+                  </span>
+                  <select
+                    data-testid="map-circle-plz-select"
+                    value={activePostalCode}
+                    onChange={(e) => {
+                      const nextEntry = getMunichPlzEntry(e.target.value);
+                      setCirclePickError(null);
+                      void updateCirclePlayArea(
+                        nextEntry.center,
+                        currentCircleRadius,
+                        nextEntry.postalCode
+                      );
+                    }}
+                    className="cmf-input min-h-[38px] flex-1 px-2.5 py-1 font-tech text-xs font-bold"
+                  >
+                    {MUNICH_PLZ_LIST.map((entry) => (
+                      <option key={entry.postalCode} value={entry.postalCode}>
+                        {entry.postalCode} — {entry.district}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <HardwareKnob
                   label="KREIS-RADIUS (100M SCHRITTE)"
                   ariaLabel="Kreis-Radius auf der Karte in 100m Schritten"
@@ -1400,7 +1463,11 @@ export const App: React.FC = () => {
                     const latestCenter =
                       latestPublicStateRef.current?.playArea.circle?.center ??
                       currentCircleCenter;
-                    void updateCirclePlayArea(latestCenter, nextRadius);
+                    void updateCirclePlayArea(
+                      latestCenter,
+                      nextRadius,
+                      activePostalCode
+                    );
                   }}
                 />
 
@@ -1408,20 +1475,29 @@ export const App: React.FC = () => {
                   <button
                     type="button"
                     disabled={
-                      !geo.currentFix || !isPointInOfficial81247(geo.currentFix)
+                      !geo.currentFix ||
+                      (!isPointInMunichPlz(geo.currentFix, activePostalCode) &&
+                        !findMunichPlzAtPoint(geo.currentFix))
                     }
                     onClick={() => {
                       if (!geo.currentFix) return;
-                      if (!isPointInOfficial81247(geo.currentFix)) {
+                      const gpsPlz = isPointInMunichPlz(
+                        geo.currentFix,
+                        activePostalCode
+                      )
+                        ? activePostalCode
+                        : findMunichPlzAtPoint(geo.currentFix);
+                      if (!gpsPlz) {
                         setCirclePickError(
-                          'Dein GPS liegt aktuell außerhalb von 81247.'
+                          `Dein GPS liegt aktuell außerhalb von ${activePostalCode} (München).`
                         );
                         return;
                       }
                       setCirclePickError(null);
                       void updateCirclePlayArea(
                         { lat: geo.currentFix.lat, lng: geo.currentFix.lng },
-                        currentCircleRadius
+                        currentCircleRadius,
+                        gpsPlz
                       );
                     }}
                     className="cmf-btn-secondary font-tech min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase disabled:opacity-40"
@@ -1846,7 +1922,8 @@ export const App: React.FC = () => {
               if (publicState.playArea.shapeType !== 'CUSTOM_CIRCLE') {
                 void updateCirclePlayArea(
                   currentCircleCenter,
-                  currentCircleRadius
+                  currentCircleRadius,
+                  activePostalCode
                 );
               }
               setCirclePickError(null);
@@ -1854,8 +1931,7 @@ export const App: React.FC = () => {
               setActivePreviewQuestion(null);
               setMapClickMode({
                 kind: 'PICK_PLAY_AREA_CIRCLE',
-                label:
-                  'Tippe innerhalb von 81247 oder ziehe Pin M, um den Kreis zu platzieren',
+                label: `Tippe innerhalb von ${activePostalCode} oder ziehe Pin M, um den Kreis zu platzieren`,
               });
               setActiveTab('MAP');
             }}

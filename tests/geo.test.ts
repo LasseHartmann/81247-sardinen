@@ -6,12 +6,16 @@ import { safeFitGeoJsonBounds } from '../src/components/Map/GameMap';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
   buildCustomCirclePlayAreaState,
+  buildMunichPlzPlayAreaState,
+  buildMunichPlzPolygon,
   buildOfficial81247PlayAreaState,
   clampPlayAreaCircleRadius,
   createDefaultPublicState,
   DEFAULT_PLAY_AREA_FEATURE,
+  getMunichPlzEntry,
   isLegacyPlaceholderPlayArea,
   LEASH_RADIUS_METERS,
+  MUNICH_PLZ_LIST,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
 } from '../src/config/gameConfig';
@@ -21,13 +25,20 @@ import {
   FALLBACK_TRANSIT_STOPS_81247,
   getFallbackRecyclingLatLngs81247,
   getFallbackTransitLatLngs81247,
+  getRecyclingLatLngsForPlayArea,
+  getTransitLatLngsForPlayArea,
+  MUNICH_RECYCLING_LAT_LNGS,
+  MUNICH_TRANSIT_LAT_LNGS,
 } from '../src/config/fallbackOsm81247';
 import {
   buildPolygonFromVertices,
   extractPolygonVertices,
+  findMunichPlzAtPoint,
+  isPointInMunichPlz,
   isPointInOfficial81247,
   isPointInPlayArea,
   isValidPlayAreaPolygon,
+  snapPointIntoMunichPlz,
   snapPointIntoOfficial81247,
   validateManualAnchorSelection,
 } from '../src/geo/boundary';
@@ -564,5 +575,45 @@ describe('Geometrie-Kern (Haversine, 45°-Kegel-Wrap, Mittelsenkrechte, Donut-Ri
 
     map.remove();
     el.remove();
+  });
+
+  it('unterstützt alle 75 Münchner Postleitzahlen (PLZ) inklusive ÖPNV-Haltestellen & Wertstoffinseln', () => {
+    expect(MUNICH_PLZ_LIST).toHaveLength(75);
+    expect(MUNICH_TRANSIT_LAT_LNGS.length).toBeGreaterThan(4000);
+    expect(MUNICH_RECYCLING_LAT_LNGS.length).toBeGreaterThan(1100);
+
+    // Alle 75 PLZ-Polygone sind geometrisch gültig und enthalten ihren eigenen Referenz-Mittelpunkt
+    for (const entry of MUNICH_PLZ_LIST) {
+      const poly = buildMunichPlzPolygon(entry.postalCode);
+      expect(isValidPlayAreaPolygon(poly).valid).toBe(true);
+      expect(isPointInMunichPlz(entry.center, entry.postalCode)).toBe(true);
+    }
+
+    // Beispiel: 80331 München (Altstadt / Marienplatz) & 80802 (Schwabing)
+    const plz80331 = buildMunichPlzPlayAreaState('80331', 'host-uid', 1000);
+    expect(plz80331.postalCode).toBe('80331');
+    expect(plz80331.shapeType).toBe('OFFICIAL_81247');
+    expect(isLegacyPlaceholderPlayArea(plz80331)).toBe(false);
+
+    const marienplatz = getMunichPlzEntry('80331').center;
+    expect(findMunichPlzAtPoint(marienplatz)).toBe('80331');
+    expect(
+      getTransitLatLngsForPlayArea(plz80331.polygon).length
+    ).toBeGreaterThan(5);
+
+    const plz80802 = buildMunichPlzPlayAreaState('80802', 'host-uid', 2000);
+    expect(
+      getTransitLatLngsForPlayArea(plz80802.polygon).length
+    ).toBeGreaterThan(5);
+    expect(
+      getRecyclingLatLngsForPlayArea(plz80802.polygon).length
+    ).toBeGreaterThan(1);
+
+    // Punkt außerhalb Münchens wird sauber in die gewählte PLZ gezogen
+    const snappedTo80331 = snapPointIntoMunichPlz(
+      { lat: 48.0, lng: 11.2 },
+      '80331'
+    );
+    expect(isPointInMunichPlz(snappedTo80331, '80331')).toBe(true);
   });
 });

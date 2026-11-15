@@ -6,11 +6,9 @@ import type {
   Polygon,
 } from 'geojson';
 import {
-  FALLBACK_GREEN_POLYGONS_81247,
-  FALLBACK_RECYCLING_STATIONS_81247,
-  FALLBACK_TRANSIT_STOPS_81247,
-  getFallbackRecyclingLatLngs81247,
-  getFallbackTransitLatLngs81247,
+  getLoadedGreenPolygonsForPlayArea,
+  getRecyclingLatLngsForPlayArea,
+  getTransitLatLngsForPlayArea,
 } from '../config/fallbackOsm81247';
 import type {
   ClueOverlayStyle,
@@ -609,19 +607,19 @@ export function evaluateDeterministicQuestion(
     case 'OSM_TRANSIT':
       return evaluateOsmTransit(
         anchorPoint,
-        osmData?.transitStops ?? getFallbackTransitLatLngs81247(),
+        osmData?.transitStops ?? getTransitLatLngsForPlayArea(playArea),
         playArea
       );
     case 'OSM_RECYCLING':
       return evaluateOsmRecycling(
         anchorPoint,
-        osmData?.recyclingPoints ?? getFallbackRecyclingLatLngs81247(),
+        osmData?.recyclingPoints ?? getRecyclingLatLngsForPlayArea(playArea),
         playArea
       );
     case 'OSM_GREEN':
       return evaluateOsmGreen(
         anchorPoint,
-        osmData?.greenPolygons ?? FALLBACK_GREEN_POLYGONS_81247,
+        osmData?.greenPolygons ?? getLoadedGreenPolygonsForPlayArea(playArea),
         playArea
       );
     case 'RADIUS_RADAR':
@@ -723,8 +721,9 @@ export function buildQuestionPreviewGeoJson(
     }
 
     case 'OSM_TRANSIT': {
+      const transitStops = getTransitLatLngsForPlayArea(playArea);
       const circles: Feature<Polygon | MultiPolygon>[] = [];
-      for (const stop of FALLBACK_TRANSIT_STOPS_81247) {
+      for (const stop of transitStops) {
         circles.push(
           turf.circle([stop.lng, stop.lat], 150, {
             units: 'meters',
@@ -753,8 +752,9 @@ export function buildQuestionPreviewGeoJson(
     }
 
     case 'OSM_RECYCLING': {
+      const recyclingPts = getRecyclingLatLngsForPlayArea(playArea);
       const circles: Feature<Polygon | MultiPolygon>[] = [];
-      for (const pt of FALLBACK_RECYCLING_STATIONS_81247) {
+      for (const pt of recyclingPts) {
         circles.push(
           turf.circle([pt.lng, pt.lat], 150, {
             units: 'meters',
@@ -783,8 +783,9 @@ export function buildQuestionPreviewGeoJson(
     }
 
     case 'OSM_GREEN': {
+      const greenPolygons = getLoadedGreenPolygonsForPlayArea(playArea);
       const features: Feature[] = [];
-      for (const poly of FALLBACK_GREEN_POLYGONS_81247) {
+      for (const poly of greenPolygons) {
         const clipped = safeClipWithPlayArea(poly, playArea);
         if (clipped) {
           features.push(clipped);

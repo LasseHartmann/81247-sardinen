@@ -18,6 +18,7 @@ import {
   buildCustomCirclePlayAreaState,
   buildManhuntRadarSchedule,
   buildManhuntRadarScheduleForHidingMs,
+  buildMunichPlzPlayAreaState,
   buildOfficial81247PlayAreaState,
   buildRadarScheduleForHidingMinutes,
   buildRadarScheduleForHidingMs,
@@ -30,14 +31,21 @@ import {
   DEFAULT_MANHUNT_SHRINK_MINUTES,
   DEFAULT_PLAY_AREA_CIRCLE_CENTER,
   DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS,
+  DEFAULT_POSTAL_CODE,
   getManhuntPingStatusAtElapsedMs,
+  getMunichPlzEntry,
   getQuestionPenaltyMs,
+  MUNICH_PLZ_LIST,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
   PLAY_AREA_CIRCLE_STEP_METERS,
   TEAM_PALETTE,
 } from '../../config/gameConfig';
-import { snapPointIntoOfficial81247 } from '../../geo/boundary';
+import { preloadGreenPolygonsForPostalCode } from '../../config/fallbackOsm81247';
+import {
+  isPointInMunichPlz,
+  snapPointIntoMunichPlz,
+} from '../../geo/boundary';
 import { getDueRadarCircle, getPhaseForElapsedMs } from '../../geo/radar';
 import {
   lockHiderAnchorAndGenerateRadar,
@@ -108,18 +116,58 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   onLeaveAndLockConsole,
 }) => {
   const isCirclePlayArea = publicState.playArea.shapeType === 'CUSTOM_CIRCLE';
+  const activePostalCode =
+    publicState.playArea.postalCode ?? DEFAULT_POSTAL_CODE;
+  const activePlzEntry = getMunichPlzEntry(activePostalCode);
+  const [plzSearchQuery, setPlzSearchQuery] = useState('');
+
+  const filteredMunichPlzList = MUNICH_PLZ_LIST.filter((entry) => {
+    const q = plzSearchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      entry.postalCode.includes(q) ||
+      entry.district.toLowerCase().includes(q) ||
+      entry.name.toLowerCase().includes(q) ||
+      entry.postalCode === activePostalCode
+    );
+  });
+
   const circleCenter =
-    publicState.playArea.circle?.center ?? DEFAULT_PLAY_AREA_CIRCLE_CENTER;
+    publicState.playArea.circle?.center ??
+    activePlzEntry.center ??
+    DEFAULT_PLAY_AREA_CIRCLE_CENTER;
   const circleRadiusMeters = clampPlayAreaCircleRadius(
     publicState.playArea.circle?.radiusMeters ??
       DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
   );
 
-  const handleSelectOfficial81247Area = () => {
+  const handleSelectPostalCode = (nextPostalCode: string) => {
+    const nextEntry = getMunichPlzEntry(nextPostalCode);
+    void preloadGreenPolygonsForPostalCode(nextEntry.postalCode);
+    if (isCirclePlayArea) {
+      const nextCenter = isPointInMunichPlz(circleCenter, nextEntry.postalCode)
+        ? circleCenter
+        : nextEntry.center;
+      void adapter
+        .savePublicStateByHost({
+          ...publicState,
+          playArea: buildCustomCirclePlayAreaState({
+            center: nextCenter,
+            radiusMeters: circleRadiusMeters,
+            confirmedByUid: ownMember.uid,
+            nowMs: adapter.getServerNow(),
+            postalCode: nextEntry.postalCode,
+          }),
+        })
+        .catch(() => {});
+      return;
+    }
+
     void adapter
       .savePublicStateByHost({
         ...publicState,
-        playArea: buildOfficial81247PlayAreaState(
+        playArea: buildMunichPlzPlayAreaState(
+          nextEntry.postalCode,
           ownMember.uid,
           adapter.getServerNow()
         ),
@@ -127,8 +175,25 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       .catch(() => {});
   };
 
+  const handleSelectOfficial81247Area = () => {
+    void preloadGreenPolygonsForPostalCode(activePostalCode);
+    void adapter
+      .savePublicStateByHost({
+        ...publicState,
+        playArea: buildOfficial81247PlayAreaState(
+          ownMember.uid,
+          adapter.getServerNow(),
+          activePostalCode
+        ),
+      })
+      .catch(() => {});
+  };
+
   const handleSelectOrResizeCircleArea = (nextRadiusMeters: number) => {
-    const snappedCenter = snapPointIntoOfficial81247(circleCenter);
+    const snappedCenter = isPointInMunichPlz(circleCenter, activePostalCode)
+      ? circleCenter
+      : snapPointIntoMunichPlz(activePlzEntry.center, activePostalCode);
+    void preloadGreenPolygonsForPostalCode(activePostalCode);
     void adapter
       .savePublicStateByHost({
         ...publicState,
@@ -137,6 +202,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           radiusMeters: nextRadiusMeters,
           confirmedByUid: ownMember.uid,
           nowMs: adapter.getServerNow(),
+          postalCode: activePostalCode,
         }),
       })
       .catch(() => {});
@@ -1149,15 +1215,15 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           </div>
         </section>
 
-        {/* 2b. Spielfeld / Kartengebiet (Ganzes 81247 oder frei platzierbarer Kreis mit 100m-Knob) */}
+        {/* 2b. Spielfeld / Kartengebiet (Alle 75 Münchner PLZ oder frei platzierbarer Kreis mit 100m-Knob) */}
         <section className="cmf-module p-4 sm:p-5 space-y-3.5">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
             <div>
               <h3 className="font-industrial text-base text-[var(--text-main)]">
-                Spielfeld / Kartengebiet
+                Spielfeld / Kartengebiet (München PLZ)
               </h3>
               <p className="text-xs text-[var(--text-muted)]">
-                Wechsle zwischen der kompletten 81247-Grenze und einem frei innerhalb von 81247 platzierbaren Kreis.
+                Wähle jede beliebige Münchner Postleitzahl ({MUNICH_PLZ_LIST.length} PLZ-Gebiete inkl. Haltestellen, Wertstoffinseln & Grünflächen) oder platziere einen Kreis in 100m-Schritten.
               </p>
             </div>
             <span
@@ -1166,9 +1232,46 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               }`}
             >
               {isCirclePlayArea
-                ? `KREIS // R=${circleRadiusMeters}M`
-                : 'GANZES 81247'}
+                ? `${activePostalCode} KREIS // R=${circleRadiusMeters}M`
+                : `GANZES ${activePostalCode}`}
             </span>
+          </div>
+
+          <div className="cmf-well p-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label
+                htmlFor="playarea-plz-select"
+                className="font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
+              >
+                Postleitzahl (PLZ) in München ({MUNICH_PLZ_LIST.length} Gebiete)
+              </label>
+              <span className="font-tech text-[11px] font-bold text-[var(--cmf-teal)]">
+                AKTIV: {activePlzEntry.postalCode} — {activePlzEntry.district}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2">
+              <input
+                type="text"
+                data-testid="playarea-plz-search"
+                value={plzSearchQuery}
+                onChange={(e) => setPlzSearchQuery(e.target.value)}
+                placeholder="PLZ oder Stadtteil filtern…"
+                className="cmf-input min-h-[42px] px-3 py-1.5 font-tech text-xs font-semibold"
+              />
+              <select
+                id="playarea-plz-select"
+                data-testid="playarea-plz-select"
+                value={activePostalCode}
+                onChange={(e) => handleSelectPostalCode(e.target.value)}
+                className="cmf-input min-h-[42px] w-full px-3 py-1.5 font-tech text-xs font-bold"
+              >
+                {filteredMunichPlzList.map((entry) => (
+                  <option key={entry.postalCode} value={entry.postalCode}>
+                    {entry.postalCode} — {entry.district}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1183,10 +1286,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               }`}
             >
               <span className="font-dot text-xs font-bold uppercase">
-                Ganzes 81247-Gebiet
+                Ganzes {activePostalCode}-Gebiet
               </span>
               <span className="text-[11px] leading-snug opacity-80">
-                Offizielle PLZ-Grenze Obermenzing / Blutenburg / Pipping
+                Offizielle PLZ-Grenze ({activePlzEntry.district})
               </span>
             </button>
 
@@ -1201,10 +1304,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               }`}
             >
               <span className="font-dot text-xs font-bold uppercase">
-                Kreis in 81247
+                Kreis in {activePostalCode}
               </span>
               <span className="text-[11px] leading-snug opacity-80">
-                Überall innerhalb von 81247 platzierbar • Größe in 100m-Schritten
+                Überall in {activePostalCode} (oder ganz München) platzierbar • 100m-Schritte
               </span>
             </button>
           </div>
@@ -1229,7 +1332,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 <div className="cmf-well flex flex-col justify-between gap-3 p-3.5">
                   <div className="space-y-1.5">
                     <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                      AKTIVER KREIS IN 81247
+                      AKTIVER KREIS IN {activePostalCode} ({activePlzEntry.district})
                     </span>
                     <div className="cmf-oled flex items-center justify-between gap-2 px-3 py-2">
                       <span className="font-dot text-base text-[#F8FAFC]">
@@ -1244,7 +1347,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                       {circleCenter.lng.toFixed(5)}]
                     </p>
                     <p className="text-xs text-[var(--text-muted)]">
-                      Tippe auf den Button unten, um den Mittelpunkt direkt auf der 81247-Karte anzutippen oder per Pin [M] zu ziehen.
+                      Tippe auf den Button unten, um den Mittelpunkt direkt auf der Karte ({activePostalCode}) anzutippen oder per Pin [M] zu ziehen.
                     </p>
                   </div>
 

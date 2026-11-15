@@ -197,6 +197,7 @@ export interface PlayAreaState {
   confirmedAt: number | null;
   confirmedByUid: string | null;
   name: string;
+  postalCode?: string;
   shapeType?: PlayAreaShapeType;
   circle?: PlayAreaCircleConfig | null;
 }

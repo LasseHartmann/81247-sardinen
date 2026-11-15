@@ -58,7 +58,8 @@ export interface SynchronizedGameState {
  */
 export function useGameState(
   adapter: DatabaseAdapter,
-  ownMember: MemberRecord | null
+  ownMember: MemberRecord | null,
+  activeRoomCode: string | null = adapter.getRoomCode()
 ): SynchronizedGameState {
   const [connected, setConnected] = useState(true);
   const [rawPublicState, setRawPublicState] = useState<PublicGameState | null>(
@@ -102,7 +103,24 @@ export function useGameState(
 
   // Öffentlichen Status, Mitglieder, Präsenz, Controller-Lease und Rangliste abonnieren
   useEffect(() => {
-    if (!ownMember?.enabled) return;
+    if (!activeRoomCode || !ownMember?.enabled) {
+      setRawPublicState(null);
+      setControllerLease(null);
+      setMembers({});
+      setJoinRequests({});
+      setPresence({});
+      setTeamsPublic({});
+      setLeaderboard({});
+      return;
+    }
+
+    adapter.setRoomCode(activeRoomCode);
+    setRawPublicState(null);
+    setControllerLease(null);
+    setMembers({});
+    setPresence({});
+    setTeamsPublic({});
+    setLeaderboard({});
 
     const unsubs: UnsubscribeFn[] = [
       adapter.subscribePublicState((st) => {
@@ -150,7 +168,7 @@ export function useGameState(
     return () => {
       for (const fn of unsubs) fn();
     };
-  }, [adapter, ownMember?.enabled, ownMember?.isHost]);
+  }, [adapter, activeRoomCode, ownMember?.enabled, ownMember?.isHost]);
 
   const publicState = useMemo<PublicGameState | null>(() => {
     if (!rawPublicState) return null;
@@ -214,10 +232,11 @@ export function useGameState(
   // Hider-Geheimnisse NUR abonnieren, wenn autorisiert (Host, Hider oder JOINED_SARDINES)
   const seededMissingSecretsRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!canReadHiderSecrets) {
+    if (!activeRoomCode || !canReadHiderSecrets) {
       setHiderPrivate(null);
       return;
     }
+    adapter.setRoomCode(activeRoomCode);
     return adapter.subscribeHiderPrivate((priv) => {
       setHiderPrivate(priv);
       const canWriteSecrets = Boolean(
@@ -228,7 +247,7 @@ export function useGameState(
           /^[0-9a-f]{32}$/i.test(priv.qrSecret) &&
           priv?.shortCode?.length === 6
       );
-      const sessionKey = publicState?.sessionId ?? 'init';
+      const sessionKey = `${activeRoomCode}_${publicState?.sessionId ?? 'init'}`;
       if (
         canWriteSecrets &&
         !hasValidRandomCode &&
@@ -242,6 +261,7 @@ export function useGameState(
     });
   }, [
     adapter,
+    activeRoomCode,
     canReadHiderSecrets,
     ownMember?.enabled,
     ownMember?.isHost,
@@ -321,7 +341,14 @@ export function useGameState(
 
   // Isolierte Team-Locations, Clues, Requests & CatchRequests rollenbasiert abonnieren
   useEffect(() => {
-    if (!ownMember?.enabled) return;
+    if (!activeRoomCode || !ownMember?.enabled) {
+      setTeamLocations({});
+      setRequestsByTeam({});
+      setCluesByTeam({});
+      setCatchRequests({});
+      return;
+    }
+    adapter.setRoomCode(activeRoomCode);
     const unsubs: UnsubscribeFn[] = [];
     const isControllerRole = Boolean(
       ownMember.isHost || ownMember.side === 'HIDER'
@@ -365,6 +392,7 @@ export function useGameState(
     };
   }, [
     adapter,
+    activeRoomCode,
     ownMember?.enabled,
     ownMember?.isHost,
     ownMember?.side,

@@ -43,7 +43,10 @@ import {
 } from '../src/services/databaseAdapter';
 import { evaluateLocationThrottle } from '../src/services/locationService';
 import {
+  generateRoomCode,
   generateSessionSecrets,
+  isValidRoomCode,
+  normalizeRoomCode,
   serializeQrPayload,
   UNAMBIGUOUS_ALPHABET,
   verifyCatchSubmission,
@@ -829,5 +832,161 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(getPlayerGreeting({ playerId: 'eric', name: 'Eric' })).toBe(
       'Hallo Eric!'
     );
+  });
+
+  it('unterstützt eigenes Spiel-Hosting per 6-Zeichen-Code, isolierte Raum-Einstellungen (Zeiten/Grenzen) & Late-Join-Teamwahl', async () => {
+    // 1. Raum-Code-Generierung & Link-/Code-Normalisierung
+    for (let i = 0; i < 50; i++) {
+      const code = generateRoomCode(6);
+      expect(code).toHaveLength(6);
+      expect(code).not.toMatch(/[0O1I]/);
+      expect(isValidRoomCode(code)).toBe(true);
+    }
+    expect(normalizeRoomCode('  k7m-4p2 ')).toBe('K7M4P2');
+    expect(
+      normalizeRoomCode('https://81247-sardinen.web.app/?room=k7m4p2&foo=1')
+    ).toBe('K7M4P2');
+    expect(isValidRoomCode('AB')).toBe(false);
+    expect(isValidRoomCode('81247')).toBe(true);
+
+    const t0 = 1_700_100_000_000;
+    const store = createDemoStore({ inMemoryOnly: true, initialNowMs: t0 });
+
+    // Registriere zwei normale Spieler (Anna = Host, Ben = Mitspieler / Spät-Beitretender)
+    const { member: annaAcct } = await store.adapter.registerAccount({
+      name: 'Anna',
+      password: 'Password123',
+    });
+    const { member: benAcct } = await store.adapter.registerAccount({
+      name: 'Ben',
+      password: 'Password123',
+    });
+    expect(annaAcct.isHost).toBe(false);
+    expect(benAcct.isHost).toBe(false);
+
+    // 2. Anna hostet ein eigenes Spiel -> erhält 6-stelligen Raum-Code & isHost: true in ihrem Raum
+    await store.adapter.loginWithAccount({
+      name: 'Anna',
+      password: 'Password123',
+    });
+    const hosted = await store.adapter.createHostedRoom({
+      hostPlayerId: 'anna',
+      hostName: 'Anna',
+      avatar: '🦊',
+    });
+
+    expect(hosted.roomCode).toHaveLength(6);
+    expect(hosted.roomCode).not.toBe('81247');
+    expect(store.adapter.getRoomCode()).toBe(hosted.roomCode);
+    expect(hosted.member.playerId).toBe('anna');
+    expect(hosted.member.isHost).toBe(true);
+    expect(hosted.member.side).toBe('UNASSIGNED');
+    expect(hosted.publicState.roomCode).toBe(hosted.roomCode);
+    expect(hosted.publicState.hostPlayerId).toBe('anna');
+    expect(hosted.publicState.hostName).toBe('Anna');
+    expect(hosted.publicState.status).toBe('LOBBY');
+
+    // Host passt Grenzen (Ganz München) & Zeiten (25 Min Verstecken, 60 Min Suche) an und startet das Spiel
+    const customSchedule = buildRadarScheduleForHidingMinutes(25, 60);
+    const customArea = buildFullMunichPlayAreaState(hosted.member.uid, t0 + 1_000);
+    const runningHostedState = {
+      ...hosted.publicState,
+      status: 'RUNNING' as const,
+      currentPhase: 'OPEN_SEARCH' as const,
+      gameStartTimestamp: t0 + 2_000,
+      radarSchedule: customSchedule,
+      playArea: customArea,
+      activeTeamIds: ['team-1'],
+    };
+    await store.adapter.savePublicStateByHost(runningHostedState);
+
+    // Prüfe Isolation: Raum 81247 ist weiterhin unverändert in LOBBY!
+    expect(store.getSnapshot().state.public.status).toBe('LOBBY');
+    expect(
+      store.getSnapshot().rooms?.[hosted.roomCode]?.state.public.status
+    ).toBe('RUNNING');
+    expect(
+      store.getSnapshot().rooms?.[hosted.roomCode]?.state.public.playArea
+        ?.postalCodes
+    ).toHaveLength(75);
+
+    // 3. Unbekannter Spiel-Code wird sauber abgelehnt
+    await store.adapter.loginWithAccount({
+      name: 'Ben',
+      password: 'Password123',
+    });
+    await expect(
+      store.adapter.joinRoomByCode({
+        roomCode: 'ZZZZZZ',
+        playerId: 'ben',
+        playerName: 'Ben',
+      })
+    ).rejects.toThrow(/Kein Spiel mit dem Code/i);
+
+    // 4. Ben tritt Annas bereits laufendem Spiel per Code verspätet bei -> startet als UNASSIGNED (muss erst Team wählen!) und ohne Host-Rechte
+    const benJoined = await store.adapter.joinRoomByCode({
+      roomCode: hosted.roomCode.toLowerCase(),
+      playerId: 'ben',
+      playerName: 'Ben',
+      avatar: '🐻',
+    });
+    expect(benJoined.roomCode).toBe(hosted.roomCode);
+    expect(benJoined.member.playerId).toBe('ben');
+    expect(benJoined.member.isHost).toBe(false);
+    expect(benJoined.member.side).toBe('UNASSIGNED');
+    expect(benJoined.member.teamId).toBeNull();
+    expect(benJoined.publicState.status).toBe('RUNNING');
+
+    // Ben sieht im Raum alle Mitglieder und entscheidet sich beim Late-Join für Team 5 -> addActiveTeamIdIfRunning ergänzt team-5 ohne Duplikate
+    await store.adapter.savePlayerAssignment('ben', 'SEEKER', 'team-5');
+    await store.adapter.updateMember(benJoined.member.uid, {
+      ...benJoined.member,
+      side: 'SEEKER',
+      teamId: 'team-5',
+      updatedAt: t0 + 5_000,
+    });
+    await store.adapter.addActiveTeamIdIfRunning('team-5');
+    await store.adapter.addActiveTeamIdIfRunning('team-1'); // bereits enthalten -> kein Duplikat
+
+    const hostedSliceAfterLateJoin =
+      store.getSnapshot().rooms?.[hosted.roomCode];
+    expect(hostedSliceAfterLateJoin?.state.public.activeTeamIds).toEqual([
+      'team-1',
+      'team-5',
+    ]);
+
+    // 5. Wenn Anna erneut beitritt, behält sie ihre Host-Rechte, und ein Runden-Reset bewahrt roomCode & hostPlayerId
+    await store.adapter.loginWithAccount({
+      name: 'Anna',
+      password: 'Password123',
+    });
+    const annaRejoined = await store.adapter.joinRoomByCode({
+      roomCode: hosted.roomCode,
+      playerId: 'anna',
+      playerName: 'Anna',
+    });
+    expect(annaRejoined.member.isHost).toBe(true);
+
+    const currentTeams = hostedSliceAfterLateJoin!.teams;
+    const resetTeams = Object.fromEntries(
+      Object.entries(currentTeams).map(([id, bundle]) => [id, bundle.public])
+    );
+    await store.adapter.resetRoundByHost(
+      {
+        ...hosted.publicState,
+        sessionId: 'sess_next',
+        status: 'LOBBY',
+        currentPhase: 'LOBBY',
+      },
+      resetTeams,
+      hostedSliceAfterLateJoin!.state.hiderPrivate
+    );
+
+    const afterResetPublic =
+      store.getSnapshot().rooms?.[hosted.roomCode]?.state.public;
+    expect(afterResetPublic?.status).toBe('LOBBY');
+    expect(afterResetPublic?.roomCode).toBe(hosted.roomCode);
+    expect(afterResetPublic?.hostPlayerId).toBe('anna');
+    expect(afterResetPublic?.hostName).toBe('Anna');
   });
 });

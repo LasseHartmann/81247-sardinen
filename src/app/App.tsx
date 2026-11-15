@@ -93,6 +93,8 @@ import { LeashWarningBanner } from '../components/HUD/LeashWarningBanner';
 import { TopHud } from '../components/HUD/TopHud';
 import { LeaderboardView } from '../components/Leaderboard/LeaderboardView';
 import { HostControlPanel } from '../components/Lobby/HostControlPanel';
+import { GameHubScreen } from '../components/Lobby/GameHubScreen';
+import { LateJoinTeamPicker } from '../components/Lobby/LateJoinTeamPicker';
 import {
   LobbyStatusCard,
   LoginScreen,
@@ -113,6 +115,15 @@ export const App: React.FC = () => {
     authUser,
     authLoading,
     isSessionUnlocked,
+    accountSession,
+    activeRoomCode,
+    recentRooms,
+    roomBusy,
+    roomError,
+    clearRoomError,
+    hostNewGame,
+    joinGameByCode,
+    leaveCurrentRoom,
     ownMember,
     memberLoading,
     seatConflictError,
@@ -137,7 +148,7 @@ export const App: React.FC = () => {
     saveDevicePreferences(next);
   };
 
-  const gameState = useGameState(adapter, ownMember);
+  const gameState = useGameState(adapter, ownMember, activeRoomCode);
   const { publicState, hiderPrivate } = gameState;
 
   const timer = useGameTimer(adapter, publicState);
@@ -231,6 +242,12 @@ export const App: React.FC = () => {
       }
     }
   }, [publicState?.gameMode, activeTab, activePreviewQuestion]);
+
+  useEffect(() => {
+    if (activeTab === 'HOST' && ownMember && !ownMember.isHost) {
+      setActiveTab('MAP');
+    }
+  }, [activeTab, ownMember]);
 
   const activePostalCodes = getActivePostalCodes(publicState?.playArea);
   const activePostalCode = activePostalCodes[0];
@@ -563,7 +580,10 @@ export const App: React.FC = () => {
   ]);
 
   // 1. Lade- & Authentifizierungs-Weichen
-  if (authLoading || (isSessionUnlocked && memberLoading)) {
+  if (
+    authLoading ||
+    (isSessionUnlocked && Boolean(activeRoomCode) && memberLoading)
+  ) {
     return (
       <div className="cmf-drafting-bg flex h-[100dvh] items-center justify-center p-4">
         <div className="cmf-oled flex items-center gap-3 px-4 py-3 shadow-xl">
@@ -581,7 +601,7 @@ export const App: React.FC = () => {
     );
   }
 
-  if (!authUser || !isSessionUnlocked) {
+  if (!authUser || !isSessionUnlocked || !accountSession) {
     return (
       <LoginScreen
         firebaseAvailable={firebaseAvailable}
@@ -589,6 +609,39 @@ export const App: React.FC = () => {
         onClearError={clearLoginError}
         onLogin={loginWithCredentials}
         onRegister={registerWithCredentials}
+      />
+    );
+  }
+
+  const handleLeaveRoom = async () => {
+    setActiveTab('MAP');
+    setMapClickMode({ kind: 'NONE' });
+    setActivePreviewQuestion(null);
+    await leaveCurrentRoom();
+  };
+
+  if (!activeRoomCode) {
+    return (
+      <GameHubScreen
+        account={accountSession}
+        firebaseAvailable={firebaseAvailable}
+        recentRooms={recentRooms}
+        busy={roomBusy}
+        roomError={roomError}
+        onClearError={clearRoomError}
+        onHostNewGame={async () => {
+          const createdCode = await hostNewGame();
+          if (createdCode) {
+            setActiveTab('HOST');
+          }
+        }}
+        onJoinByCode={async (code) => {
+          const ok = await joinGameByCode(code);
+          if (ok) {
+            setActiveTab('MAP');
+          }
+        }}
+        onLogout={exitOrLogout}
       />
     );
   }
@@ -654,13 +707,22 @@ export const App: React.FC = () => {
                 ? 'Der Spielraum wird automatisch vorbereitet ...'
                 : 'Bitte melde dich einmal mit dem Konto „admin“ an, um den Spielraum initial zu starten.'}
             </p>
-            <button
-              type="button"
-              onClick={() => void exitOrLogout()}
-              className="cmf-btn-secondary font-tech mt-2 w-full py-2.5 text-xs font-bold uppercase"
-            >
-              Abmelden / Konto wechseln
-            </button>
+            <div className="mt-2 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void handleLeaveRoom()}
+                className="cmf-btn-primary font-dot w-full py-2.5 text-xs font-bold uppercase"
+              >
+                Anderen Spielraum wählen
+              </button>
+              <button
+                type="button"
+                onClick={() => void exitOrLogout()}
+                className="cmf-btn-secondary font-tech w-full py-2.5 text-xs font-bold uppercase"
+              >
+                Abmelden / Konto wechseln
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -669,10 +731,13 @@ export const App: React.FC = () => {
 
   const isJoinedSardines = ownTeam?.status === 'JOINED_SARDINES';
   const isOverviewAccount = isOverviewMember(ownMember);
+  const isPureHostSpectator = Boolean(
+    ownMember.isHost && ownMember.side === 'UNASSIGNED'
+  );
   const isSardineDashboardView =
     ownMember.side === 'HIDER' || isJoinedSardines;
   const isOverviewOrSardineDashboard =
-    isSardineDashboardView || isOverviewAccount;
+    isSardineDashboardView || isOverviewAccount || isPureHostSpectator;
   const isActiveSeeker = Boolean(
     ownMember.side === 'SEEKER' && ownTeam && !isJoinedSardines
   );
@@ -680,7 +745,16 @@ export const App: React.FC = () => {
   const showHostTab = Boolean(ownMember.isHost);
 
   const activeRoundTeamIds =
-    publicState.status === 'LOBBY' ? undefined : publicState.activeTeamIds;
+    publicState.status === 'LOBBY'
+      ? undefined
+      : Array.from(
+          new Set([
+            ...(publicState.activeTeamIds ?? []),
+            ...Object.values(gameState.teamsPublic)
+              .filter((t) => t.memberPlayerIds.length > 0)
+              .map((t) => t.id),
+          ])
+        );
 
   // Alle aktuellen Mitglieder der Verstecker-Gruppe (originale Hider + komplette Teams, die den Code gescannt haben)
   const sardineGroupMemberNames = deduplicateEnabledMembers(
@@ -1085,7 +1159,34 @@ export const App: React.FC = () => {
           .catch(() => {});
       }
     }
+
+    if (publicState.status !== 'LOBBY' && side === 'SEEKER' && teamId) {
+      await adapter.addActiveTeamIdIfRunning(teamId);
+    }
   };
+
+  // Pflicht-Teamauswahl für Nachzügler, die einem bereits laufenden Spiel beitreten
+  const mustPickTeamForRunningGame = Boolean(
+    (publicState.status === 'RUNNING' || publicState.status === 'PAUSED') &&
+      !isOverviewAccount &&
+      !ownMember.isHost &&
+      ownMember.side === 'UNASSIGNED'
+  );
+
+  if (mustPickTeamForRunningGame) {
+    return (
+      <LateJoinTeamPicker
+        publicState={publicState}
+        ownMember={ownMember}
+        members={gameState.members}
+        presence={gameState.presence}
+        teamsPublic={gameState.teamsPublic}
+        onSelectOwnRole={handleSelectOwnRole}
+        onLeaveRoom={handleLeaveRoom}
+        onLogout={exitOrLogout}
+      />
+    );
+  }
 
   const handleSelectAvatar = async (nextAvatar: string) => {
     const clean = nextAvatar.trim();
@@ -1888,6 +1989,7 @@ export const App: React.FC = () => {
                 onOpenHostTab={
                   showHostTab ? () => setActiveTab('HOST') : undefined
                 }
+                onLeaveRoom={handleLeaveRoom}
                 onLogout={exitOrLogout}
               />
             )}
@@ -2271,6 +2373,7 @@ export const App: React.FC = () => {
             onSelectAvatar={handleSelectAvatar}
             onRetryGps={geo.retryGpsPermission}
             onSelectOwnRole={handleSelectOwnRole}
+            onLeaveRoom={handleLeaveRoom}
             onLogout={async () => {
               setActiveTab('MAP');
               await exitOrLogout();
@@ -2293,6 +2396,8 @@ export const App: React.FC = () => {
             cluesByTeam={gameState.cluesByTeam}
             requestsByTeam={gameState.requestsByTeam}
             onNavigateToMap={() => setActiveTab('MAP')}
+            onSelectOwnRole={handleSelectOwnRole}
+            onLeaveRoom={handleLeaveRoom}
             onOpenCircleMapEditor={() => {
               if (publicState.playArea.shapeType !== 'CUSTOM_CIRCLE') {
                 void updateCirclePlayArea(
@@ -2337,6 +2442,7 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         showHostTab={showHostTab}
+        hostTabLabel={isOverviewAccount ? 'Admin' : 'Host'}
         hideQuestionsTab={isManhunt}
         hasActiveEmergency={hasActiveEmergency}
         pendingQuestionsBadgeCount={isManhunt ? 0 : openHiderMediaRequests.length}

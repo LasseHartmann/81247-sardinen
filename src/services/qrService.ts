@@ -29,6 +29,49 @@ export function generateRandomId(prefix = 'id'): string {
 }
 
 /**
+ * Erzeugt einen verwechslungsfreien Spielraum-Code (Standard: 6 Zeichen aus UNAMBIGUOUS_ALPHABET ohne 0/O/1/I).
+ */
+export function generateRoomCode(length = 6): string {
+  const safeLen = Math.max(4, Math.min(12, Math.floor(length)));
+  const codeBytes = getCryptoBytes(safeLen);
+  let code = '';
+  for (let i = 0; i < safeLen; i++) {
+    code += UNAMBIGUOUS_ALPHABET[codeBytes[i] % UNAMBIGUOUS_ALPHABET.length];
+  }
+  return code;
+}
+
+/**
+ * Normalisiert einen eingegebenen Spiel-Code (oder kompletten Einladungs-Link mit ?room=CODE)
+ * zu Großbuchstaben/Ziffern ohne Leerzeichen oder Bindestriche.
+ */
+export function normalizeRoomCode(rawInput: string): string {
+  const trimmed = rawInput.trim();
+  if (!trimmed) return '';
+  if (trimmed.includes('room=')) {
+    try {
+      const qIdx = trimmed.indexOf('?');
+      const search = qIdx >= 0 ? trimmed.slice(qIdx) : trimmed;
+      const params = new URLSearchParams(search);
+      const fromParam = params.get('room');
+      if (fromParam) {
+        return fromParam
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '');
+      }
+    } catch {
+      // Fallback auf reguläre Bereinigung
+    }
+  }
+  return trimmed.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+export function isValidRoomCode(normalizedCode: string): boolean {
+  return /^[A-Z0-9]{4,12}$/.test(normalizedCode);
+}
+
+/**
  * Generiert für eine Spielrunde ein kryptographisches 128-Bit-Secret (Hex)
  * sowie einen 6-stelligen gut ablesbaren Ersatzcode ohne 0/O/1/I.
  */

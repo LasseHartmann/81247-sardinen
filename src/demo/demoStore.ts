@@ -1,11 +1,13 @@
 import {
   createDefaultPublicState,
   createDefaultTeams,
+  GAME_ID,
   MEDIA_AUTO_EXPIRE_MS,
   MEDIA_POST_DOWNLOAD_EXPIRE_MS,
 } from '../config/gameConfig';
 import {
   computeAccountPasswordHash,
+  isAdminAccountId,
   validateAccountPassword,
   validateAndNormalizeAccountName,
   verifyAccountPasswordHash,
@@ -18,7 +20,13 @@ import {
   type DatabaseAdapter,
   type UnsubscribeFn,
 } from '../services/databaseAdapter';
-import { generateRandomId, generateSessionSecrets } from '../services/qrService';
+import {
+  generateRandomId,
+  generateRoomCode,
+  generateSessionSecrets,
+  isValidRoomCode,
+  normalizeRoomCode,
+} from '../services/qrService';
 import type {
   AccountPublicRecord,
   AuthUserSummary,
@@ -43,11 +51,7 @@ const DEMO_STORAGE_KEY = 'sardinen_81247_demo_tree_v4';
 const DEMO_ROLE_SESSION_KEY = 'sardinen_81247_demo_role_v4';
 const DEMO_BROADCAST_CHANNEL = 'sardinen_81247_demo';
 
-export interface DemoDatabaseTree {
-  clockOffsetMs: number;
-  gpsSimActive: boolean;
-  accounts: Record<string, AccountPublicRecord>;
-  accountSecrets: Record<string, { passwordHash: string }>;
+export interface DemoRoomSlice {
   members: Record<string, MemberRecord>;
   playerClaims: Record<string, PlayerSeatClaim>;
   assignments?: Record<string, { side: MemberRecord['side']; teamId: string | null }>;
@@ -71,6 +75,14 @@ export interface DemoDatabaseTree {
   leaderboard: Record<string, LeaderboardEntry>;
 }
 
+export interface DemoDatabaseTree extends DemoRoomSlice {
+  clockOffsetMs: number;
+  gpsSimActive: boolean;
+  accounts: Record<string, AccountPublicRecord>;
+  accountSecrets: Record<string, { passwordHash: string }>;
+  rooms?: Record<string, DemoRoomSlice>;
+}
+
 const DEMO_ROLE_TO_UID: Record<DemoRoleId, string> = {
   HOST: 'demo_uid_admin',
   HIDER: 'demo_uid_linus',
@@ -84,6 +96,10 @@ export function buildInitialDemoTree(nowMs = Date.now()): DemoDatabaseTree {
   const sessionId = generateRandomId('session');
   const secrets = generateSessionSecrets();
   const pubState = createDefaultPublicState(sessionId);
+  pubState.roomCode = GAME_ID;
+  pubState.hostPlayerId = 'admin';
+  pubState.hostName = 'Admin';
+  pubState.createdAt = nowMs;
   pubState.playArea.confirmed = true;
   pubState.playArea.confirmedAt = nowMs;
   pubState.playArea.confirmedByUid = 'demo_uid_admin';
@@ -311,6 +327,67 @@ export function createDemoStore(options?: {
   let memoryTree: DemoDatabaseTree = buildInitialDemoTree(options?.initialNowMs);
   let currentRole: DemoRoleId = 'HOST';
   let activeCustomUid: string | null = null;
+  let currentRoomCode: string = GAME_ID;
+
+  function buildEmptyRoomSlice(roomCode: string, nowMs: number): DemoRoomSlice {
+    const sessionId = generateRandomId('session');
+    const secrets = generateSessionSecrets();
+    const pubState = createDefaultPublicState(sessionId);
+    pubState.roomCode = roomCode;
+    pubState.createdAt = nowMs;
+    pubState.allowTestClicks = true;
+    const baseTeams = createDefaultTeams();
+    const teamsTree: DemoRoomSlice['teams'] = {};
+    for (const [id, pub] of Object.entries(baseTeams)) {
+      teamsTree[id] = { public: pub, location: null };
+    }
+    return {
+      members: {},
+      playerClaims: {},
+      assignments: {},
+      joinRequests: {},
+      presence: {},
+      teams: teamsTree,
+      state: {
+        public: pubState,
+        controller: null,
+        hiderPrivate: {
+          anchorPoint: null,
+          radarStages: [],
+          qrSecret: secrets.qrSecret,
+          shortCode: secrets.shortCode,
+          hiderLocations: {},
+        },
+      },
+      clues: {},
+      requests: {},
+      catchRequests: {},
+      leaderboard: {},
+    };
+  }
+
+  function getRoomSlice(
+    tree: DemoDatabaseTree,
+    roomCode = currentRoomCode
+  ): DemoRoomSlice | null {
+    if (roomCode === GAME_ID) return tree;
+    return tree.rooms?.[roomCode] ?? null;
+  }
+
+  function requireRoomSlice(
+    tree: DemoDatabaseTree,
+    roomCode = currentRoomCode
+  ): DemoRoomSlice {
+    if (roomCode === GAME_ID) return tree;
+    if (!tree.rooms) tree.rooms = {};
+    if (!tree.rooms[roomCode]) {
+      tree.rooms[roomCode] = buildEmptyRoomSlice(
+        roomCode,
+        Date.now() + (tree.clockOffsetMs || 0)
+      );
+    }
+    return tree.rooms[roomCode];
+  }
 
   if (!inMemory && typeof sessionStorage !== 'undefined') {
     const savedRole = sessionStorage.getItem(DEMO_ROLE_SESSION_KEY) as DemoRoleId | null;
@@ -417,6 +494,187 @@ export function createDemoStore(options?: {
   const adapter: DatabaseAdapter = {
     mode: 'demo',
 
+    getRoomCode(): string {
+      return currentRoomCode;
+    },
+
+    setRoomCode(roomCode: string): void {
+      const normalized = normalizeRoomCode(roomCode);
+      const next = isValidRoomCode(normalized) ? normalized : GAME_ID;
+      if (next !== currentRoomCode) {
+        currentRoomCode = next;
+        notifyAll();
+      }
+    },
+
+    async createHostedRoom({
+      hostPlayerId,
+      hostName,
+      avatar,
+    }): Promise<{
+      roomCode: string;
+      member: MemberRecord;
+      publicState: PublicGameState;
+    }> {
+      const normalizedHostId = hostPlayerId.trim().toLowerCase();
+      if (!normalizedHostId) {
+        throw new Error('Ungültiges Spielerkonto für Spielleiter.');
+      }
+      const curTree = readTree();
+      let roomCode = generateRoomCode(6);
+      for (let i = 0; i < 12; i++) {
+        const candidate = generateRoomCode(6);
+        if (candidate !== GAME_ID && !curTree.rooms?.[candidate]) {
+          roomCode = candidate;
+          break;
+        }
+      }
+
+      const nowMs = adapter.getServerNow();
+      const canonicalHostName = isAdminAccountId(normalizedHostId)
+        ? 'Admin'
+        : hostName.trim() || normalizedHostId;
+      const uid = activeCustomUid ?? `demo_uid_${normalizedHostId}`;
+
+      const freshSlice = buildEmptyRoomSlice(roomCode, nowMs);
+      freshSlice.state.public.hostPlayerId = normalizedHostId;
+      freshSlice.state.public.hostName = canonicalHostName;
+      freshSlice.state.public.playArea.confirmedByUid = uid;
+
+      const member: MemberRecord = {
+        uid,
+        playerId: normalizedHostId,
+        name: canonicalHostName,
+        isHost: true,
+        enabled: true,
+        side: 'UNASSIGNED',
+        teamId: null,
+        ...(avatar ? { avatar } : {}),
+        updatedAt: nowMs,
+      };
+      freshSlice.members[uid] = structuredClone(member);
+
+      currentRoomCode = roomCode;
+      activeCustomUid = uid;
+      writeTree((t) => {
+        if (!t.rooms) t.rooms = {};
+        t.rooms[roomCode] = freshSlice;
+      });
+      notifyAuth();
+
+      return {
+        roomCode,
+        member,
+        publicState: structuredClone(freshSlice.state.public),
+      };
+    },
+
+    async joinRoomByCode({
+      roomCode: rawCode,
+      playerId,
+      playerName,
+      avatar,
+    }): Promise<{
+      roomCode: string;
+      member: MemberRecord;
+      publicState: PublicGameState;
+    }> {
+      const roomCode = normalizeRoomCode(rawCode);
+      if (!isValidRoomCode(roomCode)) {
+        throw new Error(
+          'Bitte gib einen gültigen Spiel-Code ein (z. B. 6 Zeichen wie K7M4P2).'
+        );
+      }
+      const normalizedPlayerId = playerId.trim().toLowerCase();
+      if (!normalizedPlayerId) {
+        throw new Error('Bitte melde dich zuerst mit deinem Konto an.');
+      }
+
+      const curTree = readTree();
+      const slice = getRoomSlice(curTree, roomCode);
+      if (!slice) {
+        throw new Error(
+          `Kein Spiel mit dem Code „${roomCode}“ gefunden. Bitte prüfe den Code.`
+        );
+      }
+
+      const isAdmin = isAdminAccountId(normalizedPlayerId);
+      const shouldBeHost = Boolean(
+        isAdmin ||
+          (slice.state.public.hostPlayerId &&
+            slice.state.public.hostPlayerId === normalizedPlayerId)
+      );
+
+      const existingMember = Object.values(slice.members).find(
+        (m) => m.playerId === normalizedPlayerId
+      );
+      const uid =
+        existingMember?.uid ??
+        activeCustomUid ??
+        `demo_uid_${normalizedPlayerId}`;
+      const fromAssign = slice.assignments?.[normalizedPlayerId] ?? null;
+
+      const inheritedSide: MemberRecord['side'] = isAdmin
+        ? 'UNASSIGNED'
+        : fromAssign
+          ? fromAssign.side
+          : (existingMember?.side ?? 'UNASSIGNED');
+      const inheritedTeamId =
+        inheritedSide === 'SEEKER'
+          ? (fromAssign?.teamId ?? existingMember?.teamId ?? null)
+          : null;
+      const inheritedAvatar =
+        avatar ??
+        curTree.accounts?.[normalizedPlayerId]?.avatar ??
+        existingMember?.avatar;
+
+      const member: MemberRecord = {
+        uid,
+        playerId: normalizedPlayerId,
+        name: isAdmin ? 'Admin' : playerName.trim() || normalizedPlayerId,
+        isHost: shouldBeHost,
+        enabled: true,
+        side: inheritedSide,
+        teamId: inheritedTeamId,
+        ...(inheritedAvatar ? { avatar: inheritedAvatar } : {}),
+        updatedAt: adapter.getServerNow(),
+      };
+
+      currentRoomCode = roomCode;
+      activeCustomUid = uid;
+      let pubOut: PublicGameState = slice.state.public;
+      writeTree((t) => {
+        const r = requireRoomSlice(t, roomCode);
+        r.members[uid] = structuredClone(member);
+        pubOut = structuredClone({
+          ...r.state.public,
+          roomCode: r.state.public.roomCode ?? roomCode,
+        });
+      });
+      notifyAuth();
+
+      return {
+        roomCode,
+        member,
+        publicState: pubOut,
+      };
+    },
+
+    async addActiveTeamIdIfRunning(teamId: string): Promise<void> {
+      if (!teamId) return;
+      writeTree((t) => {
+        const r = getRoomSlice(t);
+        if (!r) return;
+        const list = Array.isArray(r.state.public.activeTeamIds)
+          ? [...r.state.public.activeTeamIds]
+          : [];
+        if (!list.includes(teamId)) {
+          list.push(teamId);
+          r.state.public.activeTeamIds = list;
+        }
+      });
+    },
+
     getServerNow(): number {
       const tree = readTree();
       return Date.now() + (tree.clockOffsetMs || 0);
@@ -457,6 +715,12 @@ export function createDemoStore(options?: {
         pwCheck.password
       );
       const uid = `demo_uid_${playerId}`;
+      const curSlice = getRoomSlice(curTree);
+      const shouldBeHost = Boolean(
+        isAdmin ||
+          (curSlice?.state.public.hostPlayerId &&
+            curSlice.state.public.hostPlayerId === playerId)
+      );
       const remoteAssignment = isAdmin
         ? null
         : await adapter.fetchPlayerAssignment(playerId);
@@ -470,7 +734,7 @@ export function createDemoStore(options?: {
         uid,
         playerId,
         name: displayName,
-        isHost: isAdmin,
+        isHost: shouldBeHost,
         enabled: true,
         side,
         teamId,
@@ -485,7 +749,10 @@ export function createDemoStore(options?: {
           createdAt: nowMs,
         };
         t.accountSecrets[playerId] = { passwordHash };
-        t.members[uid] = structuredClone(member);
+        const r = getRoomSlice(t);
+        if (r) {
+          r.members[uid] = structuredClone(member);
+        }
       });
 
       activeCustomUid = uid;
@@ -520,10 +787,20 @@ export function createDemoStore(options?: {
         throw new Error('Falsches Passwort.');
       }
 
-      const existingMember = Object.values(curTree.members).find(
+      const curSlice = getRoomSlice(curTree);
+      const existingMember = curSlice
+        ? Object.values(curSlice.members).find((m) => m.playerId === playerId)
+        : undefined;
+      const rootExisting = Object.values(curTree.members).find(
         (m) => m.playerId === playerId
       );
-      const uid = existingMember?.uid ?? `demo_uid_${playerId}`;
+      const uid =
+        existingMember?.uid ?? rootExisting?.uid ?? `demo_uid_${playerId}`;
+      const shouldBeHost = Boolean(
+        isAdmin ||
+          (curSlice?.state.public.hostPlayerId &&
+            curSlice.state.public.hostPlayerId === playerId)
+      );
       const remoteAssignment = isAdmin
         ? null
         : await adapter.fetchPlayerAssignment(playerId);
@@ -542,7 +819,7 @@ export function createDemoStore(options?: {
         uid,
         playerId,
         name: isAdmin ? 'Admin' : acct.name || displayName,
-        isHost: isAdmin,
+        isHost: shouldBeHost,
         enabled: true,
         side,
         teamId,
@@ -551,7 +828,10 @@ export function createDemoStore(options?: {
       };
 
       writeTree((t) => {
-        t.members[uid] = structuredClone(member);
+        const r = getRoomSlice(t);
+        if (r) {
+          r.members[uid] = structuredClone(member);
+        }
       });
 
       activeCustomUid = uid;
@@ -636,17 +916,19 @@ export function createDemoStore(options?: {
 
     async registerSelfMemberIfMissing(member): Promise<void> {
       writeTree((t) => {
-        if (!t.members[member.uid]) {
-          t.members[member.uid] = structuredClone(member);
+        const r = requireRoomSlice(t);
+        if (!r.members[member.uid]) {
+          r.members[member.uid] = structuredClone(member);
         }
       });
     },
 
     async fetchPlayerAssignment(playerId) {
-      const t = readTree();
-      const fromMap = t.assignments?.[playerId];
+      const r = getRoomSlice(readTree());
+      if (!r) return null;
+      const fromMap = r.assignments?.[playerId];
       if (fromMap) return structuredClone(fromMap);
-      const assignedMember = Object.values(t.members).find(
+      const assignedMember = Object.values(r.members).find(
         (m) => m.enabled && m.playerId === playerId && m.side !== 'UNASSIGNED'
       );
       return assignedMember
@@ -659,8 +941,9 @@ export function createDemoStore(options?: {
 
     async savePlayerAssignment(playerId, side, teamId): Promise<void> {
       writeTree((t) => {
-        if (!t.assignments) t.assignments = {};
-        t.assignments[playerId] = {
+        const r = requireRoomSlice(t);
+        if (!r.assignments) r.assignments = {};
+        r.assignments[playerId] = {
           side,
           teamId: side === 'SEEKER' ? (teamId ?? null) : null,
         };
@@ -669,32 +952,35 @@ export function createDemoStore(options?: {
 
     async removeMemberByHost(uid): Promise<void> {
       writeTree((t) => {
-        delete t.members[uid];
+        const r = getRoomSlice(t);
+        if (r) delete r.members[uid];
       });
     },
 
     async kickPlayerByHost(playerId, memberUids): Promise<void> {
       writeTree((t) => {
+        const r = getRoomSlice(t);
+        if (!r) return;
         for (const targetUid of memberUids) {
-          delete t.members[targetUid];
-          delete t.joinRequests?.[targetUid];
-          if (t.presence?.[targetUid]) {
-            for (const key of Object.keys(t.presence[targetUid])) {
+          delete r.members[targetUid];
+          delete r.joinRequests?.[targetUid];
+          if (r.presence?.[targetUid]) {
+            for (const key of Object.keys(r.presence[targetUid])) {
               if (key !== 'emergency_alert') {
-                delete t.presence[targetUid][key];
+                delete r.presence[targetUid][key];
               }
             }
           }
         }
-        for (const [uid, rec] of Object.entries(t.members)) {
+        for (const [uid, rec] of Object.entries(r.members)) {
           if (rec.playerId === playerId) {
-            delete t.members[uid];
+            delete r.members[uid];
           }
         }
-        if (t.playerClaims) {
-          delete t.playerClaims[playerId];
+        if (r.playerClaims) {
+          delete r.playerClaims[playerId];
         }
-        for (const team of Object.values(t.teams)) {
+        for (const team of Object.values(r.teams)) {
           team.public.memberPlayerIds = team.public.memberPlayerIds.filter(
             (pid) => pid !== playerId
           );
@@ -714,23 +1000,30 @@ export function createDemoStore(options?: {
       // Mehrere Geräte pro Spieler sind ausdrücklich erlaubt.
       const next: PlayerSeatClaim = { uid, tabId, heartbeatAt: nowMs };
       writeTree((t) => {
-        if (!t.playerClaims) t.playerClaims = {};
-        t.playerClaims[playerId] = next;
+        const r = getRoomSlice(t);
+        if (!r) return;
+        if (!r.playerClaims) r.playerClaims = {};
+        r.playerClaims[playerId] = next;
       });
       return { acquired: true, holder: next };
     },
 
     async releasePlayerSeat(playerId, uid): Promise<void> {
       writeTree((t) => {
-        const cur = t.playerClaims?.[playerId];
+        const r = getRoomSlice(t);
+        if (!r) return;
+        const cur = r.playerClaims?.[playerId];
         if (cur && cur.uid === uid) {
-          delete t.playerClaims[playerId];
+          delete r.playerClaims[playerId];
         }
       });
     },
 
     subscribePlayerSeat(playerId, cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.playerClaims?.[playerId] ?? null, cb);
+      return subscribeSlice(
+        (t) => getRoomSlice(t)?.playerClaims?.[playerId] ?? null,
+        cb
+      );
     },
 
     async signOut(): Promise<void> {
@@ -746,32 +1039,55 @@ export function createDemoStore(options?: {
     },
 
     subscribeOwnMember(uid, cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.members[uid] ?? null, cb);
+      return subscribeSlice((t) => {
+        const m = getRoomSlice(t)?.members[uid] ?? null;
+        if (!m) return null;
+        return {
+          ...m,
+          isHost: Boolean(m.isHost || isAdminAccountId(m.playerId)),
+        };
+      }, cb);
     },
 
     subscribeAllMembers(cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.members ?? {}, cb);
+      return subscribeSlice((t) => {
+        const raw = getRoomSlice(t)?.members ?? {};
+        const out: Record<string, MemberRecord> = {};
+        for (const [uid, rec] of Object.entries(raw)) {
+          out[uid] = {
+            ...rec,
+            uid,
+            isHost: Boolean(rec.isHost || isAdminAccountId(rec.playerId)),
+          };
+        }
+        return out;
+      }, cb);
     },
 
     async upsertJoinRequest(req): Promise<void> {
       writeTree((t) => {
-        t.joinRequests[req.uid] = structuredClone(req);
+        const r = requireRoomSlice(t);
+        r.joinRequests[req.uid] = structuredClone(req);
       });
     },
 
     subscribeOwnJoinRequest(uid, cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.joinRequests[uid] ?? null, cb);
+      return subscribeSlice(
+        (t) => getRoomSlice(t)?.joinRequests[uid] ?? null,
+        cb
+      );
     },
 
     subscribeAllJoinRequests(cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.joinRequests ?? {}, cb);
+      return subscribeSlice((t) => getRoomSlice(t)?.joinRequests ?? {}, cb);
     },
 
     async approveJoinRequest(req, defaults): Promise<void> {
       writeTree((t) => {
+        const r = requireRoomSlice(t);
         const assignedTeam = defaults?.teamId ?? 'team-2';
         const assignedSide = defaults?.side ?? 'SEEKER';
-        t.members[req.uid] = {
+        r.members[req.uid] = {
           uid: req.uid,
           playerId: req.playerId,
           name: req.name,
@@ -780,23 +1096,24 @@ export function createDemoStore(options?: {
           side: assignedSide,
           teamId: assignedSide === 'SEEKER' ? assignedTeam : null,
         };
-        if (assignedSide === 'SEEKER' && assignedTeam && t.teams[assignedTeam]) {
-          const membersList = t.teams[assignedTeam].public.memberPlayerIds;
+        if (assignedSide === 'SEEKER' && assignedTeam && r.teams[assignedTeam]) {
+          const membersList = r.teams[assignedTeam].public.memberPlayerIds;
           if (!membersList.includes(req.playerId)) {
             membersList.push(req.playerId);
           }
-          if (!t.teams[assignedTeam].public.beaconPlayerId) {
-            t.teams[assignedTeam].public.beaconPlayerId = req.playerId;
+          if (!r.teams[assignedTeam].public.beaconPlayerId) {
+            r.teams[assignedTeam].public.beaconPlayerId = req.playerId;
           }
         }
-        delete t.joinRequests[req.uid];
+        delete r.joinRequests[req.uid];
       });
     },
 
     async updateMember(uid, member): Promise<void> {
       writeTree((t) => {
-        t.members[uid] = structuredClone(member);
-        for (const team of Object.values(t.teams)) {
+        const r = requireRoomSlice(t);
+        r.members[uid] = structuredClone(member);
+        for (const team of Object.values(r.teams)) {
           team.public.memberPlayerIds = team.public.memberPlayerIds.filter(
             (pid) => pid !== member.playerId
           );
@@ -804,22 +1121,25 @@ export function createDemoStore(options?: {
             team.public.beaconPlayerId = team.public.memberPlayerIds[0] ?? null;
           }
         }
-        if (member.side === 'SEEKER' && member.teamId && t.teams[member.teamId]) {
-          const list = t.teams[member.teamId].public.memberPlayerIds;
+        if (member.side === 'SEEKER' && member.teamId && r.teams[member.teamId]) {
+          const list = r.teams[member.teamId].public.memberPlayerIds;
           if (!list.includes(member.playerId)) {
             list.push(member.playerId);
           }
-          if (!t.teams[member.teamId].public.beaconPlayerId) {
-            t.teams[member.teamId].public.beaconPlayerId = member.playerId;
+          if (!r.teams[member.teamId].public.beaconPlayerId) {
+            r.teams[member.teamId].public.beaconPlayerId = member.playerId;
           }
         }
       });
     },
 
     registerTabPresence(uid, browserSessionId, deviceInfo): UnsubscribeFn {
+      const targetRoom = currentRoomCode;
       writeTree((t) => {
-        if (!t.presence[uid]) t.presence[uid] = {};
-        t.presence[uid][browserSessionId] = {
+        const r = getRoomSlice(t, targetRoom);
+        if (!r) return;
+        if (!r.presence[uid]) r.presence[uid] = {};
+        r.presence[uid][browserSessionId] = {
           online: true,
           lastSeen: adapter.getServerNow(),
           deviceInfo,
@@ -827,10 +1147,11 @@ export function createDemoStore(options?: {
       });
       return () => {
         writeTree((t) => {
-          if (t.presence[uid]) {
-            delete t.presence[uid][browserSessionId];
-            if (Object.keys(t.presence[uid]).length === 0) {
-              delete t.presence[uid];
+          const r = getRoomSlice(t, targetRoom);
+          if (r?.presence[uid]) {
+            delete r.presence[uid][browserSessionId];
+            if (Object.keys(r.presence[uid]).length === 0) {
+              delete r.presence[uid];
             }
           }
         });
@@ -838,21 +1159,23 @@ export function createDemoStore(options?: {
     },
 
     subscribePresence(cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.presence ?? {}, cb);
+      return subscribeSlice((t) => getRoomSlice(t)?.presence ?? {}, cb);
     },
 
     async cleanupOrphanedPresence(targetUid): Promise<void> {
       writeTree((t) => {
+        const r = getRoomSlice(t);
+        if (!r) return;
         if (targetUid) {
-          if (t.presence[targetUid]) {
-            for (const key of Object.keys(t.presence[targetUid])) {
+          if (r.presence[targetUid]) {
+            for (const key of Object.keys(r.presence[targetUid])) {
               if (key.startsWith('tab_')) {
-                delete t.presence[targetUid][key];
+                delete r.presence[targetUid][key];
               }
             }
           }
         } else {
-          for (const sessions of Object.values(t.presence)) {
+          for (const sessions of Object.values(r.presence)) {
             for (const key of Object.keys(sessions)) {
               if (key.startsWith('tab_')) {
                 delete sessions[key];
@@ -864,7 +1187,14 @@ export function createDemoStore(options?: {
     },
 
     subscribePublicState(cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.state.public, cb);
+      return subscribeSlice((t) => {
+        const pub = getRoomSlice(t)?.state.public ?? null;
+        if (!pub) return null;
+        return {
+          ...pub,
+          roomCode: pub.roomCode ?? currentRoomCode,
+        };
+      }, cb);
     },
 
     async initializeDefaultLobbyIfNeeded(
@@ -873,11 +1203,15 @@ export function createDemoStore(options?: {
       defaultSecrets
     ): Promise<void> {
       writeTree((t) => {
-        if (!t.state?.public) {
-          t.state.public = structuredClone(defaultState);
+        const r = requireRoomSlice(t);
+        if (!r.state?.public) {
+          r.state.public = {
+            ...structuredClone(defaultState),
+            roomCode: defaultState.roomCode ?? currentRoomCode,
+          };
         }
-        if (defaultSecrets && !t.state?.hiderPrivate) {
-          t.state.hiderPrivate = {
+        if (defaultSecrets && !r.state?.hiderPrivate) {
+          r.state.hiderPrivate = {
             anchorPoint: null,
             radarStages: [],
             qrSecret: defaultSecrets.qrSecret,
@@ -886,8 +1220,8 @@ export function createDemoStore(options?: {
           };
         }
         for (const [id, team] of Object.entries(defaultTeams)) {
-          if (!t.teams[id]) {
-            t.teams[id] = { public: structuredClone(team), location: null };
+          if (!r.teams[id]) {
+            r.teams[id] = { public: structuredClone(team), location: null };
           }
         }
       });
@@ -895,27 +1229,35 @@ export function createDemoStore(options?: {
 
     async savePublicStateByHost(state): Promise<void> {
       writeTree((t) => {
-        t.state.public = structuredClone(state);
+        const r = requireRoomSlice(t);
+        r.state.public = {
+          ...structuredClone(state),
+          roomCode: state.roomCode ?? currentRoomCode,
+        };
       });
     },
 
     async patchControllerPublicTransition(patch: ControllerPublicPatch): Promise<void> {
       writeTree((t) => {
-        t.state.public = {
-          ...t.state.public,
+        const r = getRoomSlice(t);
+        if (!r) return;
+        r.state.public = {
+          ...r.state.public,
           ...structuredClone(patch),
         };
       });
     },
 
     subscribeControllerLease(cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.state.controller, cb);
+      return subscribeSlice((t) => getRoomSlice(t)?.state.controller ?? null, cb);
     },
 
     async tryAcquireOrRenewLease(uid, sessionId, nowMs, ttlMs): Promise<boolean> {
       let acquired = false;
       writeTree((t) => {
-        const cur = t.state.controller;
+        const r = getRoomSlice(t);
+        if (!r) return;
+        const cur = r.state.controller;
         if (
           !cur ||
           !cur.controllerUid ||
@@ -923,7 +1265,7 @@ export function createDemoStore(options?: {
           cur.leaseExpiresAt < nowMs ||
           cur.sessionId !== sessionId
         ) {
-          t.state.controller = {
+          r.state.controller = {
             controllerUid: uid,
             heartbeatAt: nowMs,
             leaseExpiresAt: nowMs + ttlMs,
@@ -936,13 +1278,17 @@ export function createDemoStore(options?: {
     },
 
     subscribeHiderPrivate(cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.state.hiderPrivate, cb);
+      return subscribeSlice(
+        (t) => getRoomSlice(t)?.state.hiderPrivate ?? null,
+        cb
+      );
     },
 
     async saveHiderPrivate(priv): Promise<void> {
       writeTree((t) => {
-        const prevLocs = t.state.hiderPrivate?.hiderLocations ?? {};
-        t.state.hiderPrivate = {
+        const r = requireRoomSlice(t);
+        const prevLocs = r.state.hiderPrivate?.hiderLocations ?? {};
+        r.state.hiderPrivate = {
           ...structuredClone(priv),
           hiderLocations:
             priv.hiderLocations !== undefined
@@ -953,18 +1299,19 @@ export function createDemoStore(options?: {
     },
 
     async rerollHiderSecrets(): Promise<{ qrSecret: string; shortCode: string }> {
-      const curShort = readTree().state.hiderPrivate?.shortCode ?? '';
+      const curShort = getRoomSlice(readTree())?.state.hiderPrivate?.shortCode ?? '';
       let fresh = generateSessionSecrets();
       while (fresh.shortCode === curShort) {
         fresh = generateSessionSecrets();
       }
       writeTree((t) => {
-        t.state.hiderPrivate = {
-          anchorPoint: t.state.hiderPrivate?.anchorPoint ?? null,
-          radarStages: t.state.hiderPrivate?.radarStages ?? [],
+        const r = requireRoomSlice(t);
+        r.state.hiderPrivate = {
+          anchorPoint: r.state.hiderPrivate?.anchorPoint ?? null,
+          radarStages: r.state.hiderPrivate?.radarStages ?? [],
           qrSecret: fresh.qrSecret,
           shortCode: fresh.shortCode,
-          hiderLocations: t.state.hiderPrivate?.hiderLocations ?? {},
+          hiderLocations: r.state.hiderPrivate?.hiderLocations ?? {},
         };
       });
       return fresh;
@@ -972,36 +1319,45 @@ export function createDemoStore(options?: {
 
     async writeHiderLocationPrivate(uid, fix): Promise<void> {
       writeTree((t) => {
-        if (!t.state.hiderPrivate) return;
-        if (!t.state.hiderPrivate.hiderLocations) {
-          t.state.hiderPrivate.hiderLocations = {};
+        const r = getRoomSlice(t);
+        if (!r?.state.hiderPrivate) return;
+        if (!r.state.hiderPrivate.hiderLocations) {
+          r.state.hiderPrivate.hiderLocations = {};
         }
-        t.state.hiderPrivate.hiderLocations[uid] = structuredClone(fix);
+        r.state.hiderPrivate.hiderLocations[uid] = structuredClone(fix);
       });
     },
 
     subscribeTeamPublic(teamId, cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.teams[teamId]?.public ?? null, cb);
+      return subscribeSlice(
+        (t) => getRoomSlice(t)?.teams[teamId]?.public ?? null,
+        cb
+      );
     },
 
     async saveTeamPublic(teamId, team): Promise<void> {
       writeTree((t) => {
-        if (!t.teams[teamId]) {
-          t.teams[teamId] = { public: structuredClone(team), location: null };
+        const r = requireRoomSlice(t);
+        if (!r.teams[teamId]) {
+          r.teams[teamId] = { public: structuredClone(team), location: null };
         } else {
-          t.teams[teamId].public = structuredClone(team);
+          r.teams[teamId].public = structuredClone(team);
         }
       });
     },
 
     subscribeTeamLocation(teamId, cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.teams[teamId]?.location ?? null, cb);
+      return subscribeSlice(
+        (t) => getRoomSlice(t)?.teams[teamId]?.location ?? null,
+        cb
+      );
     },
 
     async writeTeamLocation(teamId, loc): Promise<void> {
       writeTree((t) => {
-        if (t.teams[teamId]) {
-          t.teams[teamId].location = structuredClone(loc);
+        const r = getRoomSlice(t);
+        if (r?.teams[teamId]) {
+          r.teams[teamId].location = structuredClone(loc);
         }
       });
     },
@@ -1014,16 +1370,17 @@ export function createDemoStore(options?: {
     ): Promise<TeamLocation | null> {
       let updated: TeamLocation | null = null;
       writeTree((t) => {
-        if (!t.teams[teamId]) return;
+        const r = getRoomSlice(t);
+        if (!r?.teams[teamId]) return;
         const nowMs = Date.now() + (t.clockOffsetMs || 0);
         const next = computeAveragedTeamLocationFromMemberFixes(
-          t.teams[teamId].location,
+          r.teams[teamId].location,
           playerId,
           uid,
           fix,
           nowMs
         );
-        t.teams[teamId].location = next;
+        r.teams[teamId].location = next;
         updated = structuredClone(next);
       });
       return updated;
@@ -1031,28 +1388,34 @@ export function createDemoStore(options?: {
 
     async clearTeamLocation(teamId): Promise<void> {
       writeTree((t) => {
-        if (t.teams[teamId]) {
-          t.teams[teamId].location = null;
+        const r = getRoomSlice(t);
+        if (r?.teams[teamId]) {
+          r.teams[teamId].location = null;
         }
       });
     },
 
     subscribeTeamRequests(teamId, cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.requests[teamId] ?? {}, cb);
+      return subscribeSlice(
+        (t) => getRoomSlice(t)?.requests[teamId] ?? {},
+        cb
+      );
     },
 
     async createClueRequest(req): Promise<void> {
       writeTree((t) => {
-        if (!t.requests[req.teamId]) {
-          t.requests[req.teamId] = {};
+        const r = requireRoomSlice(t);
+        if (!r.requests[req.teamId]) {
+          r.requests[req.teamId] = {};
         }
-        t.requests[req.teamId][req.id] = structuredClone(req);
+        r.requests[req.teamId][req.id] = structuredClone(req);
       });
     },
 
     async acknowledgeAndStripMedia(teamId, requestId, ackAt): Promise<void> {
       writeTree((t) => {
-        const existing = t.requests[teamId]?.[requestId];
+        const r = getRoomSlice(t);
+        const existing = r?.requests[teamId]?.[requestId];
         if (existing) {
           delete existing.mediaBase64;
           existing.mediaAcknowledgedAt = ackAt;
@@ -1067,7 +1430,8 @@ export function createDemoStore(options?: {
       postDownloadTtlMs = MEDIA_POST_DOWNLOAD_EXPIRE_MS
     ): Promise<void> {
       writeTree((t) => {
-        const existing = t.requests[teamId]?.[requestId];
+        const r = getRoomSlice(t);
+        const existing = r?.requests[teamId]?.[requestId];
         if (!existing || !existing.mediaBase64) return;
         const prevExpires =
           typeof existing.mediaExpiresAt === 'number'
@@ -1087,7 +1451,8 @@ export function createDemoStore(options?: {
     ): Promise<ClueRequest | null> {
       let claimed: ClueRequest | null = null;
       writeTree((t) => {
-        const cur = t.requests[teamId]?.[requestId];
+        const r = getRoomSlice(t);
+        const cur = r?.requests[teamId]?.[requestId];
         if (
           cur &&
           cur.sessionId === expectedSessionId &&
@@ -1102,8 +1467,9 @@ export function createDemoStore(options?: {
 
     async updateClueRequest(teamId, requestId, req): Promise<void> {
       writeTree((t) => {
-        if (!t.requests[teamId]) t.requests[teamId] = {};
-        t.requests[teamId][requestId] = structuredClone(req);
+        const r = requireRoomSlice(t);
+        if (!r.requests[teamId]) r.requests[teamId] = {};
+        r.requests[teamId][requestId] = structuredClone(req);
       });
     },
 
@@ -1114,7 +1480,8 @@ export function createDemoStore(options?: {
     ): Promise<TeamPublic | null> {
       let updated: TeamPublic | null = null;
       writeTree((t) => {
-        const pub = t.teams[teamId]?.public;
+        const r = getRoomSlice(t);
+        const pub = r?.teams[teamId]?.public;
         if (pub) {
           pub.penaltyMs = (pub.penaltyMs || 0) + deltaPenaltyMs;
           pub.clueCount = Math.max(0, (pub.clueCount || 0) + deltaClueCount);
@@ -1126,8 +1493,9 @@ export function createDemoStore(options?: {
 
     async saveClue(teamId, clue): Promise<void> {
       writeTree((t) => {
-        if (!t.clues[teamId]) t.clues[teamId] = {};
-        t.clues[teamId][clue.id] = structuredClone(clue);
+        const r = requireRoomSlice(t);
+        if (!r.clues[teamId]) r.clues[teamId] = {};
+        r.clues[teamId][clue.id] = structuredClone(clue);
       });
     },
 
@@ -1138,18 +1506,20 @@ export function createDemoStore(options?: {
           : clue.penaltyMs || 0;
 
       writeTree((t) => {
-        if (t.clues[teamId]) {
-          delete t.clues[teamId][clue.id];
+        const r = getRoomSlice(t);
+        if (!r) return;
+        if (r.clues[teamId]) {
+          delete r.clues[teamId][clue.id];
         }
-        if (clue.requestId && t.requests[teamId]) {
-          delete t.requests[teamId][clue.requestId];
+        if (clue.requestId && r.requests[teamId]) {
+          delete r.requests[teamId][clue.requestId];
         }
-        const pub = t.teams[teamId]?.public;
+        const pub = r.teams[teamId]?.public;
         if (pub) {
           pub.penaltyMs = (pub.penaltyMs || 0) - appliedNetPenaltyMs;
           pub.clueCount = Math.max(0, (pub.clueCount || 0) - 1);
         }
-        const lb = t.leaderboard?.[teamId];
+        const lb = r.leaderboard?.[teamId];
         if (lb) {
           lb.penaltyMs = (lb.penaltyMs || 0) - appliedNetPenaltyMs;
           lb.totalTimeMs = (lb.searchTimeMs || 0) + lb.penaltyMs;
@@ -1159,27 +1529,32 @@ export function createDemoStore(options?: {
     },
 
     subscribeTeamClues(teamId, cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.clues[teamId] ?? {}, cb);
+      return subscribeSlice((t) => getRoomSlice(t)?.clues[teamId] ?? {}, cb);
     },
 
     async submitCatchRequest(req): Promise<void> {
       writeTree((t) => {
-        t.catchRequests[req.id] = structuredClone(req);
+        const r = requireRoomSlice(t);
+        r.catchRequests[req.id] = structuredClone(req);
       });
     },
 
     subscribeAllCatchRequests(cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.catchRequests ?? {}, cb);
+      return subscribeSlice((t) => getRoomSlice(t)?.catchRequests ?? {}, cb);
     },
 
     subscribeOwnCatchRequest(requestId, cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.catchRequests[requestId] ?? null, cb);
+      return subscribeSlice(
+        (t) => getRoomSlice(t)?.catchRequests[requestId] ?? null,
+        cb
+      );
     },
 
     async claimCatchRequest(requestId): Promise<CatchRequest | null> {
       let claimed: CatchRequest | null = null;
       writeTree((t) => {
-        const cur = t.catchRequests[requestId];
+        const r = getRoomSlice(t);
+        const cur = r?.catchRequests[requestId];
         if (cur && cur.status === 'PENDING') {
           cur.status = 'PROCESSING';
           claimed = structuredClone(cur);
@@ -1195,7 +1570,8 @@ export function createDemoStore(options?: {
       errorMessage
     ): Promise<void> {
       writeTree((t) => {
-        const cur = t.catchRequests[requestId];
+        const r = getRoomSlice(t);
+        const cur = r?.catchRequests[requestId];
         if (cur) {
           cur.status = status;
           cur.processedAt = processedAt;
@@ -1211,7 +1587,8 @@ export function createDemoStore(options?: {
       let transitioned = false;
       let teamSnapshot: TeamPublic | null = null;
       writeTree((t) => {
-        const pub = t.teams[teamId]?.public;
+        const r = getRoomSlice(t);
+        const pub = r?.teams[teamId]?.public;
         if (!pub) return;
         if (pub.status === 'ACTIVE') {
           pub.status = 'JOINED_SARDINES';
@@ -1225,25 +1602,34 @@ export function createDemoStore(options?: {
 
     async saveLeaderboardEntry(entry): Promise<void> {
       writeTree((t) => {
-        t.leaderboard[entry.teamId] = structuredClone(entry);
+        const r = requireRoomSlice(t);
+        r.leaderboard[entry.teamId] = structuredClone(entry);
       });
     },
 
     subscribeLeaderboard(cb): UnsubscribeFn {
-      return subscribeSlice((t) => t.leaderboard ?? {}, cb);
+      return subscribeSlice((t) => getRoomSlice(t)?.leaderboard ?? {}, cb);
     },
 
     async resetRoundByHost(newPublicState, resetTeams, newHiderPrivate): Promise<void> {
       writeTree((t) => {
-        t.state.public = structuredClone(newPublicState);
-        t.state.controller = null;
-        t.state.hiderPrivate = structuredClone(newHiderPrivate);
-        t.clues = {};
-        t.requests = {};
-        t.catchRequests = {};
-        t.leaderboard = {};
+        const r = requireRoomSlice(t);
+        const prevPub = r.state.public;
+        r.state.public = {
+          roomCode: prevPub?.roomCode ?? currentRoomCode,
+          hostPlayerId: prevPub?.hostPlayerId,
+          hostName: prevPub?.hostName,
+          createdAt: prevPub?.createdAt,
+          ...structuredClone(newPublicState),
+        };
+        r.state.controller = null;
+        r.state.hiderPrivate = structuredClone(newHiderPrivate);
+        r.clues = {};
+        r.requests = {};
+        r.catchRequests = {};
+        r.leaderboard = {};
         for (const [id, pub] of Object.entries(resetTeams)) {
-          t.teams[id] = {
+          r.teams[id] = {
             public: structuredClone(pub),
             location: null,
           };
@@ -1253,12 +1639,14 @@ export function createDemoStore(options?: {
 
     async setPlayerReadyState(uid, playerId, readyToken, nowMs): Promise<void> {
       writeTree((t) => {
-        if (!t.presence[uid]) t.presence[uid] = {};
+        const r = getRoomSlice(t);
+        if (!r) return;
+        if (!r.presence[uid]) r.presence[uid] = {};
         if (!readyToken) {
-          delete t.presence[uid].ready_state;
+          delete r.presence[uid].ready_state;
           return;
         }
-        t.presence[uid].ready_state = {
+        r.presence[uid].ready_state = {
           online: false,
           lastSeen: nowMs,
           kind: 'READY_STATE',
@@ -1270,8 +1658,9 @@ export function createDemoStore(options?: {
 
     async sendEmergencyMessage(msg): Promise<void> {
       writeTree((t) => {
-        if (!t.presence[msg.uid]) t.presence[msg.uid] = {};
-        t.presence[msg.uid].emergency_alert = {
+        const r = requireRoomSlice(t);
+        if (!r.presence[msg.uid]) r.presence[msg.uid] = {};
+        r.presence[msg.uid].emergency_alert = {
           online: false,
           lastSeen: msg.createdAt,
           kind: 'EMERGENCY_ALERT',
@@ -1296,8 +1685,9 @@ export function createDemoStore(options?: {
 
     async clearOwnEmergencyMessage(uid): Promise<void> {
       writeTree((t) => {
-        if (t.presence[uid]) {
-          delete t.presence[uid].emergency_alert;
+        const r = getRoomSlice(t);
+        if (r?.presence[uid]) {
+          delete r.presence[uid].emergency_alert;
         }
       });
     },
@@ -1314,8 +1704,9 @@ export function createDemoStore(options?: {
       nowMs,
     }): Promise<void> {
       writeTree((t) => {
-        if (!t.presence[uid]) t.presence[uid] = {};
-        t.presence[uid].leash_alert = {
+        const r = requireRoomSlice(t);
+        if (!r.presence[uid]) r.presence[uid] = {};
+        r.presence[uid].leash_alert = {
           online: false,
           lastSeen: nowMs,
           kind: 'LEASH_ALERT',
@@ -1341,8 +1732,9 @@ export function createDemoStore(options?: {
 
     async clearLeashViolationAlert(uid): Promise<void> {
       writeTree((t) => {
-        if (t.presence[uid]) {
-          delete t.presence[uid].leash_alert;
+        const r = getRoomSlice(t);
+        if (r?.presence[uid]) {
+          delete r.presence[uid].leash_alert;
         }
       });
     },
@@ -1355,6 +1747,7 @@ export function createDemoStore(options?: {
       nowMs,
     }): Promise<void> {
       writeTree((t) => {
+        const r = requireRoomSlice(t);
         const nextTeams = createDefaultTeams();
         for (const m of enabledMembers) {
           if (m.enabled && m.side === 'SEEKER' && m.teamId && nextTeams[m.teamId]) {
@@ -1375,7 +1768,7 @@ export function createDemoStore(options?: {
             /^[0-9a-f]{32}$/i.test(currentHiderPrivate.qrSecret) &&
             currentHiderPrivate?.shortCode?.length === 6
         );
-        t.state.hiderPrivate = {
+        r.state.hiderPrivate = {
           anchorPoint: null,
           radarStages: [],
           qrSecret: hasValidRandomSecrets
@@ -1388,19 +1781,19 @@ export function createDemoStore(options?: {
         };
 
         for (const [id, pub] of Object.entries(nextTeams)) {
-          t.teams[id] = {
+          r.teams[id] = {
             public: pub,
             location: null,
           };
         }
 
-        t.clues = {};
-        t.requests = {};
-        t.catchRequests = {};
-        t.leaderboard = {};
+        r.clues = {};
+        r.requests = {};
+        r.catchRequests = {};
+        r.leaderboard = {};
 
-        if (!t.presence[starterUid]) t.presence[starterUid] = {};
-        t.presence[starterUid].round_start_meta = {
+        if (!r.presence[starterUid]) r.presence[starterUid] = {};
+        r.presence[starterUid].round_start_meta = {
           online: false,
           lastSeen: nowMs,
           kind: 'ROUND_START_META',
@@ -1410,10 +1803,10 @@ export function createDemoStore(options?: {
         };
 
         const immediateOpenSearch =
-          (t.state.public.radarSchedule?.hidingDurationMs ?? 0) <= 0;
+          (r.state.public.radarSchedule?.hidingDurationMs ?? 0) <= 0;
 
-        t.state.public = {
-          ...t.state.public,
+        r.state.public = {
+          ...r.state.public,
           status: 'RUNNING',
           currentPhase: immediateOpenSearch ? 'OPEN_SEARCH' : 'HIDING',
           gameStartTimestamp: nowMs,
@@ -1455,8 +1848,9 @@ export function createDemoStore(options?: {
 
     jumpToNetMinute(targetMinutes: number): void {
       writeTree((t) => {
-        const pub = t.state.public;
-        if (!pub.gameStartTimestamp) return;
+        const r = getRoomSlice(t);
+        const pub = r?.state.public;
+        if (!pub?.gameStartTimestamp) return;
         const targetMs = targetMinutes * 60_000;
         const nowReal = Date.now();
         const currentTotalPaused = pub.totalPausedMs || 0;
@@ -1480,9 +1874,11 @@ export function createDemoStore(options?: {
     stepGpsSimulation(): void {
       writeTree((t) => {
         if (!t.gpsSimActive) return;
+        const r = getRoomSlice(t);
+        if (!r) return;
         const now = Date.now() + (t.clockOffsetMs || 0);
-        const poly = t.state.public.playArea.polygon;
-        for (const [teamId, entry] of Object.entries(t.teams)) {
+        const poly = r.state.public.playArea.polygon;
+        for (const [teamId, entry] of Object.entries(r.teams)) {
           if (entry.public.status !== 'ACTIVE') continue;
           const prev = entry.location ?? {
             lat: 48.1662,
@@ -1507,6 +1903,7 @@ export function createDemoStore(options?: {
     },
 
     resetEntireDemoStore(): void {
+      currentRoomCode = GAME_ID;
       const fresh = buildInitialDemoTree();
       memoryTree = fresh;
       if (!inMemory && typeof localStorage !== 'undefined') {

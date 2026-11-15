@@ -24,11 +24,13 @@ describe('Security-Audit: database.rules.json & Client-Code-Garantien', () => {
   const parsed = JSON.parse(rawRules) as {
     rules: Record<string, any>;
   };
-  const gameNode = parsed.rules.games['81247'];
+  const gameNode = parsed.rules.games.$gameId;
 
-  it('erzwingt Deny-by-Default auf oberster Ebene ohne unauthentifizierte Zugriffe', () => {
+  it('erzwingt Deny-by-Default auf oberster Ebene ohne unauthentifizierte Zugriffe und verhindert Aufzählung von /games', () => {
     expect(parsed.rules['.read']).toBe(false);
     expect(parsed.rules['.write']).toBe(false);
+    expect(parsed.rules.games['.read']).toBeUndefined();
+    expect(parsed.rules.games['.write']).toBeUndefined();
     expect(gameNode).toBeDefined();
     expect(gameNode['.read']).toBeUndefined();
     expect(gameNode['.write']).toBeUndefined();
@@ -100,11 +102,11 @@ describe('Security-Audit: database.rules.json & Client-Code-Garantien', () => {
     expect(memberAuthWriteRule).toContain('accountSecrets');
     expect(memberAuthWriteRule).toContain('passwordHash');
 
-    // /members erzwingt gültiges memberAuth UND isHost === (playerId === 'admin')
+    // /members erzwingt gültiges memberAuth UND isHost nur für 'admin' oder den verifizierten Raum-Host (hostPlayerId)
     const memberWriteRule: string = gameNode.members.$uid['.write'];
     expect(memberWriteRule).toContain('memberAuth');
     expect(memberWriteRule).toContain(
-      "newData.child('isHost').val() === (newData.child('playerId').val() === 'admin')"
+      "newData.child('isHost').val() === (newData.child('playerId').val() === 'admin' || newData.child('playerId').val() === root.child('games/' + $gameId + '/state/public/hostPlayerId').val())"
     );
 
     // Kein Hider-Passwort-Lock mehr unter /state/public

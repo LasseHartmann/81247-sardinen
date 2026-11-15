@@ -6,6 +6,7 @@ export interface BottomNavProps {
   activeTab: BottomNavTab;
   onSelectTab: (tab: BottomNavTab) => void;
   showHostTab: boolean;
+  hostTabLabel?: string;
   hideQuestionsTab?: boolean;
   hasActiveEmergency?: boolean;
   pendingQuestionsBadgeCount?: number;
@@ -16,6 +17,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   onSelectTab,
   showHostTab,
+  hostTabLabel = 'Host',
   hideQuestionsTab = false,
   hasActiveEmergency = false,
   pendingQuestionsBadgeCount = 0,
@@ -62,7 +64,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   if (showHostTab) {
     items.push({
       id: 'HOST',
-      label: 'Admin',
+      label: hostTabLabel,
       icon: <Shield className="h-5 w-5" />,
       badge: joinRequestsBadgeCount,
     });

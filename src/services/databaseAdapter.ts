@@ -15,6 +15,7 @@ import {
 } from 'firebase/database';
 import { getFirebaseClients, isFirebaseConfigured } from '../config/firebase';
 import {
+  createDefaultPublicState,
   createDefaultTeams,
   DEFAULT_PLAY_AREA_FEATURE,
   DEFAULT_RADAR_SCHEDULE,
@@ -35,7 +36,13 @@ import {
 } from '../config/players';
 import { getBrowserDemoStore } from '../demo/demoStore';
 import { roundCoord5 } from '../geo/distance';
-import { generateSessionSecrets } from './qrService';
+import {
+  generateRandomId,
+  generateRoomCode,
+  generateSessionSecrets,
+  isValidRoomCode,
+  normalizeRoomCode,
+} from './qrService';
 import type {
   AccountPublicRecord,
   ActiveLeashViolationInfo,
@@ -81,6 +88,29 @@ export type ControllerPublicPatch = Partial<
  */
 export interface DatabaseAdapter {
   readonly mode: 'firebase' | 'demo';
+
+  getRoomCode(): string;
+  setRoomCode(roomCode: string): void;
+  createHostedRoom(params: {
+    hostPlayerId: string;
+    hostName: string;
+    avatar?: string;
+  }): Promise<{
+    roomCode: string;
+    member: MemberRecord;
+    publicState: PublicGameState;
+  }>;
+  joinRoomByCode(params: {
+    roomCode: string;
+    playerId: string;
+    playerName: string;
+    avatar?: string;
+  }): Promise<{
+    roomCode: string;
+    member: MemberRecord;
+    publicState: PublicGameState;
+  }>;
+  addActiveTeamIdIfRunning(teamId: string): Promise<void>;
 
   getServerNow(): number;
   subscribeConnectionStatus(cb: (connected: boolean) => void): UnsubscribeFn;
@@ -261,7 +291,7 @@ export interface DatabaseAdapter {
   }): Promise<void>;
 }
 
-const ROOT_PATH = `games/${GAME_ID}`;
+const ACCOUNTS_ROOT_PATH = `games/${GAME_ID}`;
 
 function stripUndefinedDeep<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj)) as T;
@@ -574,6 +604,8 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
   }
   const { auth, db } = clients;
   let serverTimeOffsetMs = 0;
+  let currentRoomCode: string = GAME_ID;
+  const getRoomRootPath = (): string => `games/${currentRoomCode}`;
 
   // Initialer Listener auf Server-Zeitoffset
   onValue(ref(db, '.info/serverTimeOffset'), (snap) => {
@@ -585,6 +617,330 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
   const adapter: DatabaseAdapter = {
     mode: 'firebase',
+
+    getRoomCode(): string {
+      return currentRoomCode;
+    },
+
+    setRoomCode(roomCode: string): void {
+      const normalized = normalizeRoomCode(roomCode);
+      currentRoomCode = isValidRoomCode(normalized) ? normalized : GAME_ID;
+    },
+
+    async createHostedRoom({
+      hostPlayerId,
+      hostName,
+      avatar,
+    }): Promise<{
+      roomCode: string;
+      member: MemberRecord;
+      publicState: PublicGameState;
+    }> {
+      const normalizedHostId = hostPlayerId.trim().toLowerCase();
+      if (!normalizedHostId) {
+        throw new Error('Ungültiges Spielerkonto für Spielleiter.');
+      }
+
+      const activeUser =
+        auth.currentUser ?? (await signInAnonymously(auth)).user;
+      const uid = activeUser.uid;
+      const nowMs = adapter.getServerNow();
+
+      let roomCode = generateRoomCode(6);
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const candidate = generateRoomCode(6);
+        const existingSnap = await get(
+          ref(db, `games/${candidate}/state/public`)
+        ).catch(() => null);
+        if (!existingSnap || !existingSnap.exists()) {
+          roomCode = candidate;
+          break;
+        }
+      }
+
+      const sessionId = generateRandomId('session');
+      const secrets = generateSessionSecrets();
+      const canonicalHostName = isAdminAccountId(normalizedHostId)
+        ? 'Admin'
+        : hostName.trim() || normalizedHostId;
+
+      const pubState: PublicGameState = {
+        ...createDefaultPublicState(sessionId),
+        roomCode,
+        hostPlayerId: normalizedHostId,
+        hostName: canonicalHostName,
+        createdAt: nowMs,
+      };
+
+      try {
+        await set(
+          ref(db, `games/${roomCode}/state/public`),
+          stripUndefinedDeep(pubState)
+        );
+      } catch (err) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        if (rawMsg.toLowerCase().includes('permission')) {
+          throw new Error(
+            'Spielraum konnte nicht erstellt werden. Bitte prüfe, ob die aktualisierten database.rules.json veröffentlicht sind, oder melde dich kurz neu an.'
+          );
+        }
+        throw new Error(
+          'Spielraum konnte nicht erstellt werden. Bitte prüfe deine Internetverbindung.'
+        );
+      }
+
+      const member: MemberRecord = {
+        uid,
+        playerId: normalizedHostId,
+        name: canonicalHostName,
+        isHost: true,
+        enabled: true,
+        side: 'UNASSIGNED',
+        teamId: null,
+        ...(avatar ? { avatar } : {}),
+        updatedAt: nowMs,
+      };
+
+      await set(
+        ref(db, `games/${roomCode}/members/${uid}`),
+        stripUndefinedDeep(member)
+      );
+
+      await set(
+        ref(db, `games/${roomCode}/state/hiderPrivate`),
+        stripUndefinedDeep({
+          anchorPoint: null,
+          radarStages: [],
+          qrSecret: secrets.qrSecret,
+          shortCode: secrets.shortCode,
+          hiderLocations: {},
+        })
+      );
+
+      const defaultTeams = createDefaultTeams();
+      await Promise.all(
+        Object.entries(defaultTeams).map(([teamId, team]) =>
+          set(
+            ref(db, `games/${roomCode}/teams/${teamId}/public`),
+            stripUndefinedDeep(team)
+          )
+        )
+      );
+
+      currentRoomCode = roomCode;
+      return {
+        roomCode,
+        member,
+        publicState: pubState,
+      };
+    },
+
+    async joinRoomByCode({
+      roomCode: rawCode,
+      playerId,
+      playerName,
+      avatar,
+    }): Promise<{
+      roomCode: string;
+      member: MemberRecord;
+      publicState: PublicGameState;
+    }> {
+      const roomCode = normalizeRoomCode(rawCode);
+      if (!isValidRoomCode(roomCode)) {
+        throw new Error(
+          'Bitte gib einen gültigen Spiel-Code ein (z. B. 6 Zeichen wie K7M4P2).'
+        );
+      }
+
+      const normalizedPlayerId = playerId.trim().toLowerCase();
+      if (!normalizedPlayerId) {
+        throw new Error('Bitte melde dich zuerst mit deinem Konto an.');
+      }
+
+      const activeUser =
+        auth.currentUser ?? (await signInAnonymously(auth)).user;
+      const uid = activeUser.uid;
+      const nowMs = adapter.getServerNow();
+      const isAdmin = isAdminAccountId(normalizedPlayerId);
+
+      let pubSnap = await get(ref(db, `games/${roomCode}/state/public`)).catch(
+        () => null
+      );
+
+      // Klassischer Raum 81247 darf vom Admin initial angelegt werden, falls noch leer
+      if ((!pubSnap || !pubSnap.exists()) && roomCode === GAME_ID && isAdmin) {
+        const initSessionId = generateRandomId('session');
+        const initSecrets = generateSessionSecrets();
+        const initPub: PublicGameState = {
+          ...createDefaultPublicState(initSessionId),
+          roomCode: GAME_ID,
+          hostPlayerId: 'admin',
+          hostName: 'Admin',
+          createdAt: nowMs,
+        };
+        await set(
+          ref(db, `games/${roomCode}/state/public`),
+          stripUndefinedDeep(initPub)
+        );
+        const initMember: MemberRecord = {
+          uid,
+          playerId: 'admin',
+          name: 'Admin',
+          isHost: true,
+          enabled: true,
+          side: 'UNASSIGNED',
+          teamId: null,
+          ...(avatar ? { avatar } : {}),
+          updatedAt: nowMs,
+        };
+        await set(
+          ref(db, `games/${roomCode}/members/${uid}`),
+          stripUndefinedDeep(initMember)
+        );
+        await set(
+          ref(db, `games/${roomCode}/state/hiderPrivate`),
+          stripUndefinedDeep({
+            anchorPoint: null,
+            radarStages: [],
+            qrSecret: initSecrets.qrSecret,
+            shortCode: initSecrets.shortCode,
+            hiderLocations: {},
+          })
+        );
+        const defaultTeams = createDefaultTeams();
+        await Promise.all(
+          Object.entries(defaultTeams).map(([teamId, team]) =>
+            set(
+              ref(db, `games/${roomCode}/teams/${teamId}/public`),
+              stripUndefinedDeep(team)
+            )
+          )
+        );
+        currentRoomCode = roomCode;
+        return {
+          roomCode,
+          member: initMember,
+          publicState: initPub,
+        };
+      }
+
+      if (!pubSnap || !pubSnap.exists()) {
+        throw new Error(
+          `Kein Spiel mit dem Code „${roomCode}“ gefunden. Bitte prüfe den Code.`
+        );
+      }
+
+      const pubVal = pubSnap.val() as PublicGameState;
+      const shouldBeHost = Boolean(
+        isAdmin ||
+          (pubVal.hostPlayerId && pubVal.hostPlayerId === normalizedPlayerId)
+      );
+
+      const existingOwnSnap = await get(
+        ref(db, `games/${roomCode}/members/${uid}`)
+      ).catch(() => null);
+      const existingOwn = existingOwnSnap?.exists()
+        ? (existingOwnSnap.val() as MemberRecord)
+        : null;
+
+      let remoteAssignment: {
+        side: MemberRecord['side'];
+        teamId: string | null;
+      } | null = null;
+      if (!isAdmin) {
+        const assignSnap = await get(
+          ref(db, `games/${roomCode}/assignments/${normalizedPlayerId}`)
+        ).catch(() => null);
+        if (assignSnap?.exists()) {
+          const val = assignSnap.val() as {
+            side?: MemberRecord['side'];
+            teamId?: string | null;
+          };
+          if (val?.side) {
+            remoteAssignment = {
+              side: val.side,
+              teamId: val.side === 'SEEKER' ? (val.teamId ?? null) : null,
+            };
+          }
+        }
+      }
+
+      const inheritedSide: MemberRecord['side'] = isAdmin
+        ? 'UNASSIGNED'
+        : remoteAssignment
+          ? remoteAssignment.side
+          : existingOwn && existingOwn.playerId === normalizedPlayerId
+            ? existingOwn.side
+            : 'UNASSIGNED';
+
+      const inheritedTeamId =
+        inheritedSide === 'SEEKER'
+          ? (remoteAssignment?.teamId ??
+            (existingOwn?.playerId === normalizedPlayerId
+              ? existingOwn.teamId
+              : null) ??
+            null)
+          : null;
+
+      const inheritedAvatar =
+        avatar ??
+        (existingOwn?.playerId === normalizedPlayerId
+          ? existingOwn.avatar
+          : undefined);
+
+      const member: MemberRecord = {
+        uid,
+        playerId: normalizedPlayerId,
+        name: isAdmin ? 'Admin' : playerName.trim() || normalizedPlayerId,
+        isHost: shouldBeHost,
+        enabled: true,
+        side: inheritedSide,
+        teamId: inheritedTeamId,
+        ...(inheritedAvatar ? { avatar: inheritedAvatar } : {}),
+        updatedAt: nowMs,
+      };
+
+      try {
+        await set(
+          ref(db, `games/${roomCode}/members/${uid}`),
+          stripUndefinedDeep(member)
+        );
+      } catch (err) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        if (rawMsg.toLowerCase().includes('permission')) {
+          throw new Error(
+            'Beitritt zum Spielraum abgelehnt. Bitte melde dich kurz neu an oder prüfe die Firebase-Regeln.'
+          );
+        }
+        throw new Error(
+          'Beitritt zum Spielraum fehlgeschlagen. Bitte prüfe deine Internetverbindung.'
+        );
+      }
+
+      currentRoomCode = roomCode;
+      return {
+        roomCode,
+        member,
+        publicState: {
+          ...pubVal,
+          roomCode: pubVal.roomCode ?? roomCode,
+        },
+      };
+    },
+
+    async addActiveTeamIdIfRunning(teamId: string): Promise<void> {
+      if (!teamId) return;
+      await runTransaction(
+        ref(db, `${getRoomRootPath()}/state/public/activeTeamIds`),
+        (cur: string[] | null) => {
+          const list = Array.isArray(cur) ? [...cur] : [];
+          if (!list.includes(teamId)) {
+            list.push(teamId);
+          }
+          return list;
+        }
+      ).catch(() => {});
+    },
 
     getServerNow(): number {
       return Date.now() + serverTimeOffsetMs;
@@ -622,7 +978,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       }
 
       const { playerId, displayName, isAdmin } = nameCheck;
-      const acctRef = ref(db, `${ROOT_PATH}/accounts/${playerId}`);
+      const acctRef = ref(db, `${ACCOUNTS_ROOT_PATH}/accounts/${playerId}`);
       const existingAcctSnap = await get(acctRef);
       if (existingAcctSnap.exists()) {
         throw new Error(
@@ -632,13 +988,20 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
       // Falls das aktuelle Gerät zuvor mit einem anderen Spielerkonto eingeloggt war, frische UID holen
       if (auth.currentUser) {
-        const curMemSnap = await get(
-          ref(db, `${ROOT_PATH}/members/${auth.currentUser.uid}`)
+        const curAuthSnap = await get(
+          ref(db, `${ACCOUNTS_ROOT_PATH}/memberAuth/${auth.currentUser.uid}`)
         ).catch(() => null);
-        if (
-          curMemSnap?.exists() &&
-          (curMemSnap.val() as MemberRecord | null)?.playerId !== playerId
-        ) {
+        const curMemSnap = await get(
+          ref(db, `${getRoomRootPath()}/members/${auth.currentUser.uid}`)
+        ).catch(() => null);
+        const prevPlayerId =
+          (curAuthSnap?.exists()
+            ? (curAuthSnap.val() as { playerId?: string } | null)?.playerId
+            : undefined) ??
+          (curMemSnap?.exists()
+            ? (curMemSnap.val() as MemberRecord | null)?.playerId
+            : undefined);
+        if (prevPlayerId && prevPlayerId !== playerId) {
           await firebaseSignOut(auth);
           await signInAnonymously(auth);
         }
@@ -660,8 +1023,8 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
       try {
         await update(ref(db), {
-          [`${ROOT_PATH}/accounts/${playerId}`]: stripUndefinedDeep(accountRecord),
-          [`${ROOT_PATH}/accountSecrets/${playerId}`]: { passwordHash },
+          [`${ACCOUNTS_ROOT_PATH}/accounts/${playerId}`]: stripUndefinedDeep(accountRecord),
+          [`${ACCOUNTS_ROOT_PATH}/accountSecrets/${playerId}`]: { passwordHash },
         });
       } catch (err) {
         const recheck = await get(acctRef).catch(() => null);
@@ -681,11 +1044,21 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         );
       }
 
-      await set(ref(db, `${ROOT_PATH}/memberAuth/${uid}`), {
+      await set(ref(db, `${ACCOUNTS_ROOT_PATH}/memberAuth/${uid}`), {
         playerId,
         passwordHash,
         authenticatedAt: nowMs,
       });
+
+      const pubSnap = await get(ref(db, `${getRoomRootPath()}/state/public`)).catch(
+        () => null
+      );
+      const pubVal = pubSnap?.exists()
+        ? (pubSnap.val() as PublicGameState)
+        : null;
+      const shouldBeHost = Boolean(
+        isAdmin || (pubVal?.hostPlayerId && pubVal.hostPlayerId === playerId)
+      );
 
       const remoteAssignment = isAdmin
         ? null
@@ -700,16 +1073,16 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         uid,
         playerId,
         name: displayName,
-        isHost: isAdmin,
+        isHost: shouldBeHost,
         enabled: true,
         side,
         teamId,
       };
 
       await set(
-        ref(db, `${ROOT_PATH}/members/${uid}`),
+        ref(db, `${getRoomRootPath()}/members/${uid}`),
         stripUndefinedDeep(member)
-      );
+      ).catch(() => {});
 
       return {
         user: { uid, email: activeUser.email ?? null },
@@ -734,7 +1107,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       }
 
       const { playerId, displayName, isAdmin } = nameCheck;
-      const acctSnap = await get(ref(db, `${ROOT_PATH}/accounts/${playerId}`));
+      const acctSnap = await get(ref(db, `${ACCOUNTS_ROOT_PATH}/accounts/${playerId}`));
       if (!acctSnap.exists()) {
         throw new Error(
           'Dieses Konto existiert noch nicht. Wechsle auf „Konto erstellen“, um es neu anzulegen.'
@@ -748,13 +1121,20 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
       // Falls das Gerät aktuell mit einem anderen Spielerkonto verknüpft ist, frische UID anfordern
       if (auth.currentUser) {
-        const curMemSnap = await get(
-          ref(db, `${ROOT_PATH}/members/${auth.currentUser.uid}`)
+        const curAuthSnap = await get(
+          ref(db, `${ACCOUNTS_ROOT_PATH}/memberAuth/${auth.currentUser.uid}`)
         ).catch(() => null);
-        if (
-          curMemSnap?.exists() &&
-          (curMemSnap.val() as MemberRecord | null)?.playerId !== playerId
-        ) {
+        const curMemSnap = await get(
+          ref(db, `${getRoomRootPath()}/members/${auth.currentUser.uid}`)
+        ).catch(() => null);
+        const prevPlayerId =
+          (curAuthSnap?.exists()
+            ? (curAuthSnap.val() as { playerId?: string } | null)?.playerId
+            : undefined) ??
+          (curMemSnap?.exists()
+            ? (curMemSnap.val() as MemberRecord | null)?.playerId
+            : undefined);
+        if (prevPlayerId && prevPlayerId !== playerId) {
           await firebaseSignOut(auth);
           await signInAnonymously(auth);
         }
@@ -766,7 +1146,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       const passwordHash = computeAccountPasswordHash(playerId, password);
 
       try {
-        await set(ref(db, `${ROOT_PATH}/memberAuth/${uid}`), {
+        await set(ref(db, `${ACCOUNTS_ROOT_PATH}/memberAuth/${uid}`), {
           playerId,
           passwordHash,
           authenticatedAt: nowMs,
@@ -781,8 +1161,18 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         );
       }
 
+      const pubSnap = await get(ref(db, `${getRoomRootPath()}/state/public`)).catch(
+        () => null
+      );
+      const pubVal = pubSnap?.exists()
+        ? (pubSnap.val() as PublicGameState)
+        : null;
+      const shouldBeHost = Boolean(
+        isAdmin || (pubVal?.hostPlayerId && pubVal.hostPlayerId === playerId)
+      );
+
       const existingOwnSnap = await get(
-        ref(db, `${ROOT_PATH}/members/${uid}`)
+        ref(db, `${getRoomRootPath()}/members/${uid}`)
       ).catch(() => null);
       const existingOwn = existingOwnSnap?.exists()
         ? (existingOwnSnap.val() as MemberRecord)
@@ -815,7 +1205,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         uid,
         playerId,
         name: canonicalName,
-        isHost: isAdmin,
+        isHost: shouldBeHost,
         enabled: true,
         side: inheritedSide,
         teamId: inheritedTeamId,
@@ -824,9 +1214,9 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       };
 
       await set(
-        ref(db, `${ROOT_PATH}/members/${uid}`),
+        ref(db, `${getRoomRootPath()}/members/${uid}`),
         stripUndefinedDeep(member)
-      );
+      ).catch(() => {});
 
       return {
         user: { uid, email: activeUser.email ?? null },
@@ -867,7 +1257,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
       // 1. Aktuelles Passwort gegen /accountSecrets/$playerId/passwordHash prüfen
       try {
-        await set(ref(db, `${ROOT_PATH}/memberAuth/${uid}`), {
+        await set(ref(db, `${ACCOUNTS_ROOT_PATH}/memberAuth/${uid}`), {
           playerId: normalizedId,
           passwordHash: currentHash,
           authenticatedAt: nowMs,
@@ -883,10 +1273,10 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       }
 
       // 2. Neues Passwort-Secret schreiben & memberAuth aktualisieren
-      await set(ref(db, `${ROOT_PATH}/accountSecrets/${normalizedId}`), {
+      await set(ref(db, `${ACCOUNTS_ROOT_PATH}/accountSecrets/${normalizedId}`), {
         passwordHash: nextHash,
       });
-      await set(ref(db, `${ROOT_PATH}/memberAuth/${uid}`), {
+      await set(ref(db, `${ACCOUNTS_ROOT_PATH}/memberAuth/${uid}`), {
         playerId: normalizedId,
         passwordHash: nextHash,
         authenticatedAt: nowMs,
@@ -897,7 +1287,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       const normalizedId = playerId.trim().toLowerCase();
       if (!normalizedId) return null;
       try {
-        const snap = await get(ref(db, `${ROOT_PATH}/accounts/${normalizedId}`));
+        const snap = await get(ref(db, `${ACCOUNTS_ROOT_PATH}/accounts/${normalizedId}`));
         if (!snap.exists()) return null;
         return snap.val() as AccountPublicRecord;
       } catch {
@@ -909,7 +1299,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       const normalizedId = playerId.trim().toLowerCase();
       if (!normalizedId) return;
       try {
-        const acctRef = ref(db, `${ROOT_PATH}/accounts/${normalizedId}`);
+        const acctRef = ref(db, `${ACCOUNTS_ROOT_PATH}/accounts/${normalizedId}`);
         const snap = await get(acctRef);
         const existing = snap.exists()
           ? (snap.val() as AccountPublicRecord)
@@ -938,7 +1328,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async registerSelfMemberIfMissing(member): Promise<void> {
-      const memberRef = ref(db, `${ROOT_PATH}/members/${member.uid}`);
+      const memberRef = ref(db, `${getRoomRootPath()}/members/${member.uid}`);
       const snap = await get(memberRef);
       if (!snap.exists()) {
         await set(memberRef, stripUndefinedDeep(member));
@@ -947,7 +1337,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async fetchPlayerAssignment(playerId) {
       try {
-        const snap = await get(ref(db, `${ROOT_PATH}/assignments/${playerId}`));
+        const snap = await get(ref(db, `${getRoomRootPath()}/assignments/${playerId}`));
         if (!snap.exists()) return null;
         const val = snap.val() as { side?: MemberRecord['side']; teamId?: string | null };
         if (!val?.side) return null;
@@ -963,7 +1353,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     async savePlayerAssignment(playerId, side, teamId): Promise<void> {
       try {
         await set(
-          ref(db, `${ROOT_PATH}/assignments/${playerId}`),
+          ref(db, `${getRoomRootPath()}/assignments/${playerId}`),
           stripUndefinedDeep({
             side,
             teamId: side === 'SEEKER' ? (teamId ?? null) : null,
@@ -975,15 +1365,15 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async removeMemberByHost(uid): Promise<void> {
-      await remove(ref(db, `${ROOT_PATH}/members/${uid}`));
+      await remove(ref(db, `${getRoomRootPath()}/members/${uid}`));
     },
 
     async kickPlayerByHost(playerId, memberUids): Promise<void> {
       for (const targetUid of memberUids) {
-        await remove(ref(db, `${ROOT_PATH}/members/${targetUid}`)).catch(() => {});
-        await remove(ref(db, `${ROOT_PATH}/joinRequests/${targetUid}`)).catch(() => {});
+        await remove(ref(db, `${getRoomRootPath()}/members/${targetUid}`)).catch(() => {});
+        await remove(ref(db, `${getRoomRootPath()}/joinRequests/${targetUid}`)).catch(() => {});
         // Entferne Sitzungen & Ready-Status, aber lasse eine etwaige Notfallnachricht des Spielers bestehen!
-        const presSnap = await get(ref(db, `${ROOT_PATH}/presence/${targetUid}`)).catch(
+        const presSnap = await get(ref(db, `${getRoomRootPath()}/presence/${targetUid}`)).catch(
           () => null
         );
         if (presSnap && presSnap.exists()) {
@@ -991,17 +1381,17 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           for (const key of Object.keys(sessions)) {
             if (key !== 'emergency_alert') {
               await remove(
-                ref(db, `${ROOT_PATH}/presence/${targetUid}/${key}`)
+                ref(db, `${getRoomRootPath()}/presence/${targetUid}/${key}`)
               ).catch(() => {});
             }
           }
         }
       }
-      await remove(ref(db, `${ROOT_PATH}/playerClaims/${playerId}`)).catch(() => {});
+      await remove(ref(db, `${getRoomRootPath()}/playerClaims/${playerId}`)).catch(() => {});
 
       for (const palette of TEAM_PALETTE) {
         await runTransaction(
-          ref(db, `${ROOT_PATH}/teams/${palette.id}/public`),
+          ref(db, `${getRoomRootPath()}/teams/${palette.id}/public`),
           (cur: TeamPublic | null) => {
             if (!cur) return cur;
             const list = Array.isArray(cur.memberPlayerIds)
@@ -1032,7 +1422,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       // Mehrere Geräte pro Spieler sind ausdrücklich erlaubt.
       const claim: PlayerSeatClaim = { uid, tabId, heartbeatAt: nowMs };
       try {
-        await set(ref(db, `${ROOT_PATH}/playerClaims/${playerId}`), claim);
+        await set(ref(db, `${getRoomRootPath()}/playerClaims/${playerId}`), claim);
       } catch {
         // Falls parallel ein anderes Gerät schreibt oder Rules greifen, Login dennoch erlauben
       }
@@ -1043,7 +1433,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async releasePlayerSeat(playerId, uid): Promise<void> {
-      const claimRef = ref(db, `${ROOT_PATH}/playerClaims/${playerId}`);
+      const claimRef = ref(db, `${getRoomRootPath()}/playerClaims/${playerId}`);
       try {
         const snap = await get(claimRef);
         const val = snap.val() as PlayerSeatClaim | null;
@@ -1057,7 +1447,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     subscribePlayerSeat(playerId, cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/playerClaims/${playerId}`),
+        ref(db, `${getRoomRootPath()}/playerClaims/${playerId}`),
         (snap) => cb((snap.val() as PlayerSeatClaim | null) ?? null),
         () => cb(null)
       );
@@ -1079,7 +1469,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     subscribeOwnMember(uid, cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/members/${uid}`),
+        ref(db, `${getRoomRootPath()}/members/${uid}`),
         (snap) => {
           const val = snap.val() as MemberRecord | null;
           cb(
@@ -1087,7 +1477,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
               ? ({
                   ...val,
                   uid,
-                  isHost: isAdminAccountId(val.playerId),
+                  isHost: Boolean(val.isHost || isAdminAccountId(val.playerId)),
                 } as MemberRecord)
               : null
           );
@@ -1098,7 +1488,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     subscribeAllMembers(cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/members`),
+        ref(db, `${getRoomRootPath()}/members`),
         (snap) => {
           const raw = (snap.val() ?? {}) as Record<string, MemberRecord>;
           const mapped: Record<string, MemberRecord> = {};
@@ -1106,7 +1496,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
             mapped[uid] = {
               ...rec,
               uid,
-              isHost: isAdminAccountId(rec.playerId),
+              isHost: Boolean(rec.isHost || isAdminAccountId(rec.playerId)),
             };
           }
           cb(mapped);
@@ -1117,14 +1507,14 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async upsertJoinRequest(req): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/joinRequests/${req.uid}`),
+        ref(db, `${getRoomRootPath()}/joinRequests/${req.uid}`),
         stripUndefinedDeep(req)
       );
     },
 
     subscribeOwnJoinRequest(uid, cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/joinRequests/${uid}`),
+        ref(db, `${getRoomRootPath()}/joinRequests/${uid}`),
         (snap) => cb((snap.val() as JoinRequest | null) ?? null),
         () => cb(null)
       );
@@ -1132,7 +1522,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     subscribeAllJoinRequests(cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/joinRequests`),
+        ref(db, `${getRoomRootPath()}/joinRequests`),
         (snap) => cb((snap.val() as Record<string, JoinRequest> | null) ?? {}),
         () => cb({})
       );
@@ -1150,10 +1540,10 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         side: assignedSide,
         teamId: assignedTeam,
       };
-      await set(ref(db, `${ROOT_PATH}/members/${req.uid}`), stripUndefinedDeep(member));
+      await set(ref(db, `${getRoomRootPath()}/members/${req.uid}`), stripUndefinedDeep(member));
       if (assignedTeam) {
         await runTransaction(
-          ref(db, `${ROOT_PATH}/teams/${assignedTeam}/public`),
+          ref(db, `${getRoomRootPath()}/teams/${assignedTeam}/public`),
           (current: TeamPublic | null) => {
             if (!current) return current;
             const list = Array.isArray(current.memberPlayerIds)
@@ -1170,18 +1560,18 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           }
         );
       }
-      await remove(ref(db, `${ROOT_PATH}/joinRequests/${req.uid}`));
+      await remove(ref(db, `${getRoomRootPath()}/joinRequests/${req.uid}`));
     },
 
     async updateMember(uid, member): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/members/${uid}`),
+        ref(db, `${getRoomRootPath()}/members/${uid}`),
         stripUndefinedDeep(member)
       );
     },
 
     registerTabPresence(uid, browserSessionId, deviceInfo): UnsubscribeFn {
-      const sessionRef = ref(db, `${ROOT_PATH}/presence/${uid}/${browserSessionId}`);
+      const sessionRef = ref(db, `${getRoomRootPath()}/presence/${uid}/${browserSessionId}`);
       const connectedRef = ref(db, '.info/connected');
 
       const unsub = onValue(connectedRef, (snap) => {
@@ -1207,7 +1597,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     subscribePresence(cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/presence`),
+        ref(db, `${getRoomRootPath()}/presence`),
         (snap) =>
           cb(
             (snap.val() as Record<string, Record<string, PresenceSession>> | null) ??
@@ -1219,7 +1609,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async cleanupOrphanedPresence(targetUid): Promise<void> {
       const presSnap = await get(
-        ref(db, targetUid ? `${ROOT_PATH}/presence/${targetUid}` : `${ROOT_PATH}/presence`)
+        ref(db, targetUid ? `${getRoomRootPath()}/presence/${targetUid}` : `${getRoomRootPath()}/presence`)
       ).catch(() => null);
       if (!presSnap || !presSnap.exists()) return;
 
@@ -1227,7 +1617,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         const sessions = presSnap.val() as Record<string, PresenceSession>;
         for (const key of Object.keys(sessions)) {
           if (key.startsWith('tab_')) {
-            await remove(ref(db, `${ROOT_PATH}/presence/${targetUid}/${key}`)).catch(
+            await remove(ref(db, `${getRoomRootPath()}/presence/${targetUid}/${key}`)).catch(
               () => {}
             );
           }
@@ -1237,7 +1627,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         for (const [uid, sessions] of Object.entries(all)) {
           for (const key of Object.keys(sessions ?? {})) {
             if (key.startsWith('tab_')) {
-              await remove(ref(db, `${ROOT_PATH}/presence/${uid}/${key}`)).catch(
+              await remove(ref(db, `${getRoomRootPath()}/presence/${uid}/${key}`)).catch(
                 () => {}
               );
             }
@@ -1248,7 +1638,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     subscribePublicState(cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/state/public`),
+        ref(db, `${getRoomRootPath()}/state/public`),
         (snap) => {
           const val = snap.val() as PublicGameState | null;
           if (!val) {
@@ -1301,6 +1691,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
           cb({
             ...val,
+            roomCode: val.roomCode ?? currentRoomCode,
             gameMode: val.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
             classicSearchDurationMs: val.classicSearchDurationMs,
             manhuntShrinkDurationMs: val.manhuntShrinkDurationMs,
@@ -1330,20 +1721,23 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       defaultTeams,
       defaultSecrets
     ): Promise<void> {
-      const stateSnap = await get(ref(db, `${ROOT_PATH}/state/public`));
+      const stateSnap = await get(ref(db, `${getRoomRootPath()}/state/public`));
       if (!stateSnap.exists()) {
         await set(
-          ref(db, `${ROOT_PATH}/state/public`),
-          stripUndefinedDeep(defaultState)
+          ref(db, `${getRoomRootPath()}/state/public`),
+          stripUndefinedDeep({
+            ...defaultState,
+            roomCode: defaultState.roomCode ?? currentRoomCode,
+          })
         );
       }
       if (defaultSecrets) {
-        const privSnap = await get(ref(db, `${ROOT_PATH}/state/hiderPrivate`)).catch(
+        const privSnap = await get(ref(db, `${getRoomRootPath()}/state/hiderPrivate`)).catch(
           () => null
         );
         if (privSnap && !privSnap.exists()) {
           await set(
-            ref(db, `${ROOT_PATH}/state/hiderPrivate`),
+            ref(db, `${getRoomRootPath()}/state/hiderPrivate`),
             stripUndefinedDeep({
               anchorPoint: null,
               radarStages: [],
@@ -1355,10 +1749,10 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         }
       }
       for (const [teamId, team] of Object.entries(defaultTeams)) {
-        const teamSnap = await get(ref(db, `${ROOT_PATH}/teams/${teamId}/public`));
+        const teamSnap = await get(ref(db, `${getRoomRootPath()}/teams/${teamId}/public`));
         if (!teamSnap.exists()) {
           await set(
-            ref(db, `${ROOT_PATH}/teams/${teamId}/public`),
+            ref(db, `${getRoomRootPath()}/teams/${teamId}/public`),
             stripUndefinedDeep(team)
           );
         }
@@ -1368,12 +1762,13 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     async savePublicStateByHost(state): Promise<void> {
       const normalized: PublicGameState = {
         ...state,
+        roomCode: state.roomCode ?? currentRoomCode,
         anchorLocked: Boolean(state.anchorLocked),
         leashAlertActive: Boolean(state.leashAlertActive),
         allowTestClicks: Boolean(state.allowTestClicks),
       };
       await set(
-        ref(db, `${ROOT_PATH}/state/public`),
+        ref(db, `${getRoomRootPath()}/state/public`),
         stripUndefinedDeep(normalized)
       );
     },
@@ -1381,7 +1776,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     async patchControllerPublicTransition(patch): Promise<void> {
       const updates: Record<string, unknown> = {};
       for (const [key, val] of Object.entries(patch)) {
-        updates[`${ROOT_PATH}/state/public/${key}`] =
+        updates[`${getRoomRootPath()}/state/public/${key}`] =
           val === undefined ? null : stripUndefinedDeep(val);
       }
       await update(ref(db), updates);
@@ -1389,7 +1784,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     subscribeControllerLease(cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/state/controller`),
+        ref(db, `${getRoomRootPath()}/state/controller`),
         (snap) => cb((snap.val() as ControllerLease | null) ?? null),
         () => cb(null)
       );
@@ -1397,7 +1792,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async tryAcquireOrRenewLease(uid, sessionId, nowMs, ttlMs): Promise<boolean> {
       const tx = await runTransaction(
-        ref(db, `${ROOT_PATH}/state/controller`),
+        ref(db, `${getRoomRootPath()}/state/controller`),
         (current: ControllerLease | null) => {
           if (
             !current ||
@@ -1420,7 +1815,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     subscribeHiderPrivate(cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/state/hiderPrivate`),
+        ref(db, `${getRoomRootPath()}/state/hiderPrivate`),
         (snap) => {
           const val = snap.val() as HiderPrivateState | null;
           if (!val) {
@@ -1449,11 +1844,11 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       if (priv.hiderLocations !== undefined) {
         payload.hiderLocations = stripUndefinedDeep(priv.hiderLocations);
       }
-      await update(ref(db, `${ROOT_PATH}/state/hiderPrivate`), payload);
+      await update(ref(db, `${getRoomRootPath()}/state/hiderPrivate`), payload);
     },
 
     async rerollHiderSecrets(): Promise<{ qrSecret: string; shortCode: string }> {
-      const privRef = ref(db, `${ROOT_PATH}/state/hiderPrivate`);
+      const privRef = ref(db, `${getRoomRootPath()}/state/hiderPrivate`);
       const existingSnap = await get(privRef).catch(() => null);
       const existing = existingSnap?.exists()
         ? (existingSnap.val() as Partial<HiderPrivateState>)
@@ -1479,14 +1874,14 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async writeHiderLocationPrivate(uid, fix): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/state/hiderPrivate/hiderLocations/${uid}`),
+        ref(db, `${getRoomRootPath()}/state/hiderPrivate/hiderLocations/${uid}`),
         stripUndefinedDeep(fix)
       );
     },
 
     subscribeTeamPublic(teamId, cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/teams/${teamId}/public`),
+        ref(db, `${getRoomRootPath()}/teams/${teamId}/public`),
         (snap) => {
           const val = snap.val() as TeamPublic | null;
           if (!val) {
@@ -1508,14 +1903,14 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async saveTeamPublic(teamId, team): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/teams/${teamId}/public`),
+        ref(db, `${getRoomRootPath()}/teams/${teamId}/public`),
         stripUndefinedDeep(team)
       );
     },
 
     subscribeTeamLocation(teamId, cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/teams/${teamId}/location`),
+        ref(db, `${getRoomRootPath()}/teams/${teamId}/location`),
         (snap) => cb((snap.val() as TeamLocation | null) ?? null),
         () => cb(null)
       );
@@ -1523,7 +1918,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async writeTeamLocation(teamId, loc): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/teams/${teamId}/location`),
+        ref(db, `${getRoomRootPath()}/teams/${teamId}/location`),
         stripUndefinedDeep(loc)
       );
     },
@@ -1534,7 +1929,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       uid,
       fix
     ): Promise<TeamLocation | null> {
-      const locRef = ref(db, `${ROOT_PATH}/teams/${teamId}/location`);
+      const locRef = ref(db, `${getRoomRootPath()}/teams/${teamId}/location`);
       const nowMs = adapter.getServerNow();
       const tx = await runTransaction(locRef, (cur: TeamLocation | null) => {
         return stripUndefinedDeep(
@@ -1551,12 +1946,12 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async clearTeamLocation(teamId): Promise<void> {
-      await remove(ref(db, `${ROOT_PATH}/teams/${teamId}/location`));
+      await remove(ref(db, `${getRoomRootPath()}/teams/${teamId}/location`));
     },
 
     subscribeTeamRequests(teamId, cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/requests/${teamId}`),
+        ref(db, `${getRoomRootPath()}/requests/${teamId}`),
         (snap) => cb((snap.val() as Record<string, ClueRequest> | null) ?? {}),
         () => cb({})
       );
@@ -1564,7 +1959,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async createClueRequest(req): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/requests/${req.teamId}/${req.id}`),
+        ref(db, `${getRoomRootPath()}/requests/${req.teamId}/${req.id}`),
         stripUndefinedDeep(req)
       );
     },
@@ -1575,7 +1970,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       nowMs,
       postDownloadTtlMs = MEDIA_POST_DOWNLOAD_EXPIRE_MS
     ): Promise<void> {
-      const reqRef = ref(db, `${ROOT_PATH}/requests/${teamId}/${requestId}`);
+      const reqRef = ref(db, `${getRoomRootPath()}/requests/${teamId}/${requestId}`);
       await runTransaction(reqRef, (cur: ClueRequest | null) => {
         if (!cur || !cur.mediaBase64) return cur;
         const baseProcessedAt = cur.processedAt ?? cur.createdAt;
@@ -1594,7 +1989,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async acknowledgeAndStripMedia(teamId, requestId, ackAt): Promise<void> {
-      const reqRef = ref(db, `${ROOT_PATH}/requests/${teamId}/${requestId}`);
+      const reqRef = ref(db, `${getRoomRootPath()}/requests/${teamId}/${requestId}`);
       await runTransaction(reqRef, (cur: ClueRequest | null) => {
         if (!cur) return cur;
         const copy = { ...cur, mediaAcknowledgedAt: ackAt };
@@ -1611,7 +2006,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       nextStatus
     ): Promise<ClueRequest | null> {
       const tx = await runTransaction(
-        ref(db, `${ROOT_PATH}/requests/${teamId}/${requestId}`),
+        ref(db, `${getRoomRootPath()}/requests/${teamId}/${requestId}`),
         (cur: ClueRequest | null) => {
           if (!cur) return cur;
           if (
@@ -1632,7 +2027,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async updateClueRequest(teamId, requestId, req): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/requests/${teamId}/${requestId}`),
+        ref(db, `${getRoomRootPath()}/requests/${teamId}/${requestId}`),
         stripUndefinedDeep(req)
       );
     },
@@ -1643,7 +2038,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       deltaClueCount
     ): Promise<TeamPublic | null> {
       const tx = await runTransaction(
-        ref(db, `${ROOT_PATH}/teams/${teamId}/public`),
+        ref(db, `${getRoomRootPath()}/teams/${teamId}/public`),
         (cur: TeamPublic | null) => {
           if (!cur) return cur;
           return {
@@ -1658,7 +2053,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async saveClue(teamId, clue): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/clues/${teamId}/${clue.id}`),
+        ref(db, `${getRoomRootPath()}/clues/${teamId}/${clue.id}`),
         stripUndefinedDeep(clue)
       );
     },
@@ -1669,15 +2064,15 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           ? Math.round(clue.refundedMs / 2) - clue.refundedMs
           : clue.penaltyMs || 0;
 
-      await remove(ref(db, `${ROOT_PATH}/clues/${teamId}/${clue.id}`));
+      await remove(ref(db, `${getRoomRootPath()}/clues/${teamId}/${clue.id}`));
       if (clue.requestId) {
         await remove(
-          ref(db, `${ROOT_PATH}/requests/${teamId}/${clue.requestId}`)
+          ref(db, `${getRoomRootPath()}/requests/${teamId}/${clue.requestId}`)
         ).catch(() => {});
       }
 
       await runTransaction(
-        ref(db, `${ROOT_PATH}/teams/${teamId}/public`),
+        ref(db, `${getRoomRootPath()}/teams/${teamId}/public`),
         (cur: TeamPublic | null) => {
           if (!cur) return cur;
           return {
@@ -1689,7 +2084,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       );
 
       await runTransaction(
-        ref(db, `${ROOT_PATH}/leaderboard/${teamId}`),
+        ref(db, `${getRoomRootPath()}/leaderboard/${teamId}`),
         (cur: LeaderboardEntry | null) => {
           if (!cur) return cur;
           const nextPenaltyMs = (cur.penaltyMs || 0) - appliedNetPenaltyMs;
@@ -1705,7 +2100,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     subscribeTeamClues(teamId, cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/clues/${teamId}`),
+        ref(db, `${getRoomRootPath()}/clues/${teamId}`),
         (snap) => cb((snap.val() as Record<string, ClueRecord> | null) ?? {}),
         () => cb({})
       );
@@ -1713,14 +2108,14 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async submitCatchRequest(req): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/catchRequests/${req.id}`),
+        ref(db, `${getRoomRootPath()}/catchRequests/${req.id}`),
         stripUndefinedDeep(req)
       );
     },
 
     subscribeAllCatchRequests(cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/catchRequests`),
+        ref(db, `${getRoomRootPath()}/catchRequests`),
         (snap) => cb((snap.val() as Record<string, CatchRequest> | null) ?? {}),
         () => cb({})
       );
@@ -1728,7 +2123,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     subscribeOwnCatchRequest(requestId, cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/catchRequests/${requestId}`),
+        ref(db, `${getRoomRootPath()}/catchRequests/${requestId}`),
         (snap) => cb((snap.val() as CatchRequest | null) ?? null),
         () => cb(null)
       );
@@ -1736,7 +2131,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async claimCatchRequest(requestId): Promise<CatchRequest | null> {
       const tx = await runTransaction(
-        ref(db, `${ROOT_PATH}/catchRequests/${requestId}`),
+        ref(db, `${getRoomRootPath()}/catchRequests/${requestId}`),
         (cur: CatchRequest | null) => {
           if (!cur || cur.status !== 'PENDING') return;
           return { ...cur, status: 'PROCESSING' as CatchRequestStatus };
@@ -1757,7 +2152,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         processedAt,
       };
       if (errorMessage) updates.errorMessage = errorMessage;
-      await update(ref(db, `${ROOT_PATH}/catchRequests/${requestId}`), updates);
+      await update(ref(db, `${getRoomRootPath()}/catchRequests/${requestId}`), updates);
     },
 
     async markTeamCaughtAtomically(
@@ -1766,7 +2161,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     ): Promise<{ transitioned: boolean; team: TeamPublic | null }> {
       let didTransition = false;
       const tx = await runTransaction(
-        ref(db, `${ROOT_PATH}/teams/${teamId}/public`),
+        ref(db, `${getRoomRootPath()}/teams/${teamId}/public`),
         (cur: TeamPublic | null) => {
           if (!cur) return cur;
           if (cur.status !== 'ACTIVE') {
@@ -1789,14 +2184,14 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
     async saveLeaderboardEntry(entry): Promise<void> {
       await set(
-        ref(db, `${ROOT_PATH}/leaderboard/${entry.teamId}`),
+        ref(db, `${getRoomRootPath()}/leaderboard/${entry.teamId}`),
         stripUndefinedDeep(entry)
       );
     },
 
     subscribeLeaderboard(cb): UnsubscribeFn {
       return onValue(
-        ref(db, `${ROOT_PATH}/leaderboard`),
+        ref(db, `${getRoomRootPath()}/leaderboard`),
         (snap) =>
           cb((snap.val() as Record<string, LeaderboardEntry> | null) ?? {}),
         () => cb({})
@@ -1808,30 +2203,53 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       resetTeams,
       newHiderPrivate
     ): Promise<void> {
+      let existingHostFields: Partial<PublicGameState> = {};
+      if (!newPublicState.hostPlayerId) {
+        const prevSnap = await get(
+          ref(db, `${getRoomRootPath()}/state/public`)
+        ).catch(() => null);
+        if (prevSnap?.exists()) {
+          const prevVal = prevSnap.val() as PublicGameState;
+          existingHostFields = {
+            roomCode: prevVal.roomCode ?? currentRoomCode,
+            hostPlayerId: prevVal.hostPlayerId,
+            hostName: prevVal.hostName,
+            createdAt: prevVal.createdAt,
+          };
+        }
+      }
+      const nextPublic: PublicGameState = {
+        ...existingHostFields,
+        ...newPublicState,
+        roomCode:
+          newPublicState.roomCode ??
+          existingHostFields.roomCode ??
+          currentRoomCode,
+      };
       await set(
-        ref(db, `${ROOT_PATH}/state/public`),
-        stripUndefinedDeep(newPublicState)
+        ref(db, `${getRoomRootPath()}/state/public`),
+        stripUndefinedDeep(nextPublic)
       );
-      await remove(ref(db, `${ROOT_PATH}/state/controller`));
+      await remove(ref(db, `${getRoomRootPath()}/state/controller`));
       await set(
-        ref(db, `${ROOT_PATH}/state/hiderPrivate`),
+        ref(db, `${getRoomRootPath()}/state/hiderPrivate`),
         stripUndefinedDeep(newHiderPrivate)
       );
-      await remove(ref(db, `${ROOT_PATH}/clues`));
-      await remove(ref(db, `${ROOT_PATH}/requests`));
-      await remove(ref(db, `${ROOT_PATH}/catchRequests`));
-      await remove(ref(db, `${ROOT_PATH}/leaderboard`));
+      await remove(ref(db, `${getRoomRootPath()}/clues`));
+      await remove(ref(db, `${getRoomRootPath()}/requests`));
+      await remove(ref(db, `${getRoomRootPath()}/catchRequests`));
+      await remove(ref(db, `${getRoomRootPath()}/leaderboard`));
       for (const [teamId, team] of Object.entries(resetTeams)) {
         await set(
-          ref(db, `${ROOT_PATH}/teams/${teamId}/public`),
+          ref(db, `${getRoomRootPath()}/teams/${teamId}/public`),
           stripUndefinedDeep(team)
         );
-        await remove(ref(db, `${ROOT_PATH}/teams/${teamId}/location`));
+        await remove(ref(db, `${getRoomRootPath()}/teams/${teamId}/location`));
       }
     },
 
     async setPlayerReadyState(uid, playerId, readyToken, nowMs): Promise<void> {
-      const readyRef = ref(db, `${ROOT_PATH}/presence/${uid}/ready_state`);
+      const readyRef = ref(db, `${getRoomRootPath()}/presence/${uid}/ready_state`);
       if (!readyToken) {
         await remove(readyRef).catch(() => {});
         return;
@@ -1849,7 +2267,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async sendEmergencyMessage(msg): Promise<void> {
-      const alertRef = ref(db, `${ROOT_PATH}/presence/${msg.uid}/emergency_alert`);
+      const alertRef = ref(db, `${getRoomRootPath()}/presence/${msg.uid}/emergency_alert`);
       await set(
         alertRef,
         stripUndefinedDeep({
@@ -1876,7 +2294,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async clearOwnEmergencyMessage(uid): Promise<void> {
-      await remove(ref(db, `${ROOT_PATH}/presence/${uid}/emergency_alert`));
+      await remove(ref(db, `${getRoomRootPath()}/presence/${uid}/emergency_alert`));
     },
 
     async setLeashViolationAlert({
@@ -1890,7 +2308,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       exposedAccuracy,
       nowMs,
     }): Promise<void> {
-      const leashRef = ref(db, `${ROOT_PATH}/presence/${uid}/leash_alert`);
+      const leashRef = ref(db, `${getRoomRootPath()}/presence/${uid}/leash_alert`);
       await set(
         leashRef,
         stripUndefinedDeep({
@@ -1918,7 +2336,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async clearLeashViolationAlert(uid): Promise<void> {
-      await remove(ref(db, `${ROOT_PATH}/presence/${uid}/leash_alert`)).catch(
+      await remove(ref(db, `${getRoomRootPath()}/presence/${uid}/leash_alert`)).catch(
         () => {}
       );
     },
@@ -1959,7 +2377,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         : fallbackSecrets.shortCode;
 
       await set(
-        ref(db, `${ROOT_PATH}/state/hiderPrivate`),
+        ref(db, `${getRoomRootPath()}/state/hiderPrivate`),
         stripUndefinedDeep({
           anchorPoint: null,
           radarStages: [],
@@ -1971,22 +2389,22 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
       for (const [teamId, team] of Object.entries(nextTeams)) {
         await set(
-          ref(db, `${ROOT_PATH}/teams/${teamId}/public`),
+          ref(db, `${getRoomRootPath()}/teams/${teamId}/public`),
           stripUndefinedDeep(team)
         );
-        await remove(ref(db, `${ROOT_PATH}/teams/${teamId}/location`)).catch(
+        await remove(ref(db, `${getRoomRootPath()}/teams/${teamId}/location`)).catch(
           () => {}
         );
       }
 
-      await remove(ref(db, `${ROOT_PATH}/leaderboard`)).catch(() => {});
-      await remove(ref(db, `${ROOT_PATH}/clues`)).catch(() => {});
-      await remove(ref(db, `${ROOT_PATH}/requests`)).catch(() => {});
-      await remove(ref(db, `${ROOT_PATH}/catchRequests`)).catch(() => {});
+      await remove(ref(db, `${getRoomRootPath()}/leaderboard`)).catch(() => {});
+      await remove(ref(db, `${getRoomRootPath()}/clues`)).catch(() => {});
+      await remove(ref(db, `${getRoomRootPath()}/requests`)).catch(() => {});
+      await remove(ref(db, `${getRoomRootPath()}/catchRequests`)).catch(() => {});
 
       // Speichere Rundenstart-Metadaten parallel in presence (Fallback, falls ältere DB-Rules aktiv sind)
       await set(
-        ref(db, `${ROOT_PATH}/presence/${starterUid}/round_start_meta`),
+        ref(db, `${getRoomRootPath()}/presence/${starterUid}/round_start_meta`),
         stripUndefinedDeep({
           online: false,
           lastSeen: nowMs,
@@ -2007,7 +2425,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       const initialSearchStart = immediateOpenSearch ? nowMs : null;
 
       try {
-        await update(ref(db, `${ROOT_PATH}/state/public`), {
+        await update(ref(db, `${getRoomRootPath()}/state/public`), {
           status: 'RUNNING',
           currentPhase: initialPhase,
           gameMode: publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
@@ -2026,7 +2444,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         });
       } catch {
         // Fallback auf die strikt erlaubten Controller-Felder
-        await update(ref(db, `${ROOT_PATH}/state/public`), {
+        await update(ref(db, `${getRoomRootPath()}/state/public`), {
           status: 'RUNNING',
           currentPhase: initialPhase,
           searchStartTimestamp: initialSearchStart,

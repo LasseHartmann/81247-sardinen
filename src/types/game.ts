@@ -234,6 +234,10 @@ export interface RadarSchedule {
 }
 
 export interface PublicGameState {
+  roomCode?: string;
+  hostPlayerId?: string;
+  hostName?: string;
+  createdAt?: number;
   status: GameStatus;
   currentPhase: GamePhase;
   gameMode?: GameMode;

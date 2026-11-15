@@ -11,7 +11,10 @@ import {
   LogOut,
   CheckCircle2,
   Clock,
+  Copy,
   Crosshair,
+  ArrowLeft,
+  Link2,
 } from 'lucide-react';
 import {
   ALL_MUNICH_POSTAL_CODES,
@@ -99,6 +102,8 @@ export interface HostControlPanelProps {
   requestsByTeam?: Record<string, Record<string, ClueRequest>>;
   onNavigateToMap: () => void;
   onOpenCircleMapEditor?: () => void;
+  onSelectOwnRole?: (nextSelection: string) => Promise<void>;
+  onLeaveRoom?: () => Promise<void>;
   onLogoutAdmin?: () => void;
 }
 
@@ -116,8 +121,36 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   requestsByTeam = {},
   onNavigateToMap,
   onOpenCircleMapEditor,
+  onSelectOwnRole,
+  onLeaveRoom,
   onLogoutAdmin,
 }) => {
+  const isOverviewAccount = isOverviewMember(ownMember);
+  const roomCode = publicState.roomCode ?? adapter.getRoomCode();
+  const [copiedKind, setCopiedKind] = useState<'CODE' | 'LINK' | null>(null);
+  const [changingOwnRole, setChangingOwnRole] = useState(false);
+
+  const handleCopyRoomCode = async () => {
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      setCopiedKind('CODE');
+      setTimeout(() => setCopiedKind(null), 2000);
+    } catch {
+      // Clipboard nicht verfügbar
+    }
+  };
+
+  const handleCopyInviteLink = async () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', roomCode);
+      await navigator.clipboard.writeText(url.toString());
+      setCopiedKind('LINK');
+      setTimeout(() => setCopiedKind(null), 2000);
+    } catch {
+      // Clipboard nicht verfügbar
+    }
+  };
   const isCirclePlayArea = publicState.playArea.shapeType === 'CUSTOM_CIRCLE';
   const activePostalCodes = getActivePostalCodes(publicState.playArea);
   const isFullMunich = isAllMunichPostalCodes(activePostalCodes);
@@ -705,6 +738,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       sessionId,
       publicState.playArea
     );
+    resetPublic.roomCode = roomCode;
+    resetPublic.hostPlayerId = publicState.hostPlayerId;
+    resetPublic.hostName = publicState.hostName;
+    resetPublic.createdAt = publicState.createdAt;
     resetPublic.allowTestClicks = publicState.allowTestClicks;
     resetPublic.gameMode = selectedMode;
     resetPublic.classicSearchDurationMs = classicSearchMin * 60_000;
@@ -753,19 +790,94 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   return (
     <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-3xl space-y-4 sm:space-y-5 pb-12">
-        {/* Kopfzeile (Admin-Zugriff bleibt beim Tab-Wechsel & Neuladen erhalten) */}
-        <div className="cmf-chassis cmf-card-enter flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
-          <div>
-            <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
-              SPIELLEITER // KONSOLE
-            </span>
-            <h2 className="font-dot mt-1 text-lg sm:text-xl text-[var(--text-main)]">
-              Rundensteuerung & Teams
-            </h2>
+        {/* Kopfzeile & Spiel-Code zum Teilen */}
+        <div
+          data-testid="host-room-code-card"
+          className="cmf-chassis cmf-card-enter space-y-3.5 p-4 sm:p-5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
+                {isOverviewAccount
+                  ? 'ADMIN // SPIELLEITER-KONSOLE'
+                  : `HOST // ${ownMember.name}`}
+              </span>
+              <h2 className="font-dot mt-1 text-lg sm:text-xl text-[var(--text-main)]">
+                Spiel-Einstellungen, Grenzen &amp; Zeiten
+              </h2>
+            </div>
+            {onLeaveRoom && (
+              <button
+                type="button"
+                data-testid="host-leave-room-btn"
+                onClick={() => void onLeaveRoom()}
+                className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>Raum wechseln</span>
+              </button>
+            )}
           </div>
-          <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-            ADMIN-MODUS DAUERHAFT AKTIV
-          </span>
+
+          <div className="cmf-oled flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <span className="font-tech block text-[10px] font-bold tracking-wider text-[#9AA4AE] uppercase">
+                SPIEL-CODE ZUM BEITRETEN (MIT MITSPIELERN TEILEN)
+              </span>
+              <div className="mt-1 flex items-baseline gap-2.5">
+                <span
+                  data-testid="host-room-code-value"
+                  className="font-dot text-2xl font-bold tracking-[0.2em] text-[#F8FAFC] sm:text-3xl"
+                >
+                  {roomCode}
+                </span>
+                {publicState.hostName && (
+                  <span className="font-tech text-[11px] text-[#9AA4AE]">
+                    Host: {publicState.hostName}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="host-copy-code-btn"
+                onClick={() => void handleCopyRoomCode()}
+                className="cmf-btn-primary font-tech inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-2 text-[11px] font-bold uppercase"
+              >
+                {copiedKind === 'CODE' ? (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>Kopiert!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5" />
+                    <span>Code kopieren</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                data-testid="host-copy-link-btn"
+                onClick={() => void handleCopyInviteLink()}
+                className="cmf-btn-secondary font-tech inline-flex min-h-[40px] items-center gap-1.5 bg-white/95 px-3 py-2 text-[11px] font-bold text-[var(--text-main)] uppercase"
+              >
+                {copiedKind === 'LINK' ? (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                    <span>Link kopiert!</span>
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="h-3.5 w-3.5" />
+                    <span>Einladungslink</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* 1. Offene Beitrittswünsche */}
@@ -1569,6 +1681,59 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             </button>
           </div>
 
+          {/* Eigene Team-Auswahl für spielende Hosts (nicht beim reinen Admin-Konto) */}
+          {!isOverviewAccount && onSelectOwnRole && (
+            <div className="cmf-oled space-y-2 p-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label
+                  htmlFor="host-own-role-select"
+                  className="font-tech text-[10px] font-bold tracking-wider text-[#9AA4AE] uppercase"
+                >
+                  Dein eigenes Team wählen (Host spielt mit)
+                </label>
+                <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
+                  {ownMember.side === 'HIDER'
+                    ? 'Verstecker'
+                    : ownMember.side === 'SEEKER' && ownMember.teamId
+                      ? (teamsPublic[ownMember.teamId]?.name ?? ownMember.teamId)
+                      : 'Nur Spielleiter'}
+                </span>
+              </div>
+              <select
+                id="host-own-role-select"
+                data-testid="host-own-role-select"
+                disabled={changingOwnRole}
+                value={
+                  ownMember.side === 'HIDER'
+                    ? 'HIDER'
+                    : ownMember.side === 'SEEKER' && ownMember.teamId
+                      ? ownMember.teamId
+                      : 'UNASSIGNED'
+                }
+                onChange={async (e) => {
+                  const val = e.target.value;
+                  setChangingOwnRole(true);
+                  try {
+                    await onSelectOwnRole(val);
+                  } finally {
+                    setChangingOwnRole(false);
+                  }
+                }}
+                className="cmf-input min-h-[42px] w-full bg-white px-3 py-2 text-sm font-semibold text-[var(--text-main)]"
+              >
+                <option value="UNASSIGNED">
+                  Kein Team (Nur Spielleiter / Zuschauer)
+                </option>
+                <option value="HIDER">Verstecker (Die Sardinen)</option>
+                {TEAM_PALETTE.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    Sucher: {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* 4a. Die Sardinen (Verstecker-Team) */}
           <div
             data-testid="host-sardinen-team-overview"
@@ -1867,27 +2032,43 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           );
         })()}
 
-        {/* 5. Aus dem Admin-Konto abmelden */}
+        {/* 5. Konto wechseln / Abmelden */}
         {onLogoutAdmin && (
           <section className="cmf-module p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 className="font-industrial text-sm text-[var(--text-main)]">
-                  Admin-Konto wechseln / Abmelden
+                  {isOverviewAccount
+                    ? 'Admin-Konto wechseln / Abmelden'
+                    : 'Konto wechseln / Abmelden'}
                 </h3>
                 <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                  Die Spielleiter-Konsole ist exklusiv an das Konto „admin“ gebunden. Melde dich hier ab, um zu deinem normalen Spielerkonto zu wechseln.
+                  {isOverviewAccount
+                    ? 'Melde dich hier vom Admin-Konto ab, um zu einem normalen Spielerkonto zu wechseln.'
+                    : `Dein gehosteter Spielraum (${roomCode}) bleibt bestehen, sodass andere mit dem Code weiterspielen können.`}
                 </p>
               </div>
-              <button
-                type="button"
-                data-testid="logout-admin-console-btn"
-                onClick={onLogoutAdmin}
-                className="cmf-btn-secondary font-tech inline-flex min-h-[48px] w-full sm:w-auto shrink-0 items-center justify-center gap-2 border-[var(--cmf-orange)]/40 px-4 py-2.5 text-xs font-bold text-[var(--cmf-orange)] uppercase"
-              >
-                <LogOut className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
-                Aus Admin-Konto abmelden
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {onLeaveRoom && (
+                  <button
+                    type="button"
+                    onClick={() => void onLeaveRoom()}
+                    className="cmf-btn-secondary font-tech inline-flex min-h-[48px] w-full sm:w-auto shrink-0 items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold uppercase"
+                  >
+                    <ArrowLeft className="h-4 w-4 shrink-0" />
+                    Raum wechseln
+                  </button>
+                )}
+                <button
+                  type="button"
+                  data-testid="logout-admin-console-btn"
+                  onClick={onLogoutAdmin}
+                  className="cmf-btn-secondary font-tech inline-flex min-h-[48px] w-full sm:w-auto shrink-0 items-center justify-center gap-2 border-[var(--cmf-orange)]/40 px-4 py-2.5 text-xs font-bold text-[var(--cmf-orange)] uppercase"
+                >
+                  <LogOut className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+                  Konto abmelden
+                </button>
+              </div>
             </div>
           </section>
         )}

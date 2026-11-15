@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Copy,
   Eye,
   EyeOff,
   LocateFixed,
@@ -13,7 +15,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
-import { TEAM_PALETTE } from '../../config/gameConfig';
+import { GAME_ID, TEAM_PALETTE } from '../../config/gameConfig';
 import { getPlayerGreeting, isOverviewMember } from '../../config/players';
 import type { GpsPermissionState } from '../../hooks/useGeolocation';
 import {
@@ -322,6 +324,7 @@ export interface LobbyStatusCardProps {
   onSelectOwnRole?: (nextSelection: string) => Promise<void>;
   onToggleOwnReady: (nextReady: boolean) => Promise<void>;
   onOpenHostTab?: () => void;
+  onLeaveRoom?: () => Promise<void>;
   onLogout: () => Promise<void>;
 }
 
@@ -339,8 +342,11 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
   onSelectOwnRole,
   onToggleOwnReady,
   onOpenHostTab,
+  onLeaveRoom,
   onLogout,
 }) => {
+  const roomCode = publicState.roomCode ?? GAME_ID;
+  const [copiedCode, setCopiedCode] = useState(false);
   const isManhunt = (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT';
   const isOverviewAccount = isOverviewMember(ownMember);
   const isGpsNotWorking = Boolean(
@@ -477,26 +483,67 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
           </div>
           <div>
             <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              LOBBY // {ownMember.name} // {isManhunt ? 'MANHUNT' : 'KLASSISCH'}
+              LOBBY // CODE {roomCode} // {isManhunt ? 'MANHUNT' : 'KLASSISCH'}
             </span>
             <h2 className="font-industrial flex flex-wrap items-center gap-2 text-base sm:text-lg text-[var(--text-main)]">
               <span>{getPlayerGreeting(ownMember)}</span>
               {ownMember.isHost && (
                 <span className="cmf-badge-teal rounded px-2 py-0.5 text-[10px] font-bold uppercase">
-                  ADMIN
+                  {isOverviewAccount ? 'ADMIN' : 'HOST'}
                 </span>
               )}
             </h2>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => void onLogout()}
-          className="cmf-btn-secondary font-tech inline-flex min-h-[40px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-          Abmelden
-        </button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            data-testid="lobby-copy-code-btn"
+            title="Spiel-Code kopieren"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(roomCode);
+                setCopiedCode(true);
+                setTimeout(() => setCopiedCode(false), 1800);
+              } catch {
+                // Ignorieren
+              }
+            }}
+            className="cmf-btn-secondary font-dot inline-flex min-h-[38px] items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold"
+          >
+            {copiedCode ? (
+              <>
+                <CheckCircle2 className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                <span>Kopiert</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                <span>{roomCode}</span>
+              </>
+            )}
+          </button>
+          {onLeaveRoom ? (
+            <button
+              type="button"
+              data-testid="lobby-leave-room-btn"
+              onClick={() => void onLeaveRoom()}
+              className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold uppercase"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Raum</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void onLogout()}
+              className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold uppercase"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Abmelden
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Eingebettete schwarze OLED-Insel: Rollen-Status & Bereitschafts-Telemetrie */}
@@ -813,7 +860,9 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
           onClick={onOpenHostTab}
           className="cmf-btn-active font-tech mt-3 flex min-h-[46px] w-full items-center justify-center px-4 py-2.5 text-xs font-bold tracking-wider uppercase"
         >
-          Admin-Konsole öffnen (Teams & Steuerung)
+          {isOverviewAccount
+            ? 'Admin-Konsole öffnen (Teams & Steuerung)'
+            : 'Host-Konsole öffnen (Grenzen, Zeiten & Start)'}
         </button>
       )}
     </PhysicsBottomSheet>

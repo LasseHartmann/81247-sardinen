@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ArrowLeft,
   BatteryCharging,
   Bell,
   BookOpen,
@@ -7,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   Compass,
+  Copy,
   Footprints,
   KeyRound,
   LogOut,
@@ -24,6 +26,7 @@ import {
 import {
   DEFAULT_CLASSIC_SEARCH_MINUTES,
   formatPostalCodesLabel,
+  GAME_ID,
   getActivePostalCodes,
   getQuestionPenaltyMs,
   TEAM_PALETTE,
@@ -75,6 +78,7 @@ export interface ProfileViewProps {
   onSelectAvatar: (nextAvatar: string) => Promise<void>;
   onRetryGps: () => void;
   onSelectOwnRole?: (nextSelection: string) => Promise<void>;
+  onLeaveRoom?: () => Promise<void>;
   onLogout: () => Promise<void>;
 }
 
@@ -103,8 +107,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onSelectAvatar,
   onRetryGps,
   onSelectOwnRole,
+  onLeaveRoom,
   onLogout,
 }) => {
+  const roomCode = publicState.roomCode ?? GAME_ID;
+  const [copiedRoomCode, setCopiedRoomCode] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -1106,7 +1113,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <div className="flex items-center justify-between font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
                 <span className="flex items-center gap-1">
                   <Compass className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                  AKTIVES SPIELFELD
+                  SPIELRAUM ({roomCode})
                 </span>
                 <span>{isManhunt ? 'MANHUNT' : 'KLASSISCH'}</span>
               </div>
@@ -1115,36 +1122,67 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   ? `Kreis in ${activePostalCodesLabel} (R = ${publicState.playArea.circle?.radiusMeters ?? 500} m)`
                   : `Versteck-Zone: ${activePostalCodesLabel}`}
               </p>
-              <div className="flex items-center gap-1.5 font-tech text-[10px] text-[var(--text-muted)] uppercase">
-                <Wifi className="h-3 w-3 text-[var(--cmf-teal)]" />
-                <span>Display-Wachhalter (Wake-Lock) aktiv</span>
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                <span className="flex items-center gap-1.5 font-tech text-[10px] text-[var(--text-muted)] uppercase">
+                  <Wifi className="h-3 w-3 text-[var(--cmf-teal)]" />
+                  <span>Code: {roomCode}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(roomCode);
+                      setCopiedRoomCode(true);
+                      setTimeout(() => setCopiedRoomCode(false), 1800);
+                    } catch {
+                      // Ignorieren
+                    }
+                  }}
+                  className="cmf-btn-secondary font-tech inline-flex min-h-[28px] items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase"
+                >
+                  <Copy className="h-3 w-3" />
+                  <span>{copiedRoomCode ? 'Kopiert!' : 'Code kopieren'}</span>
+                </button>
               </div>
             </div>
           </div>
         </section>
 
-        {/* 9. Konto abmelden / wechseln */}
+        {/* 9. Raum wechseln & Konto abmelden */}
         <section className="cmf-module p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-start gap-2.5">
             <Shield className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
             <div>
               <h3 className="font-industrial text-sm text-[var(--text-main)]">
-                Konto wechseln / Abmelden
+                Spielraum wechseln / Konto abmelden
               </h3>
               <p className="text-xs text-[var(--text-muted)]">
-                Meldet dich auf diesem Gerät von @{ownMember.playerId} ab.
+                Angemeldet als @{ownMember.playerId} im Raum {roomCode}.
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            data-testid="profile-logout-btn"
-            onClick={() => void onLogout()}
-            className="cmf-btn-secondary font-tech inline-flex min-h-[42px] items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold text-[var(--cmf-orange)] uppercase"
-          >
-            <LogOut className="h-4 w-4" />
-            <span>Abmelden</span>
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {onLeaveRoom && (
+              <button
+                type="button"
+                data-testid="profile-leave-room-btn"
+                onClick={() => void onLeaveRoom()}
+                className="cmf-btn-secondary font-tech inline-flex min-h-[42px] items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold uppercase"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Raum wechseln</span>
+              </button>
+            )}
+            <button
+              type="button"
+              data-testid="profile-logout-btn"
+              onClick={() => void onLogout()}
+              className="cmf-btn-secondary font-tech inline-flex min-h-[42px] items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold text-[var(--cmf-orange)] uppercase"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Abmelden</span>
+            </button>
+          </div>
         </section>
       </div>
     </div>

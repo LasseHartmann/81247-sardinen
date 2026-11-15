@@ -55,6 +55,7 @@ import {
   resolveClassicHiderCandidateLocation,
 } from '../../hooks/useControllerEngine';
 import { HardwareKnob } from '../Common/HardwareKnob';
+import { PlayerAvatar } from '../Common/PlayerAvatar';
 import {
   isOverviewMember,
 } from '../../config/players';
@@ -1612,6 +1613,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                           online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
                         }`}
                       />
+                      <PlayerAvatar avatar={m.avatar} size="xs" />
                       <span>{m.name}</span>
                       {isReady && (
                         <span className="cmf-badge-teal rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">
@@ -1676,6 +1678,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                                   online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
                                 }`}
                               />
+                              <PlayerAvatar avatar={m.avatar} size="xs" />
                               <span>{m.name}</span>
                             </span>
                           );
@@ -1760,6 +1763,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                           online ? 'bg-[var(--cmf-teal)]' : 'bg-[#9AA4AE]'
                         }`}
                       />
+                      <PlayerAvatar avatar={m.avatar} size="xs" />
                       <span>{m.name}</span>
                       {!online && (
                         <span className="cmf-badge-amber rounded px-1.5 py-0.5 text-[10px] font-bold uppercase">

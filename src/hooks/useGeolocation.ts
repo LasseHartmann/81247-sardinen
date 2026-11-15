@@ -48,6 +48,7 @@ export interface UseGeolocationParams {
   ownTeamStoredLocation: TeamLocation | null;
   publicState: PublicGameState | null;
   anchorPoint: AnchorPoint | null;
+  powerSaveMode?: boolean;
 }
 
 /**
@@ -69,6 +70,7 @@ export function useGeolocation(params: UseGeolocationParams): {
     ownTeamStoredLocation,
     publicState,
     anchorPoint,
+    powerSaveMode = false,
   } = params;
 
   const [hardwareFix, setHardwareFix] = useState<GeoFix | null>(null);
@@ -149,9 +151,9 @@ export function useGeolocation(params: UseGeolocationParams): {
         }
       },
       {
-        enableHighAccuracy: true,
-        maximumAge: 3000,
-        timeout: 12000,
+        enableHighAccuracy: !powerSaveMode,
+        maximumAge: powerSaveMode ? 15000 : 3000,
+        timeout: powerSaveMode ? 18000 : 12000,
       }
     );
 
@@ -166,7 +168,7 @@ export function useGeolocation(params: UseGeolocationParams): {
       navigator.geolocation.clearWatch(watchId);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [watcherGeneration]);
+  }, [watcherGeneration, powerSaveMode]);
 
   // Effektive Position bestimmen (Manueller Testklick > Hardware-GPS > Manhunt-GPS-Fallback > Demo-Default)
   const currentFix: GeoFix | null =

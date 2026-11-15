@@ -31,6 +31,7 @@ import type {
   TeamPublic,
 } from '../../types/game';
 import { PhysicsBottomSheet } from '../Common/PhysicsBottomSheet';
+import { PlayerAvatar } from '../Common/PlayerAvatar';
 
 export interface LoginScreenProps {
   firebaseAvailable: boolean;
@@ -552,13 +553,33 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
 
       {/* Eigene Team-Auswahl für jeden Spieler direkt in der Lobby */}
       {!isOverviewAccount && onSelectOwnRole && (
-        <div className="cmf-well mt-3 p-3 space-y-1.5">
-          <label
-            htmlFor="lobby-own-role-select"
-            className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
-          >
-            Dein Team / Deine Rolle wählen
-          </label>
+        <div className="cmf-well mt-3 p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <label
+              htmlFor="lobby-own-role-select"
+              className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
+            >
+              Dein Team / Deine Rolle wählen
+            </label>
+            {ownRoleSelectionValue !== 'UNASSIGNED' && (
+              <button
+                type="button"
+                data-testid="lobby-leave-team-btn"
+                disabled={changingRole}
+                onClick={async () => {
+                  setChangingRole(true);
+                  try {
+                    await onSelectOwnRole('UNASSIGNED');
+                  } finally {
+                    setChangingRole(false);
+                  }
+                }}
+                className="font-tech rounded-lg border border-[var(--shell-border)] bg-white/80 px-2 py-0.5 text-[10px] font-bold text-[var(--cmf-orange)] uppercase hover:bg-white disabled:opacity-50"
+              >
+                Kein Team
+              </button>
+            )}
+          </div>
           <select
             id="lobby-own-role-select"
             data-testid="own-role-select"
@@ -576,7 +597,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
             }}
             className="cmf-input min-h-[44px] w-full px-3 py-2 text-base font-semibold sm:text-xs"
           >
-            <option value="UNASSIGNED">— Bitte Team wählen —</option>
+            <option value="UNASSIGNED">Kein Team (Noch nicht eingeteilt)</option>
             <option value="HIDER">Verstecker (Die Sardinen)</option>
             {TEAM_PALETTE.map((t) => (
               <option key={t.id} value={t.id}>
@@ -665,6 +686,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                       : 'bg-[var(--cmf-amber)] opacity-75'
                   }`}
                 />
+                <PlayerAvatar avatar={m.avatar} size="xs" />
                 <span className="font-semibold text-[var(--text-main)]">
                   {m.name}
                 </span>

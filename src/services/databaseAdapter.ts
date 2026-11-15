@@ -52,6 +52,7 @@ import type {
   JoinRequest,
   LeaderboardEntry,
   MemberRecord,
+  PlayerAllTimeStats,
   PlayerSeatClaim,
   PresenceSession,
   PublicGameState,
@@ -98,6 +99,11 @@ export interface DatabaseAdapter {
     currentPassword: string;
     newPassword: string;
   }): Promise<void>;
+  fetchAccountProfile(playerId: string): Promise<AccountPublicRecord | null>;
+  updateAccountProfile(
+    playerId: string,
+    patch: { avatar?: string; stats?: PlayerAllTimeStats }
+  ): Promise<void>;
   registerSelfMemberIfMissing(member: MemberRecord): Promise<void>;
   fetchPlayerAssignment(playerId: string): Promise<{ side: MemberRecord['side']; teamId: string | null } | null>;
   savePlayerAssignment(playerId: string, side: MemberRecord['side'], teamId: string | null): Promise<void>;
@@ -308,18 +314,26 @@ export function deduplicateEnabledMembers(
       deduped.set(m.playerId, m);
       continue;
     }
+    const mUpdated = m.updatedAt ?? 0;
+    const prevUpdated = prev.updatedAt ?? 0;
+    if (mUpdated !== prevUpdated) {
+      if (mUpdated > prevUpdated) {
+        deduped.set(m.playerId, m);
+      }
+      continue;
+    }
+    const mOnline = isMemberTabOnline(presence[m.uid]);
+    const prevOnline = isMemberTabOnline(presence[prev.uid]);
+    if (mOnline !== prevOnline) {
+      if (mOnline) {
+        deduped.set(m.playerId, m);
+      }
+      continue;
+    }
     const mAssigned = m.side !== 'UNASSIGNED';
     const prevAssigned = prev.side !== 'UNASSIGNED';
     if (mAssigned && !prevAssigned) {
       deduped.set(m.playerId, m);
-      continue;
-    }
-    if (mAssigned === prevAssigned) {
-      const mOnline = isMemberTabOnline(presence[m.uid]);
-      const prevOnline = isMemberTabOnline(presence[prev.uid]);
-      if (mOnline && !prevOnline) {
-        deduped.set(m.playerId, m);
-      }
     }
   }
   return Array.from(deduped.values());
@@ -780,7 +794,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
 
       const inheritedSide: MemberRecord['side'] = isAdmin
         ? 'UNASSIGNED'
-        : remoteAssignment?.side && remoteAssignment.side !== 'UNASSIGNED'
+        : remoteAssignment
           ? remoteAssignment.side
           : existingOwn && existingOwn.playerId === playerId
             ? existingOwn.side
@@ -793,6 +807,10 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
             null)
           : null;
 
+      const inheritedAvatar =
+        acctVal?.avatar ??
+        (existingOwn?.playerId === playerId ? existingOwn.avatar : undefined);
+
       const member: MemberRecord = {
         uid,
         playerId,
@@ -801,6 +819,8 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         enabled: true,
         side: inheritedSide,
         teamId: inheritedTeamId,
+        ...(inheritedAvatar ? { avatar: inheritedAvatar } : {}),
+        updatedAt: nowMs,
       };
 
       await set(
@@ -871,6 +891,50 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         passwordHash: nextHash,
         authenticatedAt: nowMs,
       });
+    },
+
+    async fetchAccountProfile(playerId): Promise<AccountPublicRecord | null> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) return null;
+      try {
+        const snap = await get(ref(db, `${ROOT_PATH}/accounts/${normalizedId}`));
+        if (!snap.exists()) return null;
+        return snap.val() as AccountPublicRecord;
+      } catch {
+        return null;
+      }
+    },
+
+    async updateAccountProfile(playerId, patch): Promise<void> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) return;
+      try {
+        const acctRef = ref(db, `${ROOT_PATH}/accounts/${normalizedId}`);
+        const snap = await get(acctRef);
+        const existing = snap.exists()
+          ? (snap.val() as AccountPublicRecord)
+          : null;
+        const next: AccountPublicRecord = {
+          playerId: normalizedId,
+          name: existing?.name ?? normalizedId,
+          createdAt: existing?.createdAt ?? adapter.getServerNow(),
+          ...(existing?.avatar ? { avatar: existing.avatar } : {}),
+          ...(existing?.stats ? { stats: existing.stats } : {}),
+        };
+        if (patch.avatar !== undefined) {
+          if (patch.avatar) {
+            next.avatar = patch.avatar;
+          } else {
+            delete next.avatar;
+          }
+        }
+        if (patch.stats !== undefined) {
+          next.stats = patch.stats;
+        }
+        await set(acctRef, stripUndefinedDeep(next));
+      } catch {
+        // Offline oder ältere DB-Rules ignorieren
+      }
     },
 
     async registerSelfMemberIfMissing(member): Promise<void> {

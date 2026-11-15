@@ -99,6 +99,7 @@ export function useAuth(): {
   clearLoginError: () => void;
   loginWithCredentials: (name: string, password: string) => Promise<void>;
   registerWithCredentials: (name: string, password: string) => Promise<void>;
+  applyOptimisticMemberPatch: (patch: Partial<MemberRecord>) => void;
   exitOrLogout: () => Promise<void>;
 } {
   const adapter = resolveDatabaseAdapter(false);
@@ -286,6 +287,15 @@ export function useAuth(): {
     }
   }, [adapter, authUser, firebaseMember, tabId]);
 
+  const applyOptimisticMemberPatch = useCallback(
+    (patch: Partial<MemberRecord>) => {
+      setFirebaseMember((prev) =>
+        prev ? normalizeMemberHostFlag({ ...prev, ...patch }) : prev
+      );
+    },
+    []
+  );
+
   return {
     adapter,
     firebaseAvailable: isFirebaseConfigured,
@@ -300,6 +310,7 @@ export function useAuth(): {
     clearLoginError,
     loginWithCredentials,
     registerWithCredentials,
+    applyOptimisticMemberPatch,
     exitOrLogout,
   };
 }

@@ -60,11 +60,26 @@ import {
   buildReadyToken,
   deduplicateEnabledMembers,
 } from '../services/databaseAdapter';
+import {
+  applyPowerSaveAttributeToDom,
+  createEmptyPlayerStats,
+  dispatchSystemNotification,
+  loadDevicePreferences,
+  loadLocalPlayerStats,
+  mergePlayerStats,
+  playFeedbackSound,
+  saveDevicePreferences,
+  saveLocalPlayerStats,
+  triggerFeedbackVibration,
+  type PlayerDevicePreferences,
+} from '../services/playerPreferencesService';
 import type {
   BottomNavTab,
   ClueRecord,
   ClueRequest,
   LatLng,
+  MemberRecord,
+  PlayerAllTimeStats,
   PlayerSide,
   QuestionType,
   RadiusOptionMeters,
@@ -105,8 +120,22 @@ export const App: React.FC = () => {
     clearLoginError,
     loginWithCredentials,
     registerWithCredentials,
+    applyOptimisticMemberPatch,
     exitOrLogout,
   } = useAuth();
+
+  const [devicePrefs, setDevicePrefs] = useState<PlayerDevicePreferences>(() =>
+    loadDevicePreferences()
+  );
+
+  useEffect(() => {
+    applyPowerSaveAttributeToDom(devicePrefs.powerSaveMode);
+  }, [devicePrefs.powerSaveMode]);
+
+  const handleChangeDevicePrefs = (next: PlayerDevicePreferences) => {
+    setDevicePrefs(next);
+    saveDevicePreferences(next);
+  };
 
   const gameState = useGameState(adapter, ownMember);
   const { publicState, hiderPrivate } = gameState;
@@ -130,6 +159,7 @@ export const App: React.FC = () => {
     ownTeamStoredLocation: ownTeamStoredLoc,
     publicState,
     anchorPoint: hiderPrivate?.anchorPoint ?? null,
+    powerSaveMode: devicePrefs.powerSaveMode,
   });
 
   const controllerStatus = useControllerEngine({
@@ -271,6 +301,266 @@ export const App: React.FC = () => {
       })
       .catch(() => {});
   }, [adapter, geo.currentFix, ownEmergencyMessage, ownMember]);
+
+  // All-Time Stats laden, mit Server synchronisieren & live fortschreiben
+  const [playerStats, setPlayerStats] = useState<PlayerAllTimeStats>(() =>
+    createEmptyPlayerStats()
+  );
+  const lastWalkedFixRef = useRef<LatLng | null>(null);
+  const lastClueCountTrackedRef = useRef<{ sessionId: string; count: number }>({
+    sessionId: '',
+    count: 0,
+  });
+
+  useEffect(() => {
+    if (!ownMember?.playerId) {
+      setPlayerStats(createEmptyPlayerStats());
+      lastWalkedFixRef.current = null;
+      return;
+    }
+    const pid = ownMember.playerId;
+    const local = loadLocalPlayerStats(pid);
+    setPlayerStats(local);
+    let cancelled = false;
+    void adapter.fetchAccountProfile(pid).then((acct) => {
+      if (cancelled || !acct) return;
+      if (acct.avatar && !ownMember.avatar) {
+        applyOptimisticMemberPatch({ avatar: acct.avatar });
+        void adapter
+          .updateMember(ownMember.uid, {
+            ...ownMember,
+            avatar: acct.avatar,
+          })
+          .catch(() => {});
+      }
+      if (acct.stats) {
+        setPlayerStats((prev) => {
+          const merged = mergePlayerStats(prev, acct.stats);
+          saveLocalPlayerStats(pid, merged);
+          return merged;
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adapter, ownMember?.playerId]);
+
+  // Runden-Teilnahme, Fänge, Bestzeit, Überlebenszeit & Hinweise fortschreiben
+  useEffect(() => {
+    if (!ownMember?.playerId || !publicState) return;
+    if (isOverviewMember(ownMember)) return;
+    const pid = ownMember.playerId;
+    const sessionId = publicState.sessionId;
+    const isRunningOrFinished =
+      publicState.status === 'RUNNING' ||
+      publicState.status === 'PAUSED' ||
+      publicState.status === 'FINISHED';
+    if (!isRunningOrFinished) return;
+
+    setPlayerStats((prev) => {
+      let changed = false;
+      const next: PlayerAllTimeStats = {
+        ...prev,
+        participatedSessionIds: [...(prev.participatedSessionIds ?? [])],
+        caughtSessionIds: [...(prev.caughtSessionIds ?? [])],
+      };
+
+      if (
+        ownMember.side !== 'UNASSIGNED' &&
+        !next.participatedSessionIds!.includes(sessionId)
+      ) {
+        next.participatedSessionIds!.push(sessionId);
+        next.roundsPlayed += 1;
+        if (ownMember.side === 'HIDER') {
+          next.roundsAsHider += 1;
+        }
+        changed = true;
+      }
+
+      if (
+        ownMember.side === 'HIDER' &&
+        timer.netElapsedMs > next.longestHiderTimeMs + 15_000
+      ) {
+        next.longestHiderTimeMs = Math.round(timer.netElapsedMs);
+        changed = true;
+      }
+
+      if (
+        ownMember.side === 'SEEKER' &&
+        ownTeam &&
+        ownTeam.status === 'JOINED_SARDINES' &&
+        !next.caughtSessionIds!.includes(sessionId)
+      ) {
+        next.caughtSessionIds!.push(sessionId);
+        next.catchesAsSeeker += 1;
+        const lbEntry = gameState.leaderboard[ownTeam.id];
+        if (lbEntry && lbEntry.totalTimeMs > 0) {
+          next.bestSearchTimeMs =
+            next.bestSearchTimeMs === null
+              ? lbEntry.totalTimeMs
+              : Math.min(next.bestSearchTimeMs, lbEntry.totalTimeMs);
+        }
+        changed = true;
+      }
+
+      if (ownMember.side === 'SEEKER' && ownTeam) {
+        if (lastClueCountTrackedRef.current.sessionId !== sessionId) {
+          lastClueCountTrackedRef.current = {
+            sessionId,
+            count: ownTeam.clueCount,
+          };
+        } else if (ownTeam.clueCount > lastClueCountTrackedRef.current.count) {
+          const diff =
+            ownTeam.clueCount - lastClueCountTrackedRef.current.count;
+          lastClueCountTrackedRef.current.count = ownTeam.clueCount;
+          next.cluesBought += diff;
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      saveLocalPlayerStats(pid, next);
+      void adapter.updateAccountProfile(pid, { stats: next });
+      return next;
+    });
+  }, [
+    adapter,
+    gameState.leaderboard,
+    ownMember,
+    ownTeam,
+    publicState,
+    timer.netElapsedMs,
+  ]);
+
+  // Gelaufene GPS-Strecke während aktiver Runden aufzeichnen
+  useEffect(() => {
+    if (
+      !ownMember?.playerId ||
+      isOverviewMember(ownMember) ||
+      !publicState ||
+      publicState.status !== 'RUNNING' ||
+      !geo.currentFix
+    ) {
+      lastWalkedFixRef.current = null;
+      return;
+    }
+    const curPt: LatLng = {
+      lat: geo.currentFix.lat,
+      lng: geo.currentFix.lng,
+    };
+    const prevPt = lastWalkedFixRef.current;
+    if (!prevPt) {
+      lastWalkedFixRef.current = curPt;
+      return;
+    }
+    const stepMeters = distanceMeters(prevPt, curPt);
+    // Ignoriere GPS-Grundrauschen (< 6 m) und unplausible Sprünge (> 250 m)
+    if (stepMeters >= 6 && stepMeters <= 250) {
+      lastWalkedFixRef.current = curPt;
+      const pid = ownMember.playerId;
+      setPlayerStats((prev) => {
+        const next: PlayerAllTimeStats = {
+          ...prev,
+          totalDistanceMeters: Math.round(
+            prev.totalDistanceMeters + stepMeters
+          ),
+        };
+        saveLocalPlayerStats(pid, next);
+        return next;
+      });
+    }
+  }, [geo.currentFix, ownMember, publicState]);
+
+  // Ton-, Vibrations- & System-Benachrichtigungen bei wichtigen Spiel-Ereignissen
+  const prevFeedbackSnapshotRef = useRef<{
+    status: string | null;
+    phase: string | null;
+    radarKey: string | null;
+    emergencyCount: number;
+    leashWarn: boolean;
+  }>({
+    status: null,
+    phase: null,
+    radarKey: null,
+    emergencyCount: 0,
+    leashWarn: false,
+  });
+
+  useEffect(() => {
+    if (!ownMember?.enabled || !publicState) return;
+    const prev = prevFeedbackSnapshotRef.current;
+    const curStatus = publicState.status;
+    const curPhase = timer.computedPhase;
+    const curRadarKey = publicState.radarCircle
+      ? `${publicState.radarCircle.stage}_${publicState.radarCircle.radiusMeters}_${publicState.radarCircle.lastPing?.pingNumber ?? 0}`
+      : null;
+    const curEmergencyCount = gameState.emergencyMessages.length;
+    const curLeashWarn = Boolean(geo.leashState.warningActive);
+
+    if (prev.status !== null) {
+      if (prev.status === 'LOBBY' && curStatus === 'RUNNING') {
+        playFeedbackSound('START', devicePrefs);
+        triggerFeedbackVibration('DOUBLE', devicePrefs);
+        dispatchSystemNotification(
+          '81247 Sardinen gestartet!',
+          'Die Runde läuft jetzt. Viel Erfolg!',
+          devicePrefs
+        );
+      } else if (prev.phase === 'HIDING' && curPhase === 'OPEN_SEARCH') {
+        playFeedbackSound('START', devicePrefs);
+        triggerFeedbackVibration('DOUBLE', devicePrefs);
+        dispatchSystemNotification(
+          'Offene Suche gestartet!',
+          'Die Versteckzeit ist vorbei – die Suche beginnt!',
+          devicePrefs
+        );
+      }
+
+      if (curRadarKey && curRadarKey !== prev.radarKey) {
+        playFeedbackSound('RADAR', devicePrefs);
+        triggerFeedbackVibration('DOUBLE', devicePrefs);
+        dispatchSystemNotification(
+          'Neues Radar-Update!',
+          `Aktiver Suchkreis: ${publicState.radarCircle?.radiusMeters ?? ''} m`,
+          devicePrefs
+        );
+      }
+
+      if (curEmergencyCount > prev.emergencyCount) {
+        playFeedbackSound('ALERT', devicePrefs);
+        triggerFeedbackVibration('ALARM', devicePrefs);
+        const newest =
+          gameState.emergencyMessages[gameState.emergencyMessages.length - 1];
+        if (newest) {
+          dispatchSystemNotification(
+            `Notfall-Meldung von ${newest.senderName}`,
+            newest.text,
+            devicePrefs
+          );
+        }
+      } else if (curLeashWarn && !prev.leashWarn) {
+        playFeedbackSound('ALERT', devicePrefs);
+        triggerFeedbackVibration('ALARM', devicePrefs);
+      }
+    }
+
+    prevFeedbackSnapshotRef.current = {
+      status: curStatus,
+      phase: curPhase,
+      radarKey: curRadarKey,
+      emergencyCount: curEmergencyCount,
+      leashWarn: curLeashWarn,
+    };
+  }, [
+    devicePrefs,
+    gameState.emergencyMessages,
+    geo.leashState.warningActive,
+    ownMember?.enabled,
+    publicState,
+    timer.computedPhase,
+  ]);
 
   // 1. Lade- & Authentifizierungs-Weichen
   if (authLoading || (isSessionUnlocked && memberLoading)) {
@@ -720,32 +1010,58 @@ export const App: React.FC = () => {
       teamId = nextSelection;
     }
 
+    const nowMs = adapter.getServerNow();
+
+    // Sofortiges optimistisches UI-Update (damit "Kein Team" ohne Verzögerung im Dropdown sichtbar ist)
+    applyOptimisticMemberPatch({
+      side,
+      teamId,
+      updatedAt: nowMs,
+    });
+
+    const targetRecords = new Map<string, MemberRecord>();
+    targetRecords.set(ownMember.uid, {
+      ...ownMember,
+      side,
+      teamId,
+      updatedAt: nowMs,
+    });
     for (const m of Object.values(gameState.members)) {
       if (m.playerId === ownMember.playerId) {
-        await adapter.updateMember(m.uid, {
+        targetRecords.set(m.uid, {
           ...m,
           side,
           teamId,
+          updatedAt: nowMs,
         });
       }
     }
+
     await adapter.savePlayerAssignment(ownMember.playerId, side, teamId);
+    await Promise.all(
+      Array.from(targetRecords.values()).map((rec) =>
+        adapter.updateMember(rec.uid, rec).catch(() => {})
+      )
+    );
 
     if (side !== 'HIDER') {
-      await adapter.setPlayerReadyState(
-        ownMember.uid,
-        ownMember.playerId,
-        null,
-        adapter.getServerNow()
-      );
+      await adapter
+        .setPlayerReadyState(
+          ownMember.uid,
+          ownMember.playerId,
+          null,
+          nowMs
+        )
+        .catch(() => {});
     }
 
     for (const palette of TEAM_PALETTE) {
       const curTeam = gameState.teamsPublic[palette.id];
       if (!curTeam) continue;
-      const filtered = curTeam.memberPlayerIds.filter(
-        (pid) => pid !== ownMember.playerId
-      );
+      const existingIds = Array.isArray(curTeam.memberPlayerIds)
+        ? curTeam.memberPlayerIds
+        : [];
+      const filtered = existingIds.filter((pid) => pid !== ownMember.playerId);
       if (teamId === palette.id && !filtered.includes(ownMember.playerId)) {
         filtered.push(ownMember.playerId);
       }
@@ -757,16 +1073,54 @@ export const App: React.FC = () => {
             : filtered[0];
 
       const membersChanged =
-        filtered.length !== curTeam.memberPlayerIds.length ||
-        filtered.some((pid, idx) => pid !== curTeam.memberPlayerIds[idx]);
+        filtered.length !== existingIds.length ||
+        filtered.some((pid, idx) => pid !== existingIds[idx]);
       if (membersChanged || nextBeacon !== curTeam.beaconPlayerId) {
-        await adapter.saveTeamPublic(palette.id, {
-          ...curTeam,
-          memberPlayerIds: filtered,
-          beaconPlayerId: nextBeacon,
+        await adapter
+          .saveTeamPublic(palette.id, {
+            ...curTeam,
+            memberPlayerIds: filtered,
+            beaconPlayerId: nextBeacon,
+          })
+          .catch(() => {});
+      }
+    }
+  };
+
+  const handleSelectAvatar = async (nextAvatar: string) => {
+    const clean = nextAvatar.trim();
+    const nowMs = adapter.getServerNow();
+    applyOptimisticMemberPatch({
+      avatar: clean || undefined,
+      updatedAt: nowMs,
+    });
+
+    const targetRecords = new Map<string, MemberRecord>();
+    targetRecords.set(ownMember.uid, {
+      ...ownMember,
+      avatar: clean || undefined,
+      updatedAt: nowMs,
+    });
+    for (const m of Object.values(gameState.members)) {
+      if (m.playerId === ownMember.playerId) {
+        targetRecords.set(m.uid, {
+          ...m,
+          avatar: clean || undefined,
+          updatedAt: nowMs,
         });
       }
     }
+
+    await Promise.all([
+      adapter.updateAccountProfile(ownMember.playerId, { avatar: clean }),
+      ...Array.from(targetRecords.values()).map((rec) => {
+        const copy = { ...rec };
+        if (!clean) {
+          delete copy.avatar;
+        }
+        return adapter.updateMember(copy.uid, copy).catch(() => {});
+      }),
+    ]);
   };
 
   const handleToggleOwnReady = async (nextReady: boolean) => {
@@ -1897,7 +2251,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* TAB 5: SPIELER-PROFIL (PASSWORT ÄNDERN, TEAM-WAHL & GERÄTE-DIAGNOSE) */}
+        {/* TAB 5: SPIELER-PROFIL (PASSWORT ÄNDERN, STATS, AVATAR, EINSTELLUNGEN & SPICKZETTEL) */}
         {activeTab === 'PROFILE' && (
           <ProfileView
             adapter={adapter}
@@ -1911,6 +2265,10 @@ export const App: React.FC = () => {
             ownFix={geo.currentFix}
             gpsStatus={geo.gpsStatus}
             gpsError={geo.gpsError}
+            playerStats={playerStats}
+            devicePrefs={devicePrefs}
+            onChangeDevicePrefs={handleChangeDevicePrefs}
+            onSelectAvatar={handleSelectAvatar}
             onRetryGps={geo.retryGpsPermission}
             onSelectOwnRole={handleSelectOwnRole}
             onLogout={async () => {

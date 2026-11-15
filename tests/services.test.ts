@@ -48,6 +48,10 @@ import {
   UNAMBIGUOUS_ALPHABET,
   verifyCatchSubmission,
 } from '../src/services/qrService';
+import {
+  AVATAR_LOGO_ID,
+  mergePlayerStats,
+} from '../src/services/playerPreferencesService';
 
 describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio', () => {
   it('erzwingt das 6s-Intervall, >5m-Mindestdistanz und 5-Nachkommastellen-Rundung beim GPS-Beacon', () => {
@@ -306,6 +310,104 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
       password: 'NeuesPasswort2026!',
     });
     expect(reloggedSophie.playerId).toBe('sophie');
+
+    // Wechsel in ein Team UND zurück zu „Kein Team“ (UNASSIGNED) bleibt stabil (auch bei Mehrfach-Sitzungen & Re-Login)
+    await store.adapter.savePlayerAssignment('sophie', 'SEEKER', 'team-2');
+    await store.adapter.updateMember(reloggedSophie.uid, {
+      ...reloggedSophie,
+      side: 'SEEKER',
+      teamId: 'team-2',
+      updatedAt: 1000,
+    });
+    expect((await store.adapter.fetchPlayerAssignment('sophie'))?.side).toBe(
+      'SEEKER'
+    );
+
+    // Jetzt zurück zu „Kein Team“ (UNASSIGNED)
+    await store.adapter.savePlayerAssignment('sophie', 'UNASSIGNED', null);
+    await store.adapter.updateMember(reloggedSophie.uid, {
+      ...reloggedSophie,
+      side: 'UNASSIGNED',
+      teamId: null,
+      updatedAt: 2000,
+    });
+    expect(await store.adapter.fetchPlayerAssignment('sophie')).toEqual({
+      side: 'UNASSIGNED',
+      teamId: null,
+    });
+
+    // Selbst wenn eine ältere Offline-UID noch auf SEEKER stand, gewinnt die neuere/online UNASSIGNED-Sitzung!
+    const dedupedAfterLeave = deduplicateEnabledMembers(
+      {
+        old_uid: {
+          uid: 'old_uid',
+          playerId: 'sophie',
+          name: 'Sophie',
+          isHost: false,
+          enabled: true,
+          side: 'SEEKER',
+          teamId: 'team-2',
+          updatedAt: 1000,
+        },
+        [reloggedSophie.uid]: {
+          uid: reloggedSophie.uid,
+          playerId: 'sophie',
+          name: 'Sophie',
+          isHost: false,
+          enabled: true,
+          side: 'UNASSIGNED',
+          teamId: null,
+          updatedAt: 2000,
+        },
+      },
+      {
+        [reloggedSophie.uid]: {
+          tab_active: { online: true, lastSeen: 2000 },
+        },
+      }
+    );
+    expect(dedupedAfterLeave).toHaveLength(1);
+    expect(dedupedAfterLeave[0].side).toBe('UNASSIGNED');
+    expect(dedupedAfterLeave[0].teamId).toBeNull();
+
+    // Avatar & All-Time Stats im Profil speichern und beim Login übernehmen
+    const mergedStats = mergePlayerStats(
+      {
+        roundsPlayed: 2,
+        catchesAsSeeker: 1,
+        bestSearchTimeMs: 22 * 60_000,
+        totalDistanceMeters: 1850,
+        participatedSessionIds: ['s1', 's2'],
+      },
+      {
+        roundsPlayed: 1,
+        catchesAsSeeker: 2,
+        bestSearchTimeMs: 18 * 60_000,
+        totalDistanceMeters: 3400,
+        participatedSessionIds: ['s2', 's3'],
+      }
+    );
+    expect(mergedStats.roundsPlayed).toBe(3);
+    expect(mergedStats.catchesAsSeeker).toBe(2);
+    expect(mergedStats.bestSearchTimeMs).toBe(18 * 60_000);
+    expect(mergedStats.totalDistanceMeters).toBe(3400);
+
+    await store.adapter.updateAccountProfile('sophie', {
+      avatar: AVATAR_LOGO_ID,
+      stats: mergedStats,
+    });
+    const fetchedAcct = await store.adapter.fetchAccountProfile('sophie');
+    expect(fetchedAcct?.avatar).toBe(AVATAR_LOGO_ID);
+    expect(fetchedAcct?.stats?.roundsPlayed).toBe(3);
+
+    const { member: sophieAfterLeaveAndAvatar } =
+      await store.adapter.loginWithAccount({
+        name: 'Sophie',
+        password: 'NeuesPasswort2026!',
+      });
+    expect(sophieAfterLeaveAndAvatar.side).toBe('UNASSIGNED');
+    expect(sophieAfterLeaveAndAvatar.teamId).toBeNull();
+    expect(sophieAfterLeaveAndAvatar.avatar).toBe(AVATAR_LOGO_ID);
 
     // Login als „admin“ -> erhält exklusiv isHost: true
     const { member: loggedInAdmin } = await store.adapter.loginWithAccount({

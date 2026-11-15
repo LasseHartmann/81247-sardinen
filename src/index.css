@@ -669,6 +669,28 @@ input[type='range'].cmf-range::-moz-range-thumb {
   animation: cmfScanSweep 1.9s ease-in-out infinite alternate;
 }
 
+[data-power-save='true'] .cmf-view-enter,
+[data-power-save='true'] .cmf-sheet-up,
+[data-power-save='true'] .cmf-drawer-down,
+[data-power-save='true'] .cmf-alert-slide,
+[data-power-save='true'] .cmf-pop-in,
+[data-power-save='true'] .cmf-card-enter,
+[data-power-save='true'] .cmf-shake,
+[data-power-save='true'] .cmf-gps-ripple,
+[data-power-save='true'] .cmf-sos-wave,
+[data-power-save='true'] .cmf-emergency-frame,
+[data-power-save='true'] .cmf-winner-card,
+[data-power-save='true'] .cmf-scan-line,
+[data-power-save='true'] .nothing-red-dot {
+  animation: none !important;
+  transition: none !important;
+}
+
+[data-power-save='true'] * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cmf-view-enter,
   .cmf-sheet-up,

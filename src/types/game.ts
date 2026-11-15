@@ -56,10 +56,24 @@ export interface AnchorPoint extends LatLng {
   lockedByUid: string;
 }
 
+export interface PlayerAllTimeStats {
+  roundsPlayed: number;
+  catchesAsSeeker: number;
+  roundsAsHider: number;
+  bestSearchTimeMs: number | null;
+  longestHiderTimeMs: number;
+  totalDistanceMeters: number;
+  cluesBought: number;
+  participatedSessionIds?: string[];
+  caughtSessionIds?: string[];
+}
+
 export interface AccountPublicRecord {
   playerId: string;
   name: string;
   createdAt: number;
+  avatar?: string;
+  stats?: PlayerAllTimeStats;
 }
 
 export interface MemberRecord {
@@ -70,6 +84,8 @@ export interface MemberRecord {
   enabled: boolean;
   side: PlayerSide;
   teamId: string | null;
+  avatar?: string;
+  updatedAt?: number;
 }
 
 export interface JoinRequest {

@@ -529,13 +529,14 @@ export function createDemoStore(options?: {
         : await adapter.fetchPlayerAssignment(playerId);
       const side: MemberRecord['side'] = isAdmin
         ? 'UNASSIGNED'
-        : remoteAssignment?.side && remoteAssignment.side !== 'UNASSIGNED'
+        : remoteAssignment
           ? remoteAssignment.side
           : (existingMember?.side ?? 'UNASSIGNED');
       const teamId =
         side === 'SEEKER'
           ? (remoteAssignment?.teamId ?? existingMember?.teamId ?? null)
           : null;
+      const inheritedAvatar = acct.avatar ?? existingMember?.avatar;
 
       const member: MemberRecord = {
         uid,
@@ -545,6 +546,8 @@ export function createDemoStore(options?: {
         enabled: true,
         side,
         teamId,
+        ...(inheritedAvatar ? { avatar: inheritedAvatar } : {}),
+        updatedAt: adapter.getServerNow(),
       };
 
       writeTree((t) => {
@@ -595,6 +598,39 @@ export function createDemoStore(options?: {
       writeTree((t) => {
         if (!t.accountSecrets) t.accountSecrets = {};
         t.accountSecrets[normalizedId] = { passwordHash: nextHash };
+      });
+    },
+
+    async fetchAccountProfile(playerId): Promise<AccountPublicRecord | null> {
+      const normalizedId = playerId.trim().toLowerCase();
+      const t = readTree();
+      const rec = t.accounts?.[normalizedId];
+      return rec ? structuredClone(rec) : null;
+    },
+
+    async updateAccountProfile(playerId, patch): Promise<void> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) return;
+      const nowMs = adapter.getServerNow();
+      writeTree((t) => {
+        if (!t.accounts) t.accounts = {};
+        const prev = t.accounts[normalizedId] ?? {
+          playerId: normalizedId,
+          name: normalizedId,
+          createdAt: nowMs,
+        };
+        const next: AccountPublicRecord = { ...prev };
+        if (patch.avatar !== undefined) {
+          if (patch.avatar) {
+            next.avatar = patch.avatar;
+          } else {
+            delete next.avatar;
+          }
+        }
+        if (patch.stats !== undefined) {
+          next.stats = structuredClone(patch.stats);
+        }
+        t.accounts[normalizedId] = next;
       });
     },
 

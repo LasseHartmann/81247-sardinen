@@ -1,7 +1,6 @@
 import {
   onAuthStateChanged,
   signInAnonymously,
-  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
 import {
@@ -27,11 +26,18 @@ import {
   TEAM_MEMBER_FIX_MAX_AGE_MS,
   TEAM_PALETTE,
 } from '../config/gameConfig';
-import { isOverviewMember } from '../config/players';
+import {
+  computeAccountPasswordHash,
+  isAdminAccountId,
+  isOverviewMember,
+  validateAccountPassword,
+  validateAndNormalizeAccountName,
+} from '../config/players';
 import { getBrowserDemoStore } from '../demo/demoStore';
 import { roundCoord5 } from '../geo/distance';
-import { generateRandomId, generateSessionSecrets } from './qrService';
+import { generateSessionSecrets } from './qrService';
 import type {
+  AccountPublicRecord,
   ActiveLeashViolationInfo,
   AuthUserSummary,
   CatchRequest,
@@ -42,7 +48,6 @@ import type {
   ControllerLease,
   EmergencyMessage,
   GeoFix,
-  HiderLoginLock,
   HiderPrivateState,
   JoinRequest,
   LeaderboardEntry,
@@ -80,11 +85,17 @@ export interface DatabaseAdapter {
   subscribeConnectionStatus(cb: (connected: boolean) => void): UnsubscribeFn;
   subscribeServerTimeOffset(cb: (offsetMs: number) => void): UnsubscribeFn;
 
-  signInWithPresetPlayer(loginEmail: string, password?: string): Promise<AuthUserSummary>;
+  registerAccount(params: {
+    name: string;
+    password: string;
+  }): Promise<{ user: AuthUserSummary; member: MemberRecord }>;
+  loginWithAccount(params: {
+    name: string;
+    password: string;
+  }): Promise<{ user: AuthUserSummary; member: MemberRecord }>;
   registerSelfMemberIfMissing(member: MemberRecord): Promise<void>;
   fetchPlayerAssignment(playerId: string): Promise<{ side: MemberRecord['side']; teamId: string | null } | null>;
   savePlayerAssignment(playerId: string, side: MemberRecord['side'], teamId: string | null): Promise<void>;
-  claimInitialHostRole(uid: string, playerId: string, name: string): Promise<void>;
   removeMemberByHost(uid: string): Promise<void>;
   kickPlayerByHost(playerId: string, memberUids: string[]): Promise<void>;
   tryAcquireOrRenewPlayerSeat(
@@ -133,6 +144,7 @@ export interface DatabaseAdapter {
 
   subscribeHiderPrivate(cb: (priv: HiderPrivateState | null) => void): UnsubscribeFn;
   saveHiderPrivate(priv: HiderPrivateState): Promise<void>;
+  rerollHiderSecrets(): Promise<{ qrSecret: string; shortCode: string }>;
   writeHiderLocationPrivate(uid: string, fix: GeoFix): Promise<void>;
 
   subscribeTeamPublic(teamId: string, cb: (team: TeamPublic | null) => void): UnsubscribeFn;
@@ -206,15 +218,6 @@ export interface DatabaseAdapter {
     newHiderPrivate: HiderPrivateState
   ): Promise<void>;
 
-  setHiderPasswordAndTriggerLogout(params: {
-    uid: string;
-    sessionId: string;
-    cleanPassword: string;
-    passwordHash: string;
-    hiderPlayerIds: string[];
-    nowMs: number;
-  }): Promise<HiderLoginLock>;
-
   setPlayerReadyState(
     uid: string,
     playerId: string,
@@ -238,12 +241,6 @@ export interface DatabaseAdapter {
   }): Promise<void>;
   clearLeashViolationAlert(uid: string): Promise<void>;
 
-  fetchLoginSecurityContext(): Promise<{
-    publicState: PublicGameState | null;
-    members: Record<string, MemberRecord>;
-    activeHiderLock: HiderLoginLock | null;
-  }>;
-
   startRoundWhenAllReady(params: {
     starterUid: string;
     publicState: PublicGameState;
@@ -259,11 +256,8 @@ function stripUndefinedDeep<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj)) as T;
 }
 
-export function buildReadyToken(
-  sessionId: string,
-  logoutGen: string
-): string {
-  return `${sessionId}:${logoutGen}`;
+export function buildReadyToken(sessionId: string): string {
+  return sessionId;
 }
 
 export function isMemberTabOnline(
@@ -401,71 +395,21 @@ export function extractActiveLeashViolation(
   return best;
 }
 
-export function extractActiveHiderLock(
-  publicState: PublicGameState | null,
-  presence: Record<string, Record<string, PresenceSession>>,
-  members: Record<string, MemberRecord>
-): HiderLoginLock | null {
-  const sessionId = publicState?.sessionId;
-  if (!sessionId) return null;
-
-  let latest: HiderLoginLock | null = null;
-  if (publicState?.hiderLock && publicState.hiderLock.sessionId === sessionId) {
-    latest = { ...publicState.hiderLock };
-  }
-
-  for (const userSessions of Object.values(presence)) {
-    const lockEntry = userSessions?.hider_pw_lock;
-    if (
-      lockEntry &&
-      lockEntry.sessionId === sessionId &&
-      lockEntry.passwordHash &&
-      lockEntry.logoutGen
-    ) {
-      const candidateSetAt = lockEntry.lastSeen || 0;
-      if (!latest || candidateSetAt >= latest.setAt) {
-        latest = {
-          sessionId,
-          passwordHash: lockEntry.passwordHash,
-          hiderPlayerIds: Array.isArray(lockEntry.hiderPlayerIds)
-            ? [...lockEntry.hiderPlayerIds]
-            : [],
-          logoutGen: lockEntry.logoutGen,
-          setAt: candidateSetAt,
-        };
-      }
-    }
-  }
-
-  if (!latest) return null;
-
-  const assignedHiders = deduplicateEnabledMembers(members, presence)
-    .filter((m) => m.side === 'HIDER')
-    .map((m) => m.playerId);
-
-  return {
-    ...latest,
-    hiderPlayerIds:
-      assignedHiders.length > 0
-        ? Array.from(new Set(assignedHiders))
-        : Array.from(new Set(latest.hiderPlayerIds)),
-  };
-}
-
 export function extractReadyPlayerIds(
   publicState: PublicGameState | null,
-  activeHiderLock: HiderLoginLock | null,
   presence: Record<string, Record<string, PresenceSession>>
 ): string[] {
-  if (!publicState || !activeHiderLock) return [];
-  const sessionPrefix = `${publicState.sessionId}:`;
+  if (!publicState) return [];
+  const sessionId = publicState.sessionId;
+  const legacyPrefix = `${sessionId}:`;
   const readySet = new Set<string>();
   for (const userSessions of Object.values(presence)) {
     const readyEntry = userSessions?.ready_state;
     if (
       readyEntry &&
       typeof readyEntry.readyToken === 'string' &&
-      readyEntry.readyToken.startsWith(sessionPrefix) &&
+      (readyEntry.readyToken === sessionId ||
+        readyEntry.readyToken.startsWith(legacyPrefix)) &&
       readyEntry.playerId
     ) {
       readySet.add(readyEntry.playerId);
@@ -641,43 +585,228 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       });
     },
 
-    async signInWithPresetPlayer(loginEmail, password): Promise<AuthUserSummary> {
-      if (password && password.trim().length > 0) {
-        const cred = await signInWithEmailAndPassword(auth, loginEmail, password);
-        return {
-          uid: cred.user.uid,
-          email: cred.user.email ?? loginEmail,
-        };
+    async registerAccount({
+      name,
+      password,
+    }): Promise<{ user: AuthUserSummary; member: MemberRecord }> {
+      const nameCheck = validateAndNormalizeAccountName(name);
+      if (!nameCheck.valid) {
+        throw new Error(nameCheck.error);
       }
+      const pwCheck = validateAccountPassword(password);
+      if (!pwCheck.valid) {
+        throw new Error(pwCheck.error);
+      }
+
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+      }
+
+      const { playerId, displayName, isAdmin } = nameCheck;
+      const acctRef = ref(db, `${ROOT_PATH}/accounts/${playerId}`);
+      const existingAcctSnap = await get(acctRef);
+      if (existingAcctSnap.exists()) {
+        throw new Error(
+          'Dieser Benutzername ist bereits vergeben. Bitte melde dich mit deinem Passwort an.'
+        );
+      }
+
+      // Falls das aktuelle Gerät zuvor mit einem anderen Spielerkonto eingeloggt war, frische UID holen
       if (auth.currentUser) {
-        return {
-          uid: auth.currentUser.uid,
-          email: loginEmail,
-        };
+        const curMemSnap = await get(
+          ref(db, `${ROOT_PATH}/members/${auth.currentUser.uid}`)
+        ).catch(() => null);
+        if (
+          curMemSnap?.exists() &&
+          (curMemSnap.val() as MemberRecord | null)?.playerId !== playerId
+        ) {
+          await firebaseSignOut(auth);
+          await signInAnonymously(auth);
+        }
       }
-      // Passwortloser Freundeskreis-Modus via Firebase Anonymous Auth
-      const anonCred = await signInAnonymously(auth);
+
+      const activeUser = auth.currentUser ?? (await signInAnonymously(auth)).user;
+      const uid = activeUser.uid;
+      const nowMs = adapter.getServerNow();
+      const passwordHash = computeAccountPasswordHash(
+        playerId,
+        pwCheck.password
+      );
+
+      const accountRecord: AccountPublicRecord = {
+        playerId,
+        name: displayName,
+        createdAt: nowMs,
+      };
+
+      try {
+        await update(ref(db), {
+          [`${ROOT_PATH}/accounts/${playerId}`]: stripUndefinedDeep(accountRecord),
+          [`${ROOT_PATH}/accountSecrets/${playerId}`]: { passwordHash },
+        });
+      } catch (err) {
+        const recheck = await get(acctRef).catch(() => null);
+        if (recheck?.exists()) {
+          throw new Error(
+            'Dieser Benutzername ist bereits vergeben. Bitte melde dich mit deinem Passwort an.'
+          );
+        }
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        if (rawMsg.toLowerCase().includes('permission')) {
+          throw new Error(
+            'Registrierung durch Datenbank abgelehnt. Bitte die aktualisierten database.rules.json in der Firebase Console veröffentlichen.'
+          );
+        }
+        throw new Error(
+          'Konto konnte nicht erstellt werden. Bitte prüfe deine Internetverbindung.'
+        );
+      }
+
+      await set(ref(db, `${ROOT_PATH}/memberAuth/${uid}`), {
+        playerId,
+        passwordHash,
+        authenticatedAt: nowMs,
+      });
+
+      const remoteAssignment = isAdmin
+        ? null
+        : await adapter.fetchPlayerAssignment(playerId);
+      const side: MemberRecord['side'] = isAdmin
+        ? 'UNASSIGNED'
+        : (remoteAssignment?.side ?? 'UNASSIGNED');
+      const teamId =
+        side === 'SEEKER' ? (remoteAssignment?.teamId ?? null) : null;
+
+      const member: MemberRecord = {
+        uid,
+        playerId,
+        name: displayName,
+        isHost: isAdmin,
+        enabled: true,
+        side,
+        teamId,
+      };
+
+      await set(
+        ref(db, `${ROOT_PATH}/members/${uid}`),
+        stripUndefinedDeep(member)
+      );
+
       return {
-        uid: anonCred.user.uid,
-        email: loginEmail,
+        user: { uid, email: activeUser.email ?? null },
+        member,
       };
     },
 
-    async claimInitialHostRole(uid, playerId, name): Promise<void> {
-      const hostMember: MemberRecord = {
+    async loginWithAccount({
+      name,
+      password,
+    }): Promise<{ user: AuthUserSummary; member: MemberRecord }> {
+      const nameCheck = validateAndNormalizeAccountName(name);
+      if (!nameCheck.valid) {
+        throw new Error(nameCheck.error);
+      }
+      if (!password || !password.trim()) {
+        throw new Error('Bitte gib dein Passwort ein.');
+      }
+
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+      }
+
+      const { playerId, displayName, isAdmin } = nameCheck;
+      const acctSnap = await get(ref(db, `${ROOT_PATH}/accounts/${playerId}`));
+      if (!acctSnap.exists()) {
+        throw new Error(
+          'Dieses Konto existiert noch nicht. Wechsle auf „Konto erstellen“, um es neu anzulegen.'
+        );
+      }
+
+      const acctVal = acctSnap.val() as Partial<AccountPublicRecord> | null;
+      const canonicalName = isAdmin
+        ? 'Admin'
+        : acctVal?.name?.trim() || displayName;
+
+      // Falls das Gerät aktuell mit einem anderen Spielerkonto verknüpft ist, frische UID anfordern
+      if (auth.currentUser) {
+        const curMemSnap = await get(
+          ref(db, `${ROOT_PATH}/members/${auth.currentUser.uid}`)
+        ).catch(() => null);
+        if (
+          curMemSnap?.exists() &&
+          (curMemSnap.val() as MemberRecord | null)?.playerId !== playerId
+        ) {
+          await firebaseSignOut(auth);
+          await signInAnonymously(auth);
+        }
+      }
+
+      const activeUser = auth.currentUser ?? (await signInAnonymously(auth)).user;
+      const uid = activeUser.uid;
+      const nowMs = adapter.getServerNow();
+      const passwordHash = computeAccountPasswordHash(playerId, password);
+
+      try {
+        await set(ref(db, `${ROOT_PATH}/memberAuth/${uid}`), {
+          playerId,
+          passwordHash,
+          authenticatedAt: nowMs,
+        });
+      } catch (err) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        if (rawMsg.toLowerCase().includes('permission')) {
+          throw new Error('Falsches Passwort.');
+        }
+        throw new Error(
+          'Anmeldung fehlgeschlagen. Bitte prüfe deine Internetverbindung.'
+        );
+      }
+
+      const existingOwnSnap = await get(
+        ref(db, `${ROOT_PATH}/members/${uid}`)
+      ).catch(() => null);
+      const existingOwn = existingOwnSnap?.exists()
+        ? (existingOwnSnap.val() as MemberRecord)
+        : null;
+
+      const remoteAssignment = isAdmin
+        ? null
+        : await adapter.fetchPlayerAssignment(playerId);
+
+      const inheritedSide: MemberRecord['side'] = isAdmin
+        ? 'UNASSIGNED'
+        : remoteAssignment?.side && remoteAssignment.side !== 'UNASSIGNED'
+          ? remoteAssignment.side
+          : existingOwn && existingOwn.playerId === playerId
+            ? existingOwn.side
+            : 'UNASSIGNED';
+
+      const inheritedTeamId =
+        inheritedSide === 'SEEKER'
+          ? (remoteAssignment?.teamId ??
+            (existingOwn?.playerId === playerId ? existingOwn.teamId : null) ??
+            null)
+          : null;
+
+      const member: MemberRecord = {
         uid,
         playerId,
-        name,
-        isHost: true,
+        name: canonicalName,
+        isHost: isAdmin,
         enabled: true,
-        side: 'HIDER',
-        teamId: null,
+        side: inheritedSide,
+        teamId: inheritedTeamId,
       };
+
       await set(
         ref(db, `${ROOT_PATH}/members/${uid}`),
-        stripUndefinedDeep(hostMember)
+        stripUndefinedDeep(member)
       );
-      await remove(ref(db, `${ROOT_PATH}/joinRequests/${uid}`)).catch(() => {});
+
+      return {
+        user: { uid, email: activeUser.email ?? null },
+        member,
+      };
     },
 
     async registerSelfMemberIfMissing(member): Promise<void> {
@@ -824,8 +953,16 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       return onValue(
         ref(db, `${ROOT_PATH}/members/${uid}`),
         (snap) => {
-          const val = snap.val();
-          cb(val ? ({ ...val, uid } as MemberRecord) : null);
+          const val = snap.val() as MemberRecord | null;
+          cb(
+            val
+              ? ({
+                  ...val,
+                  uid,
+                  isHost: isAdminAccountId(val.playerId),
+                } as MemberRecord)
+              : null
+          );
         },
         () => cb(null)
       );
@@ -838,7 +975,11 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           const raw = (snap.val() ?? {}) as Record<string, MemberRecord>;
           const mapped: Record<string, MemberRecord> = {};
           for (const [uid, rec] of Object.entries(raw)) {
-            mapped[uid] = { ...rec, uid };
+            mapped[uid] = {
+              ...rec,
+              uid,
+              isHost: isAdminAccountId(rec.playerId),
+            };
           }
           cb(mapped);
         },
@@ -1183,6 +1324,31 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       await update(ref(db, `${ROOT_PATH}/state/hiderPrivate`), payload);
     },
 
+    async rerollHiderSecrets(): Promise<{ qrSecret: string; shortCode: string }> {
+      const privRef = ref(db, `${ROOT_PATH}/state/hiderPrivate`);
+      const existingSnap = await get(privRef).catch(() => null);
+      const existing = existingSnap?.exists()
+        ? (existingSnap.val() as Partial<HiderPrivateState>)
+        : null;
+
+      let fresh = generateSessionSecrets();
+      while (fresh.shortCode === existing?.shortCode) {
+        fresh = generateSessionSecrets();
+      }
+
+      await set(
+        privRef,
+        stripUndefinedDeep({
+          anchorPoint: existing?.anchorPoint ?? null,
+          radarStages: existing?.radarStages ?? [],
+          qrSecret: fresh.qrSecret,
+          shortCode: fresh.shortCode,
+          hiderLocations: existing?.hiderLocations ?? {},
+        })
+      );
+      return fresh;
+    },
+
     async writeHiderLocationPrivate(uid, fix): Promise<void> {
       await set(
         ref(db, `${ROOT_PATH}/state/hiderPrivate/hiderLocations/${uid}`),
@@ -1516,7 +1682,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     ): Promise<void> {
       await set(
         ref(db, `${ROOT_PATH}/state/public`),
-        stripUndefinedDeep({ ...newPublicState, hiderLock: null })
+        stripUndefinedDeep(newPublicState)
       );
       await remove(ref(db, `${ROOT_PATH}/state/controller`));
       await set(
@@ -1534,68 +1700,6 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         );
         await remove(ref(db, `${ROOT_PATH}/teams/${teamId}/location`));
       }
-    },
-
-    async setHiderPasswordAndTriggerLogout({
-      uid,
-      sessionId,
-      cleanPassword,
-      passwordHash,
-      hiderPlayerIds,
-      nowMs,
-    }): Promise<HiderLoginLock> {
-      const logoutGen = generateRandomId('pwlogout');
-      const lock: HiderLoginLock = {
-        sessionId,
-        passwordHash,
-        hiderPlayerIds,
-        logoutGen,
-        setAt: nowMs,
-      };
-
-      // 1. Speichere das Verstecker-Passwort als QR-Secret & Fang-Code in hiderPrivate
-      //    WICHTIG: Bei Änderung während einer laufenden Runde bleiben anchorPoint & radarStages vollständig erhalten!
-      const privRef = ref(db, `${ROOT_PATH}/state/hiderPrivate`);
-      const existingPrivSnap = await get(privRef).catch(() => null);
-      const existingPriv = existingPrivSnap?.exists()
-        ? (existingPrivSnap.val() as Partial<HiderPrivateState>)
-        : null;
-
-      await set(
-        privRef,
-        stripUndefinedDeep({
-          anchorPoint: existingPriv?.anchorPoint ?? null,
-          radarStages: existingPriv?.radarStages ?? [],
-          qrSecret: cleanPassword,
-          shortCode: cleanPassword,
-          hiderLocations: existingPriv?.hiderLocations ?? {},
-        })
-      );
-
-      // 2. Schreibe Lock-Metadaten in presence (funktioniert sofort für jeden Hider) + optional in state/public/hiderLock
-      await set(
-        ref(db, `${ROOT_PATH}/presence/${uid}/hider_pw_lock`),
-        stripUndefinedDeep({
-          online: false,
-          lastSeen: nowMs,
-          kind: 'HIDER_PW_LOCK',
-          sessionId,
-          passwordHash,
-          hiderPlayerIds,
-          logoutGen,
-        })
-      );
-
-      await set(
-        ref(db, `${ROOT_PATH}/state/public/hiderLock`),
-        stripUndefinedDeep(lock)
-      ).catch(() => {});
-
-      await remove(ref(db, `${ROOT_PATH}/presence/${uid}/ready_state`)).catch(
-        () => {}
-      );
-
-      return lock;
     },
 
     async setPlayerReadyState(uid, playerId, readyToken, nowMs): Promise<void> {
@@ -1691,62 +1795,6 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       );
     },
 
-    async fetchLoginSecurityContext() {
-      let pub: PublicGameState | null = null;
-      let members: Record<string, MemberRecord> = {};
-      let presence: Record<string, Record<string, PresenceSession>> = {};
-
-      try {
-        const pubSnap = await get(ref(db, `${ROOT_PATH}/state/public`));
-        if (pubSnap.exists()) {
-          pub = pubSnap.val() as PublicGameState;
-        }
-      } catch {
-        // Falls vollständiger state/public noch nicht lesbar ist, versuche hiderLock direkt zu lesen
-        try {
-          const lockSnap = await get(ref(db, `${ROOT_PATH}/state/public/hiderLock`));
-          if (lockSnap.exists()) {
-            const hl = lockSnap.val() as HiderLoginLock;
-            return {
-              publicState: null,
-              members: {},
-              activeHiderLock: hl,
-            };
-          }
-        } catch {
-          // Ignorieren
-        }
-      }
-
-      try {
-        const memSnap = await get(ref(db, `${ROOT_PATH}/members`));
-        if (memSnap.exists()) {
-          const raw = memSnap.val() as Record<string, MemberRecord>;
-          for (const [u, rec] of Object.entries(raw)) {
-            members[u] = { ...rec, uid: u };
-          }
-        }
-      } catch {
-        // Ignorieren
-      }
-
-      try {
-        const presSnap = await get(ref(db, `${ROOT_PATH}/presence`));
-        if (presSnap.exists()) {
-          presence = presSnap.val() as Record<string, Record<string, PresenceSession>>;
-        }
-      } catch {
-        // Ignorieren
-      }
-
-      const activeHiderLock = extractActiveHiderLock(pub, presence, members);
-      return {
-        publicState: pub,
-        members,
-        activeHiderLock,
-      };
-    },
-
     async startRoundWhenAllReady({
       starterUid,
       publicState,
@@ -1770,10 +1818,17 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         .map((t) => t.id);
 
       const fallbackSecrets = generateSessionSecrets();
-      const preservedSecret =
-        currentHiderPrivate?.qrSecret?.trim() || fallbackSecrets.qrSecret;
-      const preservedShortCode =
-        currentHiderPrivate?.shortCode?.trim() || fallbackSecrets.shortCode;
+      const hasValidRandomSecrets = Boolean(
+        currentHiderPrivate?.qrSecret &&
+          /^[0-9a-f]{32}$/i.test(currentHiderPrivate.qrSecret) &&
+          currentHiderPrivate?.shortCode?.length === 6
+      );
+      const preservedSecret = hasValidRandomSecrets
+        ? currentHiderPrivate!.qrSecret
+        : fallbackSecrets.qrSecret;
+      const preservedShortCode = hasValidRandomSecrets
+        ? currentHiderPrivate!.shortCode
+        : fallbackSecrets.shortCode;
 
       await set(
         ref(db, `${ROOT_PATH}/state/hiderPrivate`),

@@ -15,15 +15,14 @@ import {
   TEAM_PALETTE,
 } from '../src/config/gameConfig';
 import {
-  computeHiderPasswordHash,
-  EXPECTED_ADMIN_AUTH_HASH,
+  ADMIN_ACCOUNT_ID,
+  computeAccountPasswordHash,
   getPlayerGreeting,
+  isAdminAccountId,
   isOverviewMember,
-  PRESET_PLAYERS,
-  REGULAR_PLAYER_COUNT,
-  resolveAllowedPlayerByNameInput,
-  verifyAdminCode,
-  verifyHiderPasswordHash,
+  validateAccountPassword,
+  validateAndNormalizeAccountName,
+  verifyAccountPasswordHash,
 } from '../src/config/players';
 import { createDemoStore } from '../src/demo/demoStore';
 import { destinationPoint } from '../src/geo/distance';
@@ -31,7 +30,6 @@ import {
   buildReadyToken,
   computeAveragedTeamLocationFromMemberFixes,
   deduplicateEnabledMembers,
-  extractActiveHiderLock,
   extractActiveLeashViolation,
   extractEmergencyMessages,
   extractReadyPlayerIds,
@@ -182,45 +180,105 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     });
   });
 
-  it('erlaubt beim Login exakt die 14 Spielernamen sowie den Overview-Account (nur mit Admin-Code) und schaltet Admin-Rechte für Lasse, Linus, Test 1 & Overview frei', () => {
-    const expectedNames = [
-      'Lasse',
-      'Linus',
-      'Thomas',
-      'Robert',
-      'Nick',
-      'Eric',
-      'Jonah',
-      'Lorenzo',
-      'Louis',
-      'Max',
-      'Roman',
-      'Theo',
-      'Test 1',
-      'Test 2',
-      'Overview',
-    ];
-    expect(PRESET_PLAYERS.map((p) => p.name)).toEqual(expectedNames);
-    expect(PRESET_PLAYERS).toHaveLength(15);
-    expect(REGULAR_PLAYER_COUNT).toBe(14);
+  it('ermöglicht freie Konto-Erstellung (Name + Passwort) und vergibt Admin-Rechte ausschließlich an das Konto „admin“', async () => {
+    expect(ADMIN_ACCOUNT_ID).toBe('admin');
+    expect(isAdminAccountId('admin')).toBe(true);
+    expect(isAdminAccountId('ADMIN')).toBe(true);
+    expect(isAdminAccountId('lasse')).toBe(false);
+    expect(isAdminAccountId('linus')).toBe(false);
 
-    // Nur Lasse, Linus, Test 1 & Overview können Admin-Rechte freischalten (Test 2 nicht)
-    expect(
-      PRESET_PLAYERS.filter((p) => p.canUnlockAdmin).map((p) => p.name)
-    ).toEqual(['Lasse', 'Linus', 'Test 1', 'Overview']);
-
-    // Alle 14 Namen loggen sich direkt per Vorname ein, Overview (bzw. Übersicht) ist als Overview-Account markiert
-    expect(resolveAllowedPlayerByNameInput('  lasse ')?.name).toBe('Lasse');
-    expect(resolveAllowedPlayerByNameInput('LINUS')?.name).toBe('Linus');
-    expect(resolveAllowedPlayerByNameInput('  roman  ')?.name).toBe('Roman');
-    expect(resolveAllowedPlayerByNameInput('  theo  ')?.name).toBe('Theo');
-    expect(resolveAllowedPlayerByNameInput('  test 1 ')?.canUnlockAdmin).toBe(true);
-    expect(resolveAllowedPlayerByNameInput('TEST 2')?.canUnlockAdmin).toBe(false);
-    expect(resolveAllowedPlayerByNameInput('Overview')?.isOverviewOnly).toBe(true);
-    expect(resolveAllowedPlayerByNameInput('übersicht')?.id).toBe('overview');
-    expect(isOverviewMember({ playerId: 'overview', name: 'Overview' })).toBe(true);
-    expect(isOverviewMember({ playerId: 'test-1', name: 'Overview' })).toBe(true);
+    expect(isOverviewMember({ playerId: 'admin', name: 'admin' })).toBe(true);
     expect(isOverviewMember({ playerId: 'lasse', name: 'Lasse' })).toBe(false);
+
+    // Namens- & Passwort-Validierung
+    expect(validateAndNormalizeAccountName('  Sophie  ')).toEqual({
+      valid: true,
+      playerId: 'sophie',
+      displayName: 'Sophie',
+      isAdmin: false,
+    });
+    expect(validateAndNormalizeAccountName('  ADMIN  ')).toEqual({
+      valid: true,
+      playerId: 'admin',
+      displayName: 'Admin',
+      isAdmin: true,
+    });
+    expect(validateAndNormalizeAccountName('A').valid).toBe(false);
+    expect(validateAccountPassword('123').valid).toBe(false);
+    expect(validateAccountPassword('geheim123').valid).toBe(true);
+
+    // Gesalzener SHA-256 Passwort-Hash ist pro playerId gebunden
+    const sophieHash = computeAccountPasswordHash('sophie', 'Sardine2026!');
+    expect(verifyAccountPasswordHash('sophie', 'Sardine2026!', sophieHash)).toBe(
+      true
+    );
+    expect(verifyAccountPasswordHash('sophie', 'Falsch!', sophieHash)).toBe(
+      false
+    );
+    expect(verifyAccountPasswordHash('alex', 'Sardine2026!', sophieHash)).toBe(
+      false
+    );
+
+    // Selbstregistrierung & Login über Adapter
+    const store = createDemoStore({
+      inMemoryOnly: true,
+      initialNowMs: 1_700_010_000_000,
+    });
+
+    const { member: createdSophie } = await store.adapter.registerAccount({
+      name: 'Sophie',
+      password: 'Sardine2026!',
+    });
+    expect(createdSophie.playerId).toBe('sophie');
+    expect(createdSophie.name).toBe('Sophie');
+    expect(createdSophie.isHost).toBe(false);
+    expect(createdSophie.enabled).toBe(true);
+
+    // Doppelter Benutzername wird abgelehnt
+    await expect(
+      store.adapter.registerAccount({
+        name: 'sophie',
+        password: 'AnderesPasswort',
+      })
+    ).rejects.toThrow(/bereits vergeben/i);
+
+    // Falsches Passwort und unbekanntes Konto werden abgelehnt
+    await expect(
+      store.adapter.loginWithAccount({
+        name: 'Sophie',
+        password: 'FalschesPasswort',
+      })
+    ).rejects.toThrow(/Falsches Passwort/i);
+    await expect(
+      store.adapter.loginWithAccount({
+        name: 'Unbekannt',
+        password: 'irgendwas',
+      })
+    ).rejects.toThrow(/existiert noch nicht/i);
+
+    // Korrekter Login als Sophie -> kein Admin
+    const { member: loggedInSophie } = await store.adapter.loginWithAccount({
+      name: 'Sophie',
+      password: 'Sardine2026!',
+    });
+    expect(loggedInSophie.playerId).toBe('sophie');
+    expect(loggedInSophie.isHost).toBe(false);
+
+    // Login als „admin“ -> erhält exklusiv isHost: true
+    const { member: loggedInAdmin } = await store.adapter.loginWithAccount({
+      name: 'Admin',
+      password: 'admin123',
+    });
+    expect(loggedInAdmin.playerId).toBe('admin');
+    expect(loggedInAdmin.isHost).toBe(true);
+    expect(isOverviewMember(loggedInAdmin)).toBe(true);
+
+    // Auch Lasse & Linus erhalten ohne das „admin“-Konto niemals isHost: true
+    const { member: loggedInLasse } = await store.adapter.loginWithAccount({
+      name: 'Lasse',
+      password: 'demo1234',
+    });
+    expect(loggedInLasse.isHost).toBe(false);
 
     // Standard-Versteckzeit beträgt 15 Minuten und Radius-Radar kostet 15 Minuten
     expect(DEFAULT_CLASSIC_HIDING_MINUTES).toBe(15);
@@ -240,30 +298,6 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(skippedManhunt.stage5Ms).toBe(95_000 + 40 * 60_000);
     expect(getQuestionPenaltyMs('RADIUS_RADAR')).toBe(15 * 60_000);
     expect(getQuestionPenaltyMs('DONUT_RING')).toBe(4 * 60_000);
-
-    // Admin-Code-Verifikation (2342 gültig, alles andere abgelehnt)
-    const valid = verifyAdminCode('2342');
-    expect(valid.valid).toBe(true);
-    expect(valid.adminAuthHash).toBe(EXPECTED_ADMIN_AUTH_HASH);
-    expect(verifyAdminCode('0000').valid).toBe(false);
-    expect(verifyAdminCode('9999').valid).toBe(false);
-    expect(verifyAdminCode('').valid).toBe(false);
-
-    // Fremde Namen oder Zusätze werden beim Login strikt abgelehnt
-    for (const invalid of [
-      '',
-      '   ',
-      'Lasse#2342',
-      'Thomas#2342',
-      'Alex',
-      'Sophie',
-      'Felix',
-      'Admin',
-      'Lasse(Admin)',
-      'Gast',
-    ]) {
-      expect(resolveAllowedPlayerByNameInput(invalid)).toBeUndefined();
-    }
   });
 
   it('unterstützt 6 Teams, berechnet die Durchschnittsposition aller aktiven Teammitglieder und sperrt doppelte Spieler-Sitzungen', async () => {
@@ -381,85 +415,69 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     ).toBe(true);
   });
 
-  it('setzt das Verstecker-Passwort als QR-/Fang-Code + Account-Schutz, startet bei Alle-Bereit automatisch nur mit belegten Teams und erlaubt Notfallnachrichten-Löschung nur dem Absender', async () => {
+  it('nutzt zufällige Hider-QR-Codes & 6-stellige Fang-Codes mit Reroll-Funktion (ohne Verstecker-Passwort), startet bei Alle-Bereit automatisch und schützt Notfallnachrichten', async () => {
     const t0 = 1_700_050_000_000;
     const store = createDemoStore({ inMemoryOnly: true, initialNowMs: t0 });
 
     const snap0 = store.getSnapshot();
     const sessionId = snap0.state.public.sessionId;
 
-    // 1. Verstecker (Lasse) legt Passwort fest -> wird QR-Geheimnis, Fang-Code & gehashter Login-Schutz
-    const chosenPw = 'BlutenburgFuchs';
-    const pwHash = computeHiderPasswordHash(chosenPw);
-    expect(verifyHiderPasswordHash(chosenPw, pwHash)).toBe(true);
-    expect(verifyHiderPasswordHash('Falsch123', pwHash)).toBe(false);
+    // 1. Initialer QR-Code & Fang-Code sind zufällig generiert (32 Hex + 6 Zeichen ohne 0/O/1/I)
+    const initialQrSecret = snap0.state.hiderPrivate.qrSecret;
+    const initialShortCode = snap0.state.hiderPrivate.shortCode;
+    expect(initialQrSecret).toMatch(/^[0-9a-f]{32}$/i);
+    expect(initialShortCode).toHaveLength(6);
+    expect(initialShortCode).not.toMatch(/[0O1I]/);
 
-    const lock = await store.adapter.setHiderPasswordAndTriggerLogout({
-      uid: 'demo_uid_lasse',
+    // Sowohl QR-Scan als auch manuelle 6-Zeichen-Code-Eingabe verifizieren den Fang
+    const qrJson = serializeQrPayload(
       sessionId,
-      cleanPassword: chosenPw,
-      passwordHash: pwHash,
-      hiderPlayerIds: ['lasse'],
-      nowMs: t0 + 1_000,
-    });
-
-    const snapAfterPw = store.getSnapshot();
-    expect(snapAfterPw.state.hiderPrivate.qrSecret).toBe(chosenPw);
-    expect(snapAfterPw.state.hiderPrivate.shortCode).toBe(chosenPw);
-
-    const extractedLock = extractActiveHiderLock(
-      snapAfterPw.state.public,
-      snapAfterPw.presence,
-      snapAfterPw.members
+      initialQrSecret,
+      initialShortCode
     );
-    expect(extractedLock?.logoutGen).toBe(lock.logoutGen);
-    expect(extractedLock?.hiderPlayerIds).toContain('lasse');
-
-    // Sowohl QR-Scan als auch manuelle Passwort-Eingabe verifizieren das Verstecker-Passwort
-    const qrJson = serializeQrPayload(sessionId, chosenPw, chosenPw);
-    expect(
-      verifyCatchSubmission(qrJson, sessionId, sessionId, chosenPw, chosenPw).valid
-    ).toBe(true);
-    expect(
-      verifyCatchSubmission(chosenPw, sessionId, sessionId, chosenPw, chosenPw).valid
-    ).toBe(true);
     expect(
       verifyCatchSubmission(
-        chosenPw.toLowerCase(),
+        qrJson,
         sessionId,
         sessionId,
-        chosenPw,
-        chosenPw
+        initialQrSecret,
+        initialShortCode
       ).valid
     ).toBe(true);
     expect(
-      verifyCatchSubmission('FalscherCode', sessionId, sessionId, chosenPw, chosenPw)
-        .valid
-    ).toBe(false);
+      verifyCatchSubmission(
+        initialShortCode.toLowerCase(),
+        sessionId,
+        sessionId,
+        initialQrSecret,
+        initialShortCode
+      ).valid
+    ).toBe(true);
 
-    // 2. Alle Spieler drücken „Bereit" -> Runde startet automatisch und führt nur belegte Teams
+    // 2. Alle Verstecker drücken direkt ohne Verstecker-Passwort „Bereit" -> Runde startet automatisch
     const enabledMembers = deduplicateEnabledMembers(
-      snapAfterPw.members,
-      snapAfterPw.presence
+      snap0.members,
+      snap0.presence
     );
-    const readyToken = buildReadyToken(sessionId, lock.logoutGen);
+    const readyToken = buildReadyToken(sessionId);
 
     for (const m of enabledMembers) {
-      await store.adapter.setPlayerReadyState(
-        m.uid,
-        m.playerId,
-        readyToken,
-        t0 + 2_000
-      );
+      if (m.side === 'HIDER') {
+        await store.adapter.setPlayerReadyState(
+          m.uid,
+          m.playerId,
+          readyToken,
+          t0 + 2_000
+        );
+      }
     }
 
     const snapReady = store.getSnapshot();
     const readyIds = extractReadyPlayerIds(
       snapReady.state.public,
-      extractedLock,
       snapReady.presence
     );
-    expect(readyIds.sort()).toEqual(enabledMembers.map((m) => m.playerId).sort());
+    expect(readyIds.sort()).toEqual(['lasse', 'linus']);
 
     await store.adapter.startRoundWhenAllReady({
       starterUid: 'demo_uid_lasse',
@@ -479,11 +497,11 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
       'team-3',
       'team-4',
     ]);
-    // Verstecker-Passwort bleibt nach Rundenstart unverändert erhalten!
-    expect(snapStarted.state.hiderPrivate.shortCode).toBe(chosenPw);
-    expect(snapStarted.state.hiderPrivate.qrSecret).toBe(chosenPw);
+    expect(snapStarted.state.hiderPrivate.shortCode).toBe(initialShortCode);
+    expect(snapStarted.state.hiderPrivate.qrSecret).toBe(initialQrSecret);
 
-    // 2b. Ändert ein Verstecker den Verstecker-Code mitten in der Runde, bleiben AnchorPoint & RadarStages vollständig erhalten!
+    // 2b. Reroll-Button würfelt während der Runde einen neuen zufälligen QR-Code & Fang-Code,
+    // macht den alten Code ungültig und erhält AnchorPoint, RadarStages & HiderLocations!
     await store.adapter.saveHiderPrivate({
       ...snapStarted.state.hiderPrivate,
       anchorPoint: {
@@ -494,23 +512,42 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
         lockedByUid: 'demo_uid_lasse',
       },
     });
-    const midRoundPw = 'NeuerSardinenCode';
-    const midRoundLock = await store.adapter.setHiderPasswordAndTriggerLogout({
-      uid: 'demo_uid_lasse',
-      sessionId,
-      cleanPassword: midRoundPw,
-      passwordHash: computeHiderPasswordHash(midRoundPw),
-      hiderPlayerIds: ['lasse'],
-      nowMs: t0 + 3_800,
-    });
-    const snapMidRound = store.getSnapshot();
-    expect(snapMidRound.state.hiderPrivate.shortCode).toBe(midRoundPw);
-    expect(snapMidRound.state.hiderPrivate.qrSecret).toBe(midRoundPw);
-    expect(snapMidRound.state.hiderPrivate.anchorPoint?.lat).toBeCloseTo(
+    const rerolled = await store.adapter.rerollHiderSecrets();
+    expect(rerolled.qrSecret).toMatch(/^[0-9a-f]{32}$/i);
+    expect(rerolled.shortCode).toHaveLength(6);
+    expect(rerolled.shortCode).not.toMatch(/[0O1I]/);
+    expect(rerolled.shortCode).not.toBe(initialShortCode);
+    expect(rerolled.qrSecret).not.toBe(initialQrSecret);
+
+    const snapAfterReroll = store.getSnapshot();
+    expect(snapAfterReroll.state.hiderPrivate.shortCode).toBe(
+      rerolled.shortCode
+    );
+    expect(snapAfterReroll.state.hiderPrivate.qrSecret).toBe(rerolled.qrSecret);
+    expect(snapAfterReroll.state.hiderPrivate.anchorPoint?.lat).toBeCloseTo(
       48.1632,
       4
     );
-    expect(midRoundLock.hiderPlayerIds).toEqual(['lasse']);
+
+    // Alter Code wird nach Reroll abgelehnt, neuer Code wird akzeptiert
+    expect(
+      verifyCatchSubmission(
+        initialShortCode,
+        sessionId,
+        sessionId,
+        rerolled.qrSecret,
+        rerolled.shortCode
+      ).valid
+    ).toBe(false);
+    expect(
+      verifyCatchSubmission(
+        rerolled.shortCode,
+        sessionId,
+        sessionId,
+        rerolled.qrSecret,
+        rerolled.shortCode
+      ).valid
+    ).toBe(true);
 
     // 3. Notfallnachricht inkl. GPS-Standort senden, für alle sichtbar extrahieren & Löschschutz bei Orphan-Cleanup prüfen
     await store.adapter.sendEmergencyMessage({

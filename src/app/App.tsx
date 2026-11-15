@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Anchor,
   CheckCircle2,
@@ -13,7 +13,6 @@ import {
   Eye,
   X,
   ArrowLeft,
-  KeyRound,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -36,8 +35,6 @@ import {
 } from '../config/gameConfig';
 import { preloadGreenPolygonsForPostalCode } from '../config/fallbackOsm81247';
 import {
-  computeHiderPasswordHash,
-  findPresetPlayerById,
   getPlayerGreeting,
   isOverviewMember,
 } from '../config/players';
@@ -61,7 +58,6 @@ import { useWakeLock } from '../hooks/useWakeLock';
 import {
   buildReadyToken,
   deduplicateEnabledMembers,
-  filterOnlineEnabledMembers,
 } from '../services/databaseAdapter';
 import type {
   BottomNavTab,
@@ -103,25 +99,14 @@ export const App: React.FC = () => {
     memberLoading,
     seatConflictError,
     loginError,
-    logoutNotice,
-    pendingHiderPasswordFor,
-    pendingAdminCodeFor,
-    clearPendingHiderPrompt,
-    clearPendingAdminPrompt,
-    loginByTypedName,
-    syncWithActiveHiderLock,
-    unlockAdminWithCode,
-    lockAdminConsole,
-    claimInitialHost,
+    clearLoginError,
+    loginWithCredentials,
+    registerWithCredentials,
     exitOrLogout,
   } = useAuth();
 
   const gameState = useGameState(adapter, ownMember);
   const { publicState, hiderPrivate } = gameState;
-
-  useEffect(() => {
-    syncWithActiveHiderLock(gameState.activeHiderLock);
-  }, [gameState.activeHiderLock, syncWithActiveHiderLock]);
 
   const timer = useGameTimer(adapter, publicState);
 
@@ -238,25 +223,11 @@ export const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePostalCodesLabel]);
 
-  const [bootAdminModalOpen, setBootAdminModalOpen] = useState(false);
-  const [bootAdminCode, setBootAdminCode] = useState('');
-  const [bootAdminErr, setBootAdminErr] = useState<string | null>(null);
   const [emergencyFocusTarget, setEmergencyFocusTarget] = useState<{
     lat: number;
     lng: number;
     seq: number;
   } | null>(null);
-
-  const handleUnlockAndEnterConsole = useCallback(
-    async (code: string) => {
-      const res = await unlockAdminWithCode(code);
-      if (res.ok) {
-        setActiveTab('HOST');
-      }
-      return res;
-    },
-    [unlockAdminWithCode]
-  );
 
   const ownEmergencyMessage = useMemo(
     () =>
@@ -320,12 +291,9 @@ export const App: React.FC = () => {
       <LoginScreen
         firebaseAvailable={firebaseAvailable}
         loginError={loginError}
-        logoutNotice={logoutNotice}
-        pendingHiderPasswordFor={pendingHiderPasswordFor}
-        pendingAdminCodeFor={pendingAdminCodeFor}
-        onClearPendingHiderPrompt={clearPendingHiderPrompt}
-        onClearPendingAdminPrompt={clearPendingAdminPrompt}
-        onLoginByName={loginByTypedName}
+        onClearError={clearLoginError}
+        onLogin={loginWithCredentials}
+        onRegister={registerWithCredentials}
       />
     );
   }
@@ -339,7 +307,7 @@ export const App: React.FC = () => {
             <Layers className="h-6 w-6" />
           </div>
           <h1 className="font-dot text-lg text-[var(--text-main)]">
-            Spielername bereits aktiv
+            Konto bereits aktiv
           </h1>
           <p className="text-xs leading-relaxed text-[var(--text-muted)]">
             {seatConflictError}
@@ -350,7 +318,7 @@ export const App: React.FC = () => {
             className="cmf-btn-secondary font-tech inline-flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold uppercase"
           >
             <LogOut className="h-4 w-4" />
-            Abmelden / Anderen Namen wählen
+            Abmelden / Konto wechseln
           </button>
         </div>
       </div>
@@ -362,20 +330,14 @@ export const App: React.FC = () => {
       <PendingApprovalScreen
         authUser={authUser}
         loginError={loginError}
-        onClaimInitialHost={claimInitialHost}
         onLogout={exitOrLogout}
       />
     );
   }
 
   if (!publicState) {
-    const canInitAsAdmin = Boolean(
-      findPresetPlayerById(ownMember.playerId)?.canUnlockAdmin
-    );
-
     return (
       <div className="cmf-drafting-bg flex h-[100dvh] flex-col overflow-hidden text-sm text-[var(--text-main)]">
-        {/* Obere Leiste mit Admin-Einstellungscode (Safe-Area-optimiert für Smartphones) */}
         <header className="border-b-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] pt-[max(0.45rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-2 pl-[max(0.75rem,env(safe-area-inset-left))] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]">
           <div className="mx-auto flex max-w-4xl items-center justify-between gap-2">
             <div className="cmf-oled flex items-center gap-2 px-3 py-1.5">
@@ -384,64 +346,7 @@ export const App: React.FC = () => {
                 81247 SARDINEN // INITIALISIERUNG
               </span>
             </div>
-            {canInitAsAdmin && !ownMember.isHost && (
-              <button
-                type="button"
-                data-testid="open-admin-code-btn"
-                onClick={() => {
-                  setBootAdminErr(null);
-                  setBootAdminModalOpen((v) => !v);
-                }}
-                className={`inline-flex min-h-[36px] items-center gap-1 px-2.5 py-1.5 font-tech text-[11px] font-bold tracking-wider uppercase ${
-                  bootAdminModalOpen ? 'cmf-btn-active' : 'cmf-btn-secondary'
-                }`}
-              >
-                <KeyRound className="h-3.5 w-3.5 text-[var(--cmf-amber)]" />
-                <span>Admin</span>
-              </button>
-            )}
           </div>
-
-          {bootAdminModalOpen && canInitAsAdmin && !ownMember.isHost && (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                setBootAdminErr(null);
-                const res = await handleUnlockAndEnterConsole(bootAdminCode);
-                if (res.ok) {
-                  setBootAdminModalOpen(false);
-                  setBootAdminCode('');
-                } else {
-                  setBootAdminErr(res.error ?? 'Falscher Admin-Code.');
-                }
-              }}
-              className="cmf-module mx-auto mt-2 flex max-w-md flex-wrap items-center gap-2 p-2.5"
-            >
-              <input
-                type="password"
-                data-testid="admin-code-input"
-                inputMode="numeric"
-                autoFocus
-                value={bootAdminCode}
-                onChange={(e) => setBootAdminCode(e.target.value)}
-                placeholder="Admin-Code eingeben"
-                className="cmf-input font-tech min-h-[38px] flex-1 px-3 py-1.5 text-xs font-bold tracking-widest"
-              />
-              <button
-                type="submit"
-                data-testid="submit-admin-code-btn"
-                disabled={!bootAdminCode.trim()}
-                className="cmf-btn-primary font-dot min-h-[38px] px-4 py-1.5 text-xs"
-              >
-                OK
-              </button>
-              {bootAdminErr && (
-                <span className="w-full font-tech text-[11px] font-bold text-[var(--cmf-orange)]">
-                  {bootAdminErr}
-                </span>
-              )}
-            </form>
-          )}
         </header>
 
         <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
@@ -450,16 +355,16 @@ export const App: React.FC = () => {
               {getPlayerGreeting(ownMember)} Die Lobby wurde noch nicht initialisiert.
             </p>
             <p className="text-xs text-[var(--text-muted)]">
-              {canInitAsAdmin
-                ? 'Nutze den „Admin“-Button in der oberen Leiste, um den Spielraum per Admin-Code zu starten.'
-                : 'Bitte warte kurz, bis Lasse oder Linus den Spielraum über die obere Leiste gestartet haben ...'}
+              {ownMember.isHost
+                ? 'Der Spielraum wird automatisch vorbereitet ...'
+                : 'Bitte melde dich einmal mit dem Konto „admin“ an, um den Spielraum initial zu starten.'}
             </p>
             <button
               type="button"
               onClick={() => void exitOrLogout()}
               className="cmf-btn-secondary font-tech mt-2 w-full py-2.5 text-xs font-bold uppercase"
             >
-              Namen wechseln
+              Abmelden / Konto wechseln
             </button>
           </div>
         </div>
@@ -793,43 +698,14 @@ export const App: React.FC = () => {
     await adapter.clearOwnEmergencyMessage(ownMember.uid);
   };
 
-  const handleSetHiderPassword = async (rawPassword: string) => {
-    const cleanPassword = rawPassword.trim();
-    const passwordHash = computeHiderPasswordHash(cleanPassword);
-    const onlineHiders = filterOnlineEnabledMembers(
-      gameState.members,
-      gameState.presence,
-      ownMember.uid
-    )
-      .filter((m) => m.side === 'HIDER')
-      .map((m) => m.playerId);
-    const allAssignedHiders = deduplicateEnabledMembers(
-      gameState.members,
-      gameState.presence
-    )
-      .filter((m) => m.side === 'HIDER')
-      .map((m) => m.playerId);
-    const hiderPlayerIds =
-      allAssignedHiders.length > 0 ? allAssignedHiders : onlineHiders;
-
-    const newLock = await adapter.setHiderPasswordAndTriggerLogout({
-      uid: ownMember.uid,
-      sessionId: publicState.sessionId,
-      cleanPassword,
-      passwordHash,
-      hiderPlayerIds,
-      nowMs: adapter.getServerNow(),
-    });
-    syncWithActiveHiderLock(newLock);
+  const handleRerollHiderSecrets = async () => {
+    await adapter.rerollHiderSecrets();
   };
 
   const handleToggleOwnReady = async (nextReady: boolean) => {
     if (ownMember.side !== 'HIDER' || isOverviewAccount) return;
-    if (nextReady && gameState.activeHiderLock) {
-      const token = buildReadyToken(
-        publicState.sessionId,
-        gameState.activeHiderLock.logoutGen
-      );
+    if (nextReady) {
+      const token = buildReadyToken(publicState.sessionId);
       await adapter.setPlayerReadyState(
         ownMember.uid,
         ownMember.playerId,
@@ -938,7 +814,6 @@ export const App: React.FC = () => {
         ownEmergencyMessage={ownEmergencyMessage}
         onSendEmergencyMessage={handleSendEmergencyMessage}
         onClearOwnEmergencyMessage={handleClearOwnEmergencyMessage}
-        onUnlockAdmin={handleUnlockAndEnterConsole}
       />
 
       {/* 50-Meter-Versteck-Leash / Aktive-Zone & Gebiets-Warnbanner */}
@@ -1087,7 +962,7 @@ export const App: React.FC = () => {
                   {isOverviewAccount && (
                     <div className="cmf-oled pointer-events-auto inline-flex items-center gap-2 px-3 py-1.5 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
                       <Eye className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
-                      <span>Overview-Modus // Alle Teams & Verstecker live</span>
+                      <span>Admin-Übersicht // Alle Teams & Verstecker live</span>
                     </div>
                   )}
 
@@ -1582,13 +1457,11 @@ export const App: React.FC = () => {
                 members={gameState.members}
                 presence={gameState.presence}
                 teamsPublic={gameState.teamsPublic}
-                activeHiderLock={gameState.activeHiderLock}
                 readyPlayerIds={gameState.readyPlayerIds}
                 ownFix={geo.currentFix}
                 gpsStatus={geo.gpsStatus}
                 gpsError={geo.gpsError}
                 onRetryGps={geo.retryGpsPermission}
-                onSetHiderPassword={handleSetHiderPassword}
                 onToggleOwnReady={handleToggleOwnReady}
                 onOpenHostTab={
                   showHostTab ? () => setActiveTab('HOST') : undefined
@@ -1921,17 +1794,17 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* TAB 3: QR-CODE (VERSTECKER & GEFANGENE TEAMS) ODER SCANNER (AKTIVE SUCHER) */}
+        {/* TAB 3: QR-CODE (VERSTECKER, ADMIN & GEFANGENE TEAMS) ODER SCANNER (AKTIVE SUCHER) */}
         {activeTab === 'QR' &&
-          (isSardineDashboardView ? (
+          (isOverviewOrSardineDashboard ? (
             <HiderQrView
               sessionId={publicState.sessionId}
               hiderPrivate={hiderPrivate}
               teamsPublic={gameState.teamsPublic}
               activeTeamIds={activeRoundTeamIds}
               sardineGroupMemberNames={sardineGroupMemberNames}
-              canChangeHiderPassword={ownMember.side === 'HIDER'}
-              onSetHiderPassword={handleSetHiderPassword}
+              canRerollSecrets={ownMember.side === 'HIDER' || ownMember.isHost}
+              onRerollSecrets={handleRerollHiderSecrets}
             />
           ) : (
             <SeekerScannerView
@@ -1963,7 +1836,6 @@ export const App: React.FC = () => {
             ownMember={ownMember}
             publicState={publicState}
             hiderPrivate={hiderPrivate}
-            activeHiderLock={gameState.activeHiderLock}
             readyPlayerIds={gameState.readyPlayerIds}
             members={gameState.members}
             joinRequests={gameState.joinRequests}
@@ -1989,9 +1861,9 @@ export const App: React.FC = () => {
               });
               setActiveTab('MAP');
             }}
-            onLeaveAndLockConsole={() => {
+            onLogoutAdmin={() => {
               setActiveTab('MAP');
-              void lockAdminConsole();
+              void exitOrLogout();
             }}
           />
         )}

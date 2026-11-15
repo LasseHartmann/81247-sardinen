@@ -9,7 +9,7 @@ import {
   MousePointerClick,
   Trash2,
   FastForward,
-  Lock,
+  LogOut,
   CheckCircle2,
   Clock,
   Crosshair,
@@ -53,6 +53,9 @@ import {
 } from '../../hooks/useControllerEngine';
 import { HardwareKnob } from '../Common/HardwareKnob';
 import {
+  isOverviewMember,
+} from '../../config/players';
+import {
   deduplicateEnabledMembers,
   getRequiredReadyHiderMembers,
   isPlayerOnline,
@@ -64,7 +67,6 @@ import type {
   ClueRequest,
   GameMode,
   GamePhase,
-  HiderLoginLock,
   HiderPrivateState,
   JoinRequest,
   MemberRecord,
@@ -85,7 +87,6 @@ export interface HostControlPanelProps {
   ownMember: MemberRecord;
   publicState: PublicGameState;
   hiderPrivate: HiderPrivateState | null;
-  activeHiderLock: HiderLoginLock | null;
   readyPlayerIds: string[];
   members: Record<string, MemberRecord>;
   joinRequests: Record<string, JoinRequest>;
@@ -95,7 +96,7 @@ export interface HostControlPanelProps {
   requestsByTeam?: Record<string, Record<string, ClueRequest>>;
   onNavigateToMap: () => void;
   onOpenCircleMapEditor?: () => void;
-  onLeaveAndLockConsole?: () => void;
+  onLogoutAdmin?: () => void;
 }
 
 export const HostControlPanel: React.FC<HostControlPanelProps> = ({
@@ -103,7 +104,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   ownMember,
   publicState,
   hiderPrivate,
-  activeHiderLock,
   readyPlayerIds,
   members,
   joinRequests,
@@ -113,7 +113,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   requestsByTeam = {},
   onNavigateToMap,
   onOpenCircleMapEditor,
-  onLeaveAndLockConsole,
+  onLogoutAdmin,
 }) => {
   const isCirclePlayArea = publicState.playArea.shapeType === 'CUSTOM_CIRCLE';
   const activePostalCodes = getActivePostalCodes(publicState.playArea);
@@ -325,13 +325,15 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
 
   const enabledMembers = deduplicateEnabledMembers(members, presence);
   const requiredHiderMembers = getRequiredReadyHiderMembers(members, presence);
-  // Alle aktivierten Spieler (online wie offline) können jederzeit einem Team zugewiesen werden
-  const activeGroupMembers = [...enabledMembers].sort((a, b) => {
-    const aOnline = isPlayerOnline(a.playerId, members, presence, ownMember.uid);
-    const bOnline = isPlayerOnline(b.playerId, members, presence, ownMember.uid);
-    if (aOnline !== bOnline) return aOnline ? -1 : 1;
-    return a.name.localeCompare(b.name, 'de');
-  });
+  // Alle aktivierten Spieler (außer dem reinen Admin-Konto) können jederzeit einem Team zugewiesen werden
+  const activeGroupMembers = enabledMembers
+    .filter((m) => !isOverviewMember(m))
+    .sort((a, b) => {
+      const aOnline = isPlayerOnline(a.playerId, members, presence, ownMember.uid);
+      const bOnline = isPlayerOnline(b.playerId, members, presence, ownMember.uid);
+      if (aOnline !== bOnline) return aOnline ? -1 : 1;
+      return a.name.localeCompare(b.name, 'de');
+    });
 
   const readySet = new Set(readyPlayerIds);
   const readyCount = requiredHiderMembers.filter((m) =>
@@ -342,10 +344,18 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   const handleStartRound = async () => {
     const now = adapter.getServerNow();
     const fallbackSecrets = generateSessionSecrets();
-    const preservedQrSecret =
-      hiderPrivate?.qrSecret?.trim() || fallbackSecrets.qrSecret;
-    const preservedShortCode =
-      hiderPrivate?.shortCode?.trim() || fallbackSecrets.shortCode;
+    const hasValidRandomSecrets = Boolean(
+      hiderPrivate?.qrSecret &&
+        /^[0-9a-f]{32}$/i.test(hiderPrivate.qrSecret) &&
+        hiderPrivate?.shortCode &&
+        hiderPrivate.shortCode.length === 6
+    );
+    const preservedQrSecret = hasValidRandomSecrets
+      ? hiderPrivate!.qrSecret
+      : fallbackSecrets.qrSecret;
+    const preservedShortCode = hasValidRandomSecrets
+      ? hiderPrivate!.shortCode
+      : fallbackSecrets.shortCode;
 
     const nextTeams = createDefaultTeams();
     for (const m of enabledMembers) {
@@ -384,7 +394,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       emergencyStopReason: null,
       leashAlertActive: false,
       activeTeamIds: occupiedTeamIds,
-      hiderLock: activeHiderLock,
       radarSchedule: activeSchedule,
     };
 
@@ -395,9 +404,6 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       shortCode: preservedShortCode,
       hiderLocations: {},
     });
-    if (activeHiderLock) {
-      await adapter.savePublicStateByHost(nextPublicState).catch(() => {});
-    }
     onNavigateToMap();
   };
 
@@ -1098,9 +1104,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             <div className="cmf-well flex items-center gap-2 px-3.5 py-2.5 text-xs text-[var(--text-muted)]">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
               <span>
-                {activeHiderLock?.passwordHash
-                  ? 'Runde startet automatisch, sobald alle eingeteilten Verstecker (auch offline) auf „Bereit“ gedrückt haben!'
-                  : 'Wartet darauf, dass die Verstecker in der Lobby ihr Passwort festlegen.'}
+                Runde startet automatisch, sobald alle eingeteilten Verstecker (auch offline) auf „Bereit“ gedrückt haben!
               </span>
             </div>
           )}
@@ -1795,26 +1799,26 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           );
         })()}
 
-        {/* 5. Admin-Bereich explizit sperren (ganz unten im Admin-Bereich) */}
-        {onLeaveAndLockConsole && (
+        {/* 5. Aus dem Admin-Konto abmelden */}
+        {onLogoutAdmin && (
           <section className="cmf-module p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 className="font-industrial text-sm text-[var(--text-main)]">
-                  Admin-Zugriff beenden
+                  Admin-Konto wechseln / Abmelden
                 </h3>
                 <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                  Dein Admin-Zugriff bleibt auch beim Wechseln des Tabs oder Neuladen aktiv, bis du ihn hier unten ausdrücklich sperrst.
+                  Die Spielleiter-Konsole ist exklusiv an das Konto „admin“ gebunden. Melde dich hier ab, um zu deinem normalen Spielerkonto zu wechseln.
                 </p>
               </div>
               <button
                 type="button"
-                data-testid="lock-admin-console-btn"
-                onClick={onLeaveAndLockConsole}
+                data-testid="logout-admin-console-btn"
+                onClick={onLogoutAdmin}
                 className="cmf-btn-secondary font-tech inline-flex min-h-[48px] w-full sm:w-auto shrink-0 items-center justify-center gap-2 border-[var(--cmf-orange)]/40 px-4 py-2.5 text-xs font-bold text-[var(--cmf-orange)] uppercase"
               >
-                <Lock className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
-                Admin-Bereich sperren & verlassen
+                <LogOut className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+                Aus Admin-Konto abmelden
               </button>
             </div>
           </section>

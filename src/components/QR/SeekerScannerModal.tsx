@@ -378,7 +378,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
             SARDINEN GEFUNDEN?
           </span>
           <h2 className="font-dot mt-1 text-lg sm:text-xl text-[var(--text-main)]">
-            QR-Code scannen oder Verstecker-Code eingeben
+            QR-Code scannen oder Fang-Code eingeben
           </h2>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Sobald der Code bestätigt ist, stoppt eure Suchzeit sofort und euer gesamtes Team wechselt in das Sardinen-Versteck!
@@ -456,7 +456,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
           )}
         </div>
 
-        {/* Manuelle Passwort- / Fang-Code-Eingabe */}
+        {/* Manuelle 6-stellige Fang-Code-Eingabe */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -469,7 +469,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
             className="font-industrial flex items-center gap-2 text-sm text-[var(--text-main)]"
           >
             <KeyRound className="h-4 w-4 text-[var(--cmf-orange)]" />
-            2. Verstecker-Code / Fang-Code eingeben
+            2. 6-stelligen Fang-Code eingeben
           </label>
           <div className="flex gap-2">
             <input
@@ -480,9 +480,9 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
               autoComplete="off"
               maxLength={32}
               value={manualCode}
-              onChange={(e) => setManualCode(e.target.value)}
-              placeholder="Verstecker-Code ..."
-              className="cmf-input cmf-input-orange font-tech min-h-[48px] flex-1 px-3.5 text-base font-bold tracking-wider"
+              onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+              placeholder="z. B. K7X9M2 ..."
+              className="cmf-input cmf-input-orange font-tech min-h-[48px] flex-1 px-3.5 text-base font-bold tracking-[0.18em] uppercase"
             />
             <button
               type="submit"

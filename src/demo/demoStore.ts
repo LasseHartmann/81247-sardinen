@@ -4,18 +4,23 @@ import {
   MEDIA_AUTO_EXPIRE_MS,
   MEDIA_POST_DOWNLOAD_EXPIRE_MS,
 } from '../config/gameConfig';
-import { PRESET_PLAYERS } from '../config/players';
+import {
+  computeAccountPasswordHash,
+  validateAccountPassword,
+  validateAndNormalizeAccountName,
+  verifyAccountPasswordHash,
+} from '../config/players';
 import { snapPointIntoPlayArea } from '../geo/boundary';
 import { destinationPoint, roundLatLng5 } from '../geo/distance';
 import {
   computeAveragedTeamLocationFromMemberFixes,
-  extractActiveHiderLock,
   type ControllerPublicPatch,
   type DatabaseAdapter,
   type UnsubscribeFn,
 } from '../services/databaseAdapter';
 import { generateRandomId, generateSessionSecrets } from '../services/qrService';
 import type {
+  AccountPublicRecord,
   AuthUserSummary,
   CatchRequest,
   CatchRequestStatus,
@@ -23,7 +28,6 @@ import type {
   ClueRequest,
   ControllerLease,
   DemoRoleId,
-  HiderLoginLock,
   HiderPrivateState,
   JoinRequest,
   LeaderboardEntry,
@@ -35,13 +39,15 @@ import type {
   TeamPublic,
 } from '../types/game';
 
-const DEMO_STORAGE_KEY = 'sardinen_81247_demo_tree_v3';
-const DEMO_ROLE_SESSION_KEY = 'sardinen_81247_demo_role_v3';
+const DEMO_STORAGE_KEY = 'sardinen_81247_demo_tree_v4';
+const DEMO_ROLE_SESSION_KEY = 'sardinen_81247_demo_role_v4';
 const DEMO_BROADCAST_CHANNEL = 'sardinen_81247_demo';
 
 export interface DemoDatabaseTree {
   clockOffsetMs: number;
   gpsSimActive: boolean;
+  accounts: Record<string, AccountPublicRecord>;
+  accountSecrets: Record<string, { passwordHash: string }>;
   members: Record<string, MemberRecord>;
   playerClaims: Record<string, PlayerSeatClaim>;
   assignments?: Record<string, { side: MemberRecord['side']; teamId: string | null }>;
@@ -66,7 +72,7 @@ export interface DemoDatabaseTree {
 }
 
 const DEMO_ROLE_TO_UID: Record<DemoRoleId, string> = {
-  HOST: 'demo_uid_lasse',
+  HOST: 'demo_uid_admin',
   HIDER: 'demo_uid_linus',
   TEAM_1: 'demo_uid_thomas',
   TEAM_2: 'demo_uid_nick',
@@ -80,7 +86,7 @@ export function buildInitialDemoTree(nowMs = Date.now()): DemoDatabaseTree {
   const pubState = createDefaultPublicState(sessionId);
   pubState.playArea.confirmed = true;
   pubState.playArea.confirmedAt = nowMs;
-  pubState.playArea.confirmedByUid = 'demo_uid_lasse';
+  pubState.playArea.confirmedByUid = 'demo_uid_admin';
   pubState.allowTestClicks = true;
 
   const baseTeams = createDefaultTeams();
@@ -94,11 +100,20 @@ export function buildInitialDemoTree(nowMs = Date.now()): DemoDatabaseTree {
   baseTeams['team-4'].beaconPlayerId = 'max';
 
   const members: Record<string, MemberRecord> = {
+    demo_uid_admin: {
+      uid: 'demo_uid_admin',
+      playerId: 'admin',
+      name: 'Admin',
+      isHost: true,
+      enabled: true,
+      side: 'UNASSIGNED',
+      teamId: null,
+    },
     demo_uid_lasse: {
       uid: 'demo_uid_lasse',
       playerId: 'lasse',
       name: 'Lasse',
-      isHost: true,
+      isHost: false,
       enabled: true,
       side: 'HIDER',
       teamId: null,
@@ -107,7 +122,7 @@ export function buildInitialDemoTree(nowMs = Date.now()): DemoDatabaseTree {
       uid: 'demo_uid_linus',
       playerId: 'linus',
       name: 'Linus',
-      isHost: true,
+      isHost: false,
       enabled: true,
       side: 'HIDER',
       teamId: null,
@@ -234,9 +249,25 @@ export function buildInitialDemoTree(nowMs = Date.now()): DemoDatabaseTree {
     };
   }
 
+  const accounts: Record<string, AccountPublicRecord> = {};
+  const accountSecrets: Record<string, { passwordHash: string }> = {};
+  for (const m of Object.values(members)) {
+    accounts[m.playerId] = {
+      playerId: m.playerId,
+      name: m.name,
+      createdAt: nowMs,
+    };
+    const defaultPw = m.playerId === 'admin' ? 'admin123' : 'demo1234';
+    accountSecrets[m.playerId] = {
+      passwordHash: computeAccountPasswordHash(m.playerId, defaultPw),
+    };
+  }
+
   return {
     clockOffsetMs: 0,
     gpsSimActive: false,
+    accounts,
+    accountSecrets,
     members,
     playerClaims: {},
     joinRequests: {},
@@ -279,6 +310,7 @@ export function createDemoStore(options?: {
   const inMemory = Boolean(options?.inMemoryOnly);
   let memoryTree: DemoDatabaseTree = buildInitialDemoTree(options?.initialNowMs);
   let currentRole: DemoRoleId = 'HOST';
+  let activeCustomUid: string | null = null;
 
   if (!inMemory && typeof sessionStorage !== 'undefined') {
     const savedRole = sessionStorage.getItem(DEMO_ROLE_SESSION_KEY) as DemoRoleId | null;
@@ -358,13 +390,10 @@ export function createDemoStore(options?: {
   }
 
   function getCurrentAuthUser(): AuthUserSummary {
-    const uid = DEMO_ROLE_TO_UID[currentRole];
-    const tree = readTree();
-    const member = tree.members[uid];
-    const preset = PRESET_PLAYERS.find((p) => p.id === member?.playerId);
+    const uid = activeCustomUid ?? DEMO_ROLE_TO_UID[currentRole];
     return {
       uid,
-      email: preset?.loginEmail ?? 'lasse@81247-sardinen.local',
+      email: null,
     };
   }
 
@@ -402,20 +431,132 @@ export function createDemoStore(options?: {
       return subscribeSlice((t) => t.clockOffsetMs || 0, cb);
     },
 
-    async signInWithPresetPlayer(loginEmail): Promise<AuthUserSummary> {
-      const preset = PRESET_PLAYERS.find(
-        (p) => p.loginEmail.toLowerCase() === loginEmail.toLowerCase()
-      );
-      if (preset) {
-        if (preset.id === 'lasse') currentRole = 'HOST';
-        else if (preset.id === 'linus') currentRole = 'HIDER';
-        else if (preset.id === 'nick' || preset.id === 'eric' || preset.id === 'jonah') currentRole = 'TEAM_2';
-        else if (preset.id === 'lorenzo' || preset.id === 'louis') currentRole = 'TEAM_3';
-        else if (preset.id === 'max' || preset.id === 'roman') currentRole = 'TEAM_4';
-        else currentRole = 'TEAM_1';
+    async registerAccount({
+      name,
+      password,
+    }): Promise<{ user: AuthUserSummary; member: MemberRecord }> {
+      const nameCheck = validateAndNormalizeAccountName(name);
+      if (!nameCheck.valid) {
+        throw new Error(nameCheck.error);
       }
+      const pwCheck = validateAccountPassword(password);
+      if (!pwCheck.valid) {
+        throw new Error(pwCheck.error);
+      }
+      const { playerId, displayName, isAdmin } = nameCheck;
+      const curTree = readTree();
+      if (curTree.accounts?.[playerId]) {
+        throw new Error(
+          'Dieser Benutzername ist bereits vergeben. Bitte melde dich mit deinem Passwort an.'
+        );
+      }
+
+      const nowMs = adapter.getServerNow();
+      const passwordHash = computeAccountPasswordHash(
+        playerId,
+        pwCheck.password
+      );
+      const uid = `demo_uid_${playerId}`;
+      const remoteAssignment = isAdmin
+        ? null
+        : await adapter.fetchPlayerAssignment(playerId);
+      const side: MemberRecord['side'] = isAdmin
+        ? 'UNASSIGNED'
+        : (remoteAssignment?.side ?? 'UNASSIGNED');
+      const teamId =
+        side === 'SEEKER' ? (remoteAssignment?.teamId ?? null) : null;
+
+      const member: MemberRecord = {
+        uid,
+        playerId,
+        name: displayName,
+        isHost: isAdmin,
+        enabled: true,
+        side,
+        teamId,
+      };
+
+      writeTree((t) => {
+        if (!t.accounts) t.accounts = {};
+        if (!t.accountSecrets) t.accountSecrets = {};
+        t.accounts[playerId] = {
+          playerId,
+          name: displayName,
+          createdAt: nowMs,
+        };
+        t.accountSecrets[playerId] = { passwordHash };
+        t.members[uid] = structuredClone(member);
+      });
+
+      activeCustomUid = uid;
       notifyAuth();
-      return getCurrentAuthUser();
+      return {
+        user: { uid, email: null },
+        member,
+      };
+    },
+
+    async loginWithAccount({
+      name,
+      password,
+    }): Promise<{ user: AuthUserSummary; member: MemberRecord }> {
+      const nameCheck = validateAndNormalizeAccountName(name);
+      if (!nameCheck.valid) {
+        throw new Error(nameCheck.error);
+      }
+      if (!password || !password.trim()) {
+        throw new Error('Bitte gib dein Passwort ein.');
+      }
+      const { playerId, displayName, isAdmin } = nameCheck;
+      const curTree = readTree();
+      const acct = curTree.accounts?.[playerId];
+      if (!acct) {
+        throw new Error(
+          'Dieses Konto existiert noch nicht. Wechsle auf „Konto erstellen“, um es neu anzulegen.'
+        );
+      }
+      const expectedHash = curTree.accountSecrets?.[playerId]?.passwordHash;
+      if (!verifyAccountPasswordHash(playerId, password, expectedHash)) {
+        throw new Error('Falsches Passwort.');
+      }
+
+      const existingMember = Object.values(curTree.members).find(
+        (m) => m.playerId === playerId
+      );
+      const uid = existingMember?.uid ?? `demo_uid_${playerId}`;
+      const remoteAssignment = isAdmin
+        ? null
+        : await adapter.fetchPlayerAssignment(playerId);
+      const side: MemberRecord['side'] = isAdmin
+        ? 'UNASSIGNED'
+        : remoteAssignment?.side && remoteAssignment.side !== 'UNASSIGNED'
+          ? remoteAssignment.side
+          : (existingMember?.side ?? 'UNASSIGNED');
+      const teamId =
+        side === 'SEEKER'
+          ? (remoteAssignment?.teamId ?? existingMember?.teamId ?? null)
+          : null;
+
+      const member: MemberRecord = {
+        uid,
+        playerId,
+        name: isAdmin ? 'Admin' : acct.name || displayName,
+        isHost: isAdmin,
+        enabled: true,
+        side,
+        teamId,
+      };
+
+      writeTree((t) => {
+        t.members[uid] = structuredClone(member);
+      });
+
+      activeCustomUid = uid;
+      notifyAuth();
+      return {
+        user: { uid, email: null },
+        member,
+      };
     },
 
     async registerSelfMemberIfMissing(member): Promise<void> {
@@ -423,21 +564,6 @@ export function createDemoStore(options?: {
         if (!t.members[member.uid]) {
           t.members[member.uid] = structuredClone(member);
         }
-      });
-    },
-
-    async claimInitialHostRole(uid, playerId, name): Promise<void> {
-      writeTree((t) => {
-        t.members[uid] = {
-          uid,
-          playerId,
-          name,
-          isHost: true,
-          enabled: true,
-          side: 'HIDER',
-          teamId: null,
-        };
-        delete t.joinRequests[uid];
       });
     },
 
@@ -751,6 +877,24 @@ export function createDemoStore(options?: {
       });
     },
 
+    async rerollHiderSecrets(): Promise<{ qrSecret: string; shortCode: string }> {
+      const curShort = readTree().state.hiderPrivate?.shortCode ?? '';
+      let fresh = generateSessionSecrets();
+      while (fresh.shortCode === curShort) {
+        fresh = generateSessionSecrets();
+      }
+      writeTree((t) => {
+        t.state.hiderPrivate = {
+          anchorPoint: t.state.hiderPrivate?.anchorPoint ?? null,
+          radarStages: t.state.hiderPrivate?.radarStages ?? [],
+          qrSecret: fresh.qrSecret,
+          shortCode: fresh.shortCode,
+          hiderLocations: t.state.hiderPrivate?.hiderLocations ?? {},
+        };
+      });
+      return fresh;
+    },
+
     async writeHiderLocationPrivate(uid, fix): Promise<void> {
       writeTree((t) => {
         if (!t.state.hiderPrivate) return;
@@ -1016,7 +1160,7 @@ export function createDemoStore(options?: {
 
     async resetRoundByHost(newPublicState, resetTeams, newHiderPrivate): Promise<void> {
       writeTree((t) => {
-        t.state.public = structuredClone({ ...newPublicState, hiderLock: null });
+        t.state.public = structuredClone(newPublicState);
         t.state.controller = null;
         t.state.hiderPrivate = structuredClone(newHiderPrivate);
         t.clues = {};
@@ -1030,46 +1174,6 @@ export function createDemoStore(options?: {
           };
         }
       });
-    },
-
-    async setHiderPasswordAndTriggerLogout({
-      uid,
-      sessionId,
-      cleanPassword,
-      passwordHash,
-      hiderPlayerIds,
-      nowMs,
-    }): Promise<HiderLoginLock> {
-      const logoutGen = generateRandomId('pwlogout');
-      const lock: HiderLoginLock = {
-        sessionId,
-        passwordHash,
-        hiderPlayerIds: [...hiderPlayerIds],
-        logoutGen,
-        setAt: nowMs,
-      };
-      writeTree((t) => {
-        t.state.hiderPrivate = {
-          anchorPoint: t.state.hiderPrivate?.anchorPoint ?? null,
-          radarStages: t.state.hiderPrivate?.radarStages ?? [],
-          qrSecret: cleanPassword,
-          shortCode: cleanPassword,
-          hiderLocations: t.state.hiderPrivate?.hiderLocations ?? {},
-        };
-        t.state.public.hiderLock = structuredClone(lock);
-        if (!t.presence[uid]) t.presence[uid] = {};
-        t.presence[uid].hider_pw_lock = {
-          online: false,
-          lastSeen: nowMs,
-          kind: 'HIDER_PW_LOCK',
-          sessionId,
-          passwordHash,
-          hiderPlayerIds: [...hiderPlayerIds],
-          logoutGen,
-        };
-        delete t.presence[uid].ready_state;
-      });
-      return lock;
     },
 
     async setPlayerReadyState(uid, playerId, readyToken, nowMs): Promise<void> {
@@ -1168,19 +1272,6 @@ export function createDemoStore(options?: {
       });
     },
 
-    async fetchLoginSecurityContext() {
-      const t = readTree();
-      const pub = structuredClone(t.state.public);
-      const members = structuredClone(t.members);
-      const presence = structuredClone(t.presence);
-      const activeHiderLock = extractActiveHiderLock(pub, presence, members);
-      return {
-        publicState: pub,
-        members,
-        activeHiderLock,
-      };
-    },
-
     async startRoundWhenAllReady({
       starterUid,
       publicState,
@@ -1204,11 +1295,20 @@ export function createDemoStore(options?: {
           .map((tm) => tm.id);
 
         const fallback = generateSessionSecrets();
+        const hasValidRandomSecrets = Boolean(
+          currentHiderPrivate?.qrSecret &&
+            /^[0-9a-f]{32}$/i.test(currentHiderPrivate.qrSecret) &&
+            currentHiderPrivate?.shortCode?.length === 6
+        );
         t.state.hiderPrivate = {
           anchorPoint: null,
           radarStages: [],
-          qrSecret: currentHiderPrivate?.qrSecret?.trim() || fallback.qrSecret,
-          shortCode: currentHiderPrivate?.shortCode?.trim() || fallback.shortCode,
+          qrSecret: hasValidRandomSecrets
+            ? currentHiderPrivate!.qrSecret
+            : fallback.qrSecret,
+          shortCode: hasValidRandomSecrets
+            ? currentHiderPrivate!.shortCode
+            : fallback.shortCode,
           hiderLocations: {},
         };
 
@@ -1264,6 +1364,7 @@ export function createDemoStore(options?: {
 
     switchRole(role: DemoRoleId): void {
       currentRole = role;
+      activeCustomUid = null;
       if (!inMemory && typeof sessionStorage !== 'undefined') {
         sessionStorage.setItem(DEMO_ROLE_SESSION_KEY, role);
       }

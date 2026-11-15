@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Crosshair,
-  KeyRound,
   Radar,
   Wifi,
   WifiOff,
@@ -10,7 +9,6 @@ import {
   Send,
   Trash2,
 } from 'lucide-react';
-import { findPresetPlayerById } from '../../config/players';
 import type { GameTimerSnapshot } from '../../hooks/useGameTimer';
 import type { GpsPermissionState } from '../../hooks/useGeolocation';
 import type {
@@ -37,13 +35,11 @@ export interface TopHudProps {
   ownEmergencyMessage: EmergencyMessage | null;
   onSendEmergencyMessage: (text: string) => Promise<void>;
   onClearOwnEmergencyMessage: () => Promise<void>;
-  onUnlockAdmin?: (code: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export const TopHud: React.FC<TopHudProps> = ({
   publicState,
   timer,
-  ownMember,
   ownTeam,
   connected,
   ownFix,
@@ -52,7 +48,6 @@ export const TopHud: React.FC<TopHudProps> = ({
   ownEmergencyMessage,
   onSendEmergencyMessage,
   onClearOwnEmergencyMessage,
-  onUnlockAdmin,
 }) => {
   const activePhase =
     publicState.status === 'LOBBY' ? 'LOBBY' : timer.computedPhase;
@@ -60,18 +55,9 @@ export const TopHud: React.FC<TopHudProps> = ({
   const isRunning = publicState.status === 'RUNNING';
   const isPaused = publicState.status === 'PAUSED';
 
-  const [adminModalOpen, setAdminModalOpen] = useState(false);
-  const [adminCode, setAdminCode] = useState('');
-  const [adminErr, setAdminErr] = useState<string | null>(null);
-
   const [emergencyDrawerOpen, setEmergencyDrawerOpen] = useState(false);
   const [emergencyDraft, setEmergencyDraft] = useState('');
   const [sendingEmergency, setSendingEmergency] = useState(false);
-
-  const canUnlockAdmin =
-    !ownMember.isHost &&
-    Boolean(onUnlockAdmin) &&
-    Boolean(findPresetPlayerById(ownMember.playerId)?.canUnlockAdmin);
 
   const handleEmergencySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,7 +159,7 @@ export const TopHud: React.FC<TopHudProps> = ({
           </div>
         </div>
 
-        {/* Rechte Hardware-Statusleiste: Strafzeit, GPS, Funk, Notfall & Admin */}
+        {/* Rechte Hardware-Statusleiste: Strafzeit, GPS, Funk & Notfall */}
         <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
           {ownTeam &&
             (ownTeam.status === 'JOINED_SARDINES' ? (
@@ -244,10 +230,7 @@ export const TopHud: React.FC<TopHudProps> = ({
           <button
             type="button"
             data-testid="open-emergency-drawer-btn"
-            onClick={() => {
-              setAdminModalOpen(false);
-              setEmergencyDrawerOpen((v) => !v);
-            }}
+            onClick={() => setEmergencyDrawerOpen((v) => !v)}
             aria-label="Notfallnachricht"
             title="Notfallnachricht an alle senden oder eigene löschen"
             className={`inline-flex min-h-[40px] min-w-[40px] items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-bold tracking-wider uppercase sm:px-2.5 ${
@@ -263,26 +246,6 @@ export const TopHud: React.FC<TopHudProps> = ({
             />
             <span className="hidden sm:inline">Notfall</span>
           </button>
-
-          {canUnlockAdmin && (
-            <button
-              type="button"
-              data-testid="open-admin-code-btn"
-              onClick={() => {
-                setEmergencyDrawerOpen(false);
-                setAdminErr(null);
-                setAdminModalOpen((v) => !v);
-              }}
-              aria-label="Admin-Code eingeben"
-              title="Admin-Code eingeben"
-              className={`inline-flex min-h-[40px] min-w-[40px] items-center justify-center gap-1 px-2 py-1.5 font-tech text-[11px] font-bold tracking-wider uppercase sm:px-2.5 ${
-                adminModalOpen ? 'cmf-btn-active' : 'cmf-btn-secondary'
-              }`}
-            >
-              <KeyRound className="h-4 w-4 shrink-0 text-[var(--cmf-amber)]" />
-              <span className="hidden sm:inline">Admin</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -351,51 +314,6 @@ export const TopHud: React.FC<TopHudProps> = ({
             </button>
           </form>
         </div>
-      )}
-
-      {/* Aufklappbares Hardware-Modul: Admin-Entsperrung */}
-      {adminModalOpen && canUnlockAdmin && onUnlockAdmin && (
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setAdminErr(null);
-            const res = await onUnlockAdmin(adminCode);
-            if (res.ok) {
-              setAdminModalOpen(false);
-              setAdminCode('');
-            } else {
-              setAdminErr(res.error ?? 'Falscher Admin-Code.');
-            }
-          }}
-          className={`cmf-module cmf-drawer-down mx-auto mt-2 flex max-w-md flex-wrap items-center gap-2 p-2.5 ${
-            adminErr ? 'cmf-shake' : ''
-          }`}
-        >
-          <input
-            type="password"
-            data-testid="admin-code-input"
-            inputMode="numeric"
-            enterKeyHint="done"
-            autoFocus
-            value={adminCode}
-            onChange={(e) => setAdminCode(e.target.value)}
-            placeholder="Admin-Code eingeben"
-            className="cmf-input font-tech min-h-[44px] flex-1 px-3 py-2 text-base font-bold tracking-widest sm:text-xs"
-          />
-          <button
-            type="submit"
-            data-testid="submit-admin-code-btn"
-            disabled={!adminCode.trim()}
-            className="cmf-btn-primary font-dot min-h-[44px] px-4 py-2 text-xs"
-          >
-            OK
-          </button>
-          {adminErr && (
-            <span className="w-full font-tech text-[11px] font-bold text-[var(--cmf-orange)]">
-              {adminErr}
-            </span>
-          )}
-        </form>
       )}
     </header>
   );

@@ -81,7 +81,7 @@ describe('Security-Audit: database.rules.json & Client-Code-Garantien', () => {
     expect(leaseWrite).toContain("controllerUid').val() === auth.uid");
   });
 
-  it('enthält im gesamten Client-Quellcode keinerlei Selbstregistrierung (createUserWithEmailAndPassword) und keinen Klartext-Admin-PIN', () => {
+  it('enthält im gesamten Client-Quellcode keinerlei Firebase-Email-Auth (createUserWithEmailAndPassword), keinen Klartext-Admin-PIN und schützt Kontopasswörter sowie das exklusive admin-Konto in database.rules.json', () => {
     const srcDir = path.join(ROOT_DIR, 'src');
     const files = collectTsFiles(srcDir);
     expect(files.length).toBeGreaterThan(0);
@@ -91,11 +91,23 @@ describe('Security-Audit: database.rules.json & Client-Code-Garantien', () => {
       expect(content).not.toContain('2342');
     }
 
-    // database.rules.json erzwingt für Lasse & Linus den SHA-256-Admin-Hash
+    // Passwort-Hashes unter /accountSecrets sind clientseitig niemals auslesbar (.read: false)
+    expect(gameNode.accountSecrets.$playerId['.read']).toBe(false);
+    expect(gameNode.accounts.$playerId['.read']).toBe('auth != null');
+
+    // /memberAuth prüft serverseitig das gehashte Passwort gegen /accountSecrets/$playerId/passwordHash
+    const memberAuthWriteRule: string = gameNode.memberAuth.$uid['.write'];
+    expect(memberAuthWriteRule).toContain('accountSecrets');
+    expect(memberAuthWriteRule).toContain('passwordHash');
+
+    // /members erzwingt gültiges memberAuth UND isHost === (playerId === 'admin')
     const memberWriteRule: string = gameNode.members.$uid['.write'];
-    expect(memberWriteRule).toContain('adminAuthHash');
+    expect(memberWriteRule).toContain('memberAuth');
     expect(memberWriteRule).toContain(
-      '72bfd4d0aec4a76c76188c955cdfedfb75abd34584490c5d8ede99e15f71a5ae'
+      "newData.child('isHost').val() === (newData.child('playerId').val() === 'admin')"
     );
+
+    // Kein Hider-Passwort-Lock mehr unter /state/public
+    expect(gameNode.state.public.hiderLock).toBeUndefined();
   });
 });

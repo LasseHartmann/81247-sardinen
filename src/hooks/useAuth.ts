@@ -1,38 +1,29 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { isFirebaseConfigured } from '../config/firebase';
+import { isAdminAccountId } from '../config/players';
 import {
-  findPresetPlayerById,
-  isOverviewMember,
-  resolveAllowedPlayerByNameInput,
-  verifyAdminCode,
-  verifyHiderPasswordHash,
-} from '../config/players';
-import { resolveDatabaseAdapter, type DatabaseAdapter } from '../services/databaseAdapter';
+  resolveDatabaseAdapter,
+  type DatabaseAdapter,
+} from '../services/databaseAdapter';
 import { generateRandomId } from '../services/qrService';
 import type {
   AuthUserSummary,
-  HiderLoginLock,
   JoinRequest,
   MemberRecord,
 } from '../types/game';
 
 const BROWSER_TAB_SESSION_KEY = 'sardinen_81247_tab_session_id';
-const CHOSEN_PLAYER_STORAGE_KEY = 'sardinen_81247_chosen_player_v5';
-const LAST_ACK_LOGOUT_GEN_KEY = 'sardinen_81247_ack_logout_gen_v1';
+const CHOSEN_PLAYER_STORAGE_KEY = 'sardinen_81247_account_session_v1';
 
 interface StoredPlayerSession {
   playerId: string;
-  ackLogoutGen: string | null;
-  verifiedHiderPwHash: string | null;
+  name: string;
 }
 
 function saveStoredSession(session: StoredPlayerSession): void {
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(CHOSEN_PLAYER_STORAGE_KEY, JSON.stringify(session));
-      if (session.ackLogoutGen) {
-        localStorage.setItem(LAST_ACK_LOGOUT_GEN_KEY, session.ackLogoutGen);
-      }
     }
   } catch {
     // Ignorieren
@@ -45,11 +36,10 @@ function loadStoredSession(): StoredPlayerSession | null {
       const raw = localStorage.getItem(CHOSEN_PLAYER_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<StoredPlayerSession>;
-        if (parsed?.playerId && findPresetPlayerById(parsed.playerId)) {
+        if (parsed?.playerId && typeof parsed.playerId === 'string') {
           return {
             playerId: parsed.playerId,
-            ackLogoutGen: parsed.ackLogoutGen ?? null,
-            verifiedHiderPwHash: parsed.verifiedHiderPwHash ?? null,
+            name: parsed.name ?? parsed.playerId,
           };
         }
       }
@@ -60,28 +50,14 @@ function loadStoredSession(): StoredPlayerSession | null {
   return null;
 }
 
-function clearStoredSession(ackLogoutGen?: string | null): void {
+function clearStoredSession(): void {
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(CHOSEN_PLAYER_STORAGE_KEY);
-      if (ackLogoutGen) {
-        localStorage.setItem(LAST_ACK_LOGOUT_GEN_KEY, ackLogoutGen);
-      }
     }
   } catch {
     // Ignorieren
   }
-}
-
-function loadLastAckLogoutGen(): string | null {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      return localStorage.getItem(LAST_ACK_LOGOUT_GEN_KEY);
-    }
-  } catch {
-    // Ignorieren
-  }
-  return null;
 }
 
 function getOrCreateBrowserTabSessionId(): string {
@@ -95,11 +71,19 @@ function getOrCreateBrowserTabSessionId(): string {
   return fresh;
 }
 
+function normalizeMemberHostFlag(member: MemberRecord | null): MemberRecord | null {
+  if (!member) return null;
+  const shouldBeHost = isAdminAccountId(member.playerId);
+  if (member.isHost === shouldBeHost) return member;
+  return {
+    ...member,
+    isHost: shouldBeHost,
+  };
+}
+
 /**
- * Verwaltet den Login per Namenseingabe (11 erlaubte Vornamen),
- * schützt Verstecker-Accounts mit dem geheimen Verstecker-Passwort,
- * loggt alle Spieler einmalig aus sobald die Verstecker ihr Passwort setzen,
- * und schaltet Admin-Rechte für Lasse & Linus per 4-stelligem Code frei.
+ * Verwaltet die Selbstregistrierung & Anmeldung per Benutzername + Passwort.
+ * Ausschließlich das Konto `admin` erhält Zugriff auf die Admin-Konsole (`isHost: true`).
  */
 export function useAuth(): {
   adapter: DatabaseAdapter;
@@ -112,20 +96,9 @@ export function useAuth(): {
   ownJoinRequest: JoinRequest | null;
   seatConflictError: string | null;
   loginError: string | null;
-  logoutNotice: string | null;
-  pendingHiderPasswordFor: string | null;
-  pendingAdminCodeFor: string | null;
-  clearPendingHiderPrompt: () => void;
-  clearPendingAdminPrompt: () => void;
-  loginByTypedName: (
-    typedName: string,
-    hiderPassword?: string,
-    adminCode?: string
-  ) => Promise<void>;
-  syncWithActiveHiderLock: (activeHiderLock: HiderLoginLock | null) => void;
-  unlockAdminWithCode: (code: string) => Promise<{ ok: boolean; error?: string }>;
-  lockAdminConsole: () => Promise<void>;
-  claimInitialHost: () => Promise<void>;
+  clearLoginError: () => void;
+  loginWithCredentials: (name: string, password: string) => Promise<void>;
+  registerWithCredentials: (name: string, password: string) => Promise<void>;
   exitOrLogout: () => Promise<void>;
 } {
   const adapter = resolveDatabaseAdapter(false);
@@ -140,14 +113,8 @@ export function useAuth(): {
   );
   const [seatConflictError, setSeatConflictError] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [logoutNotice, setLogoutNotice] = useState<string | null>(null);
-  const [pendingHiderPasswordFor, setPendingHiderPasswordFor] = useState<
-    string | null
-  >(null);
-  const [pendingAdminCodeFor, setPendingAdminCodeFor] = useState<
-    string | null
-  >(null);
 
+  const authActionInFlightRef = useRef(false);
   const tabId = getOrCreateBrowserTabSessionId();
 
   useEffect(() => {
@@ -155,6 +122,10 @@ export function useAuth(): {
     const unsub = adapter.subscribeAuth((user) => {
       setAuthUser(user);
       setAuthLoading(false);
+      if (!user && !authActionInFlightRef.current) {
+        clearStoredSession();
+        setIsSessionUnlocked(false);
+      }
     });
     return unsub;
   }, [adapter]);
@@ -170,20 +141,24 @@ export function useAuth(): {
     setMemberLoading(true);
     let hadExistingMember = false;
 
-    const unsubMember = adapter.subscribeOwnMember(authUser.uid, (member) => {
+    const unsubMember = adapter.subscribeOwnMember(authUser.uid, (rawMember) => {
+      const member = normalizeMemberHostFlag(rawMember);
       setFirebaseMember(member);
       setMemberLoading(false);
 
       if (member) {
         hadExistingMember = true;
-      } else if (hadExistingMember) {
-        // Spieler wurde vom Spielleiter aus der Runde gekickt!
+      } else if (hadExistingMember && !authActionInFlightRef.current) {
         clearStoredSession();
         setIsSessionUnlocked(false);
-        setPendingHiderPasswordFor(null);
-        setLoginError('Du wurdest vom Spielleiter aus der Runde entfernt.');
+        setLoginError('Du wurdest aus der Runde entfernt.');
         void adapter.signOut();
-        return;
+      } else if (!member && !authActionInFlightRef.current) {
+        // Gespeicherte lokale Sitzung ohne gültigen DB-Member zurück zum Login leiten
+        if (loadStoredSession()) {
+          clearStoredSession();
+          setIsSessionUnlocked(false);
+        }
       }
     });
 
@@ -199,9 +174,7 @@ export function useAuth(): {
 
   const activeMember = isSessionUnlocked ? firebaseMember : null;
 
-  // Mehrere Geräte pro Spieler sind ausdrücklich erlaubt — es findet keine Ein-Gerät-Sitzsperre statt.
-
-  // Präsenz nur registrieren, solange der Spieler aktiv eingeloggt ist
+  // Präsenz nur registrieren, solange das Konto aktiv eingeloggt ist
   useEffect(() => {
     if (!authUser || !activeMember?.enabled) return;
     const ua =
@@ -211,377 +184,92 @@ export function useAuth(): {
     return adapter.registerTabPresence(authUser.uid, tabId, ua);
   }, [adapter, authUser, activeMember?.enabled, tabId]);
 
-  // Synchronisiert Zwangs-Logout ausschließlich für Verstecker bei neu gesetztem Verstecker-Code
-  const syncWithActiveHiderLock = useCallback(
-    (activeHiderLock: HiderLoginLock | null) => {
-      if (!activeHiderLock || !isSessionUnlocked) return;
-      const saved = loadStoredSession();
-      const lastAck = saved?.ackLogoutGen ?? loadLastAckLogoutGen();
-
-      const isOwnAccountHider = firebaseMember
-        ? firebaseMember.side === 'HIDER'
-        : Boolean(
-            saved?.playerId &&
-              activeHiderLock.hiderPlayerIds.includes(saved.playerId)
-          );
-
-      // Sucher und unzugewiesene Spieler brauchen den Verstecker-Code nicht -> eingeloggt lassen!
-      if (!isOwnAccountHider) {
-        if (
-          saved &&
-          activeHiderLock.logoutGen &&
-          saved.ackLogoutGen !== activeHiderLock.logoutGen
-        ) {
-          saveStoredSession({
-            ...saved,
-            ackLogoutGen: activeHiderLock.logoutGen,
-          });
-        }
-        return;
-      }
-
-      const needsLogoutForNewCode = Boolean(
-        activeHiderLock.logoutGen && lastAck !== activeHiderLock.logoutGen
-      );
-      const needsPasswordVerification = Boolean(
-        activeHiderLock.passwordHash &&
-          saved?.verifiedHiderPwHash !== activeHiderLock.passwordHash
-      );
-
-      if (needsLogoutForNewCode || needsPasswordVerification) {
-        const targetName =
-          firebaseMember?.name ??
-          findPresetPlayerById(saved?.playerId ?? '')?.name ??
-          null;
-        clearStoredSession(activeHiderLock.logoutGen);
-        setIsSessionUnlocked(false);
-        setPendingHiderPasswordFor(targetName);
-        setLoginError(null);
-        setSeatConflictError(null);
-        setLogoutNotice(
-          needsLogoutForNewCode
-            ? 'Ein neuer Verstecker-Code wurde festgelegt – Verstecker müssen sich mit dem neuen Code anmelden.'
-            : `${targetName ?? 'Dieser Account'} ist als Verstecker eingeteilt. Bitte gib den aktuellen Verstecker-Code ein.`
-        );
-        if (authUser && firebaseMember) {
-          void adapter
-            .setPlayerReadyState(
-              authUser.uid,
-              firebaseMember.playerId,
-              null,
-              adapter.getServerNow()
-            )
-            .catch(() => {});
-          void adapter
-            .releasePlayerSeat(firebaseMember.playerId, authUser.uid, tabId)
-            .catch(() => {});
-        }
-      }
-    },
-    [adapter, authUser, firebaseMember, isSessionUnlocked, tabId]
-  );
-
-  const clearPendingHiderPrompt = useCallback(() => {
-    setPendingHiderPasswordFor(null);
+  const clearLoginError = useCallback(() => {
     setLoginError(null);
   }, []);
 
-  const clearPendingAdminPrompt = useCallback(() => {
-    setPendingAdminCodeFor(null);
-    setLoginError(null);
-  }, []);
-
-  const loginByTypedName = useCallback(
-    async (typedName: string, hiderPassword?: string, adminCode?: string) => {
+  const loginWithCredentials = useCallback(
+    async (name: string, password: string) => {
       setLoginError(null);
       setSeatConflictError(null);
-      const matched = resolveAllowedPlayerByNameInput(typedName);
-      if (!matched) {
-        setLoginError(
-          'Dieser Name steht nicht auf der Spielerliste. Bitte gib deinen exakten Vornamen (oder „Overview“) ein.'
-        );
-        return;
-      }
-
-      // Spezieller Overview-Account: erfordert zwingend den Admin-Code beim Login!
-      if (matched.isOverviewOnly) {
-        if (!adminCode || !adminCode.trim()) {
-          setPendingHiderPasswordFor(null);
-          setPendingAdminCodeFor(matched.name);
-          return;
-        }
-        const adminCheck = verifyAdminCode(adminCode);
-        if (!adminCheck.valid || !adminCheck.adminAuthHash) {
-          setPendingAdminCodeFor(matched.name);
-          setLoginError(
-            'Falscher Admin-Code! Zugriff auf den Overview-Account verweigert.'
-          );
-          return;
-        }
-
-        try {
-          let signedIn =
-            authUser ??
-            (await adapter.signInWithPresetPlayer(matched.loginEmail));
-          if (
-            firebaseMember &&
-            firebaseMember.playerId !== 'overview' &&
-            firebaseMember.playerId !== 'test-1'
-          ) {
-            await adapter.signOut();
-            signedIn = await adapter.signInWithPresetPlayer(matched.loginEmail);
-          }
-
-          const activateOverviewMember = async (
-            targetPlayerId: string
-          ): Promise<MemberRecord> => {
-            const baseRecord: MemberRecord = {
-              uid: signedIn.uid,
-              playerId: targetPlayerId,
-              name: 'Overview',
-              isHost: false,
-              enabled: true,
-              side: 'UNASSIGNED',
-              teamId: null,
-            };
-            await adapter
-              .registerSelfMemberIfMissing(baseRecord)
-              .catch(() => {});
-            // Falls bereits ein Eintrag mit anderem Namen existiert, zunächst auf isHost: false mit neuem Namen setzen (falls erlaubt)
-            if (
-              firebaseMember &&
-              (firebaseMember.playerId !== targetPlayerId ||
-                firebaseMember.name !== 'Overview')
-            ) {
-              await adapter.updateMember(signedIn.uid, baseRecord).catch(() => {});
-            }
-            const hostRecord: MemberRecord = {
-              ...baseRecord,
-              isHost: true,
-              adminAuthHash: adminCheck.adminAuthHash,
-            };
-            await adapter.updateMember(signedIn.uid, hostRecord);
-            return hostRecord;
-          };
-
-          let unlockedOverview: MemberRecord;
-          try {
-            unlockedOverview = await activateOverviewMember('overview');
-          } catch {
-            // Fallback für ältere veröffentlichte database.rules.json, in denen 'test-1' statt 'overview' für Admin-Hash freigeschaltet ist
-            unlockedOverview = await activateOverviewMember('test-1');
-          }
-
-          setFirebaseMember(unlockedOverview);
-          saveStoredSession({
-            playerId: 'overview',
-            ackLogoutGen: loadLastAckLogoutGen(),
-            verifiedHiderPwHash: null,
-          });
-          setPendingAdminCodeFor(null);
-          setPendingHiderPasswordFor(null);
-          setLogoutNotice(null);
-          setIsSessionUnlocked(true);
-        } catch {
-          setLoginError(
-            'Overview-Anmeldung fehlgeschlagen. Bitte prüfe deine Internetverbindung.'
-          );
-        }
-        return;
-      }
-
+      authActionInFlightRef.current = true;
       try {
-        const initialSignedIn =
-          authUser ?? (await adapter.signInWithPresetPlayer(matched.loginEmail));
-
-        let ctx = await adapter.fetchLoginSecurityContext();
-
-        // Falls auf einem komplett neuen Browser noch kein Member-Eintrag existiert und ältere DB-Rules
-        // Lesezugriff erst mit aktiviertem Member erlauben: temporär neutralen UNASSIGNED-Eintrag anlegen, falls noch kein Wechsel nötig ist
-        if (
-          !firebaseMember &&
-          !ctx.publicState &&
-          !ctx.activeHiderLock &&
-          Object.keys(ctx.members).length === 0
-        ) {
-          await adapter
-            .registerSelfMemberIfMissing({
-              uid: initialSignedIn.uid,
-              playerId: matched.id,
-              name: matched.name,
-              isHost: false,
-              enabled: true,
-              side: 'UNASSIGNED',
-              teamId: null,
-            })
-            .catch(() => {});
-          ctx = await adapter.fetchLoginSecurityContext();
-        }
-
-        const existingAssigned = Object.values(ctx.members).find(
-          (m) =>
-            m.enabled && m.playerId === matched.id && m.side !== 'UNASSIGNED'
-        );
-        const remoteAssignment = await adapter.fetchPlayerAssignment(matched.id);
-        const effectiveAssignment =
-          remoteAssignment && remoteAssignment.side !== 'UNASSIGNED'
-            ? remoteAssignment
-            : existingAssigned
-              ? { side: existingAssigned.side, teamId: existingAssigned.teamId }
-              : null;
-
-        const isTargetHider = Boolean(
-          ctx.activeHiderLock?.hiderPlayerIds.includes(matched.id) ||
-            effectiveAssignment?.side === 'HIDER' ||
-            (firebaseMember?.playerId === matched.id &&
-              firebaseMember.side === 'HIDER')
-        );
-
-        // Wenn Verstecker-Passwort aktiv ist und Ziel-Account ein Verstecker ist -> Passwort zwingend prüfen!
-        if (isTargetHider && ctx.activeHiderLock?.passwordHash) {
-          if (!hiderPassword || !hiderPassword.trim()) {
-            setPendingHiderPasswordFor(matched.name);
-            return;
-          }
-          if (
-            !verifyHiderPasswordHash(
-              hiderPassword,
-              ctx.activeHiderLock.passwordHash
-            )
-          ) {
-            setPendingHiderPasswordFor(matched.name);
-            setLoginError(
-              'Falsches Verstecker-Passwort! Zugriff auf Verstecker-Account verweigert.'
-            );
-            return;
-          }
-        }
-
-        // Erst NACH erfolgreicher Prüfung ggf. auf einen anderen Spieler wechseln
-        let finalSignedIn = initialSignedIn;
-        if (firebaseMember && firebaseMember.playerId !== matched.id) {
-          await adapter.signOut();
-          finalSignedIn = await adapter.signInWithPresetPlayer(matched.loginEmail);
-        }
-
-        const inheritedSide =
-          effectiveAssignment?.side ?? (isTargetHider ? 'HIDER' : 'UNASSIGNED');
-        const inheritedTeamId =
-          inheritedSide === 'SEEKER'
-            ? (effectiveAssignment?.teamId ?? null)
-            : null;
-
-        await adapter.registerSelfMemberIfMissing({
-          uid: finalSignedIn.uid,
-          playerId: matched.id,
-          name: matched.name,
-          isHost: false,
-          enabled: true,
-          side: inheritedSide,
-          teamId: inheritedTeamId,
+        const { user, member } = await adapter.loginWithAccount({
+          name,
+          password,
         });
-
+        const normalized = normalizeMemberHostFlag(member)!;
+        setAuthUser(user);
+        setFirebaseMember(normalized);
         saveStoredSession({
-          playerId: matched.id,
-          ackLogoutGen:
-            ctx.activeHiderLock?.logoutGen ?? loadLastAckLogoutGen(),
-          verifiedHiderPwHash: isTargetHider
-            ? (ctx.activeHiderLock?.passwordHash ?? null)
-            : null,
+          playerId: normalized.playerId,
+          name: normalized.name,
         });
-
-        setPendingHiderPasswordFor(null);
-        setPendingAdminCodeFor(null);
-        setLogoutNotice(null);
+        await adapter
+          .tryAcquireOrRenewPlayerSeat(
+            normalized.playerId,
+            user.uid,
+            tabId,
+            adapter.getServerNow()
+          )
+          .catch(() => {});
         setIsSessionUnlocked(true);
-      } catch {
-        setLoginError(
-          'Anmeldung fehlgeschlagen. Bitte prüfe deine Internetverbindung.'
-        );
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'Anmeldung fehlgeschlagen. Bitte prüfe deine Eingaben.';
+        setLoginError(message);
+      } finally {
+        authActionInFlightRef.current = false;
       }
     },
-    [adapter, authUser, firebaseMember, tabId]
+    [adapter, tabId]
   );
 
-  const unlockAdminWithCode = useCallback(
-    async (code: string): Promise<{ ok: boolean; error?: string }> => {
-      if (!authUser || !activeMember) {
-        return { ok: false, error: 'Nicht angemeldet.' };
-      }
-      if (
-        !findPresetPlayerById(activeMember.playerId)?.canUnlockAdmin &&
-        !isOverviewMember(activeMember)
-      ) {
-        return {
-          ok: false,
-          error: 'Admin-Zugang ist für diesen Spieler nicht freigegeben.',
-        };
-      }
-      const check = verifyAdminCode(code);
-      if (!check.valid || !check.adminAuthHash) {
-        return { ok: false, error: 'Falscher Admin-Code.' };
-      }
-
+  const registerWithCredentials = useCallback(
+    async (name: string, password: string) => {
+      setLoginError(null);
+      setSeatConflictError(null);
+      authActionInFlightRef.current = true;
       try {
-        const nextSide = isOverviewMember(activeMember)
-          ? 'UNASSIGNED'
-          : activeMember.side === 'UNASSIGNED'
-            ? 'HIDER'
-            : activeMember.side;
-        const unlockedMember: MemberRecord = {
-          ...activeMember,
-          isHost: true,
-          enabled: true,
-          side: nextSide,
-          adminAuthHash: check.adminAuthHash,
-        };
-        setFirebaseMember(unlockedMember);
-        await adapter.updateMember(authUser.uid, unlockedMember);
-        return { ok: true };
-      } catch {
-        setFirebaseMember(activeMember);
-        return {
-          ok: false,
-          error:
-            'Freischaltung durch Datenbank abgelehnt. Bitte die neuesten database.rules.json in Firebase veröffentlichen.',
-        };
+        const { user, member } = await adapter.registerAccount({
+          name,
+          password,
+        });
+        const normalized = normalizeMemberHostFlag(member)!;
+        setAuthUser(user);
+        setFirebaseMember(normalized);
+        saveStoredSession({
+          playerId: normalized.playerId,
+          name: normalized.name,
+        });
+        await adapter
+          .tryAcquireOrRenewPlayerSeat(
+            normalized.playerId,
+            user.uid,
+            tabId,
+            adapter.getServerNow()
+          )
+          .catch(() => {});
+        setIsSessionUnlocked(true);
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'Registrierung fehlgeschlagen. Bitte versuche es erneut.';
+        setLoginError(message);
+      } finally {
+        authActionInFlightRef.current = false;
       }
     },
-    [adapter, authUser, activeMember]
+    [adapter, tabId]
   );
-
-  const lockAdminConsole = useCallback(async () => {
-    if (!authUser || !firebaseMember || !firebaseMember.isHost) return;
-    const lockedCopy: MemberRecord = {
-      uid: firebaseMember.uid,
-      playerId: firebaseMember.playerId,
-      name: firebaseMember.name,
-      isHost: false,
-      enabled: true,
-      side: firebaseMember.side,
-      teamId: firebaseMember.teamId,
-    };
-    setFirebaseMember(lockedCopy);
-    try {
-      await adapter.updateMember(authUser.uid, lockedCopy);
-    } catch {
-      // Ignorieren
-    }
-  }, [adapter, authUser, firebaseMember]);
-
-  const claimInitialHost = useCallback(async () => {
-    setLoginError(
-      'Bitte logge dich als Lasse oder Linus ein und schalte den Admin-Modus über den Admin-Code frei.'
-    );
-  }, []);
 
   const exitOrLogout = useCallback(async () => {
     setLoginError(null);
     setSeatConflictError(null);
-    setLogoutNotice(null);
-    setPendingHiderPasswordFor(null);
-    setPendingAdminCodeFor(null);
-    clearStoredSession(loadLastAckLogoutGen());
+    clearStoredSession();
     setIsSessionUnlocked(false);
     if (authUser && firebaseMember) {
       await adapter
@@ -609,16 +297,9 @@ export function useAuth(): {
     ownJoinRequest,
     seatConflictError,
     loginError,
-    logoutNotice,
-    pendingHiderPasswordFor,
-    pendingAdminCodeFor,
-    clearPendingHiderPrompt,
-    clearPendingAdminPrompt,
-    loginByTypedName,
-    syncWithActiveHiderLock,
-    unlockAdminWithCode,
-    lockAdminConsole,
-    claimInitialHost,
+    clearLoginError,
+    loginWithCredentials,
+    registerWithCredentials,
     exitOrLogout,
   };
 }

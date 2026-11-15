@@ -6,7 +6,6 @@ import {
 } from '../config/gameConfig';
 import {
   deduplicateEnabledMembers,
-  extractActiveHiderLock,
   extractActiveLeashViolation,
   extractEmergencyMessages,
   extractReadyPlayerIds,
@@ -24,7 +23,6 @@ import type {
   ClueRequest,
   ControllerLease,
   EmergencyMessage,
-  HiderLoginLock,
   HiderPrivateState,
   JoinRequest,
   LeaderboardEntry,
@@ -49,7 +47,6 @@ export interface SynchronizedGameState {
   cluesByTeam: Record<string, Record<string, ClueRecord>>;
   catchRequests: Record<string, CatchRequest>;
   leaderboard: Record<string, LeaderboardEntry>;
-  activeHiderLock: HiderLoginLock | null;
   activeLeashViolation: ActiveLeashViolationInfo | null;
   readyPlayerIds: string[];
   emergencyMessages: EmergencyMessage[];
@@ -188,19 +185,14 @@ export function useGameState(
     return rawPublicState;
   }, [rawPublicState, presence]);
 
-  const activeHiderLock = useMemo(
-    () => extractActiveHiderLock(publicState, presence, members),
-    [publicState, presence, members]
-  );
-
   const activeLeashViolation = useMemo(
     () => extractActiveLeashViolation(publicState, presence),
     [publicState, presence]
   );
 
   const readyPlayerIds = useMemo(
-    () => extractReadyPlayerIds(publicState, activeHiderLock, presence),
-    [publicState, activeHiderLock, presence]
+    () => extractReadyPlayerIds(publicState, presence),
+    [publicState, presence]
   );
 
   const emergencyMessages = useMemo(
@@ -252,20 +244,48 @@ export function useGameState(
   );
 
   // Hider-Geheimnisse NUR abonnieren, wenn autorisiert (Host, Hider oder JOINED_SARDINES)
+  const seededMissingSecretsRef = useRef<string | null>(null);
   useEffect(() => {
     if (!canReadHiderSecrets) {
       setHiderPrivate(null);
       return;
     }
-    return adapter.subscribeHiderPrivate(setHiderPrivate);
-  }, [adapter, canReadHiderSecrets]);
+    return adapter.subscribeHiderPrivate((priv) => {
+      setHiderPrivate(priv);
+      const canWriteSecrets = Boolean(
+        ownMember?.enabled && (ownMember.isHost || ownMember.side === 'HIDER')
+      );
+      const hasValidRandomCode = Boolean(
+        priv?.qrSecret &&
+          /^[0-9a-f]{32}$/i.test(priv.qrSecret) &&
+          priv?.shortCode?.length === 6
+      );
+      const sessionKey = publicState?.sessionId ?? 'init';
+      if (
+        canWriteSecrets &&
+        !hasValidRandomCode &&
+        seededMissingSecretsRef.current !== sessionKey
+      ) {
+        seededMissingSecretsRef.current = sessionKey;
+        void adapter.rerollHiderSecrets().catch(() => {
+          seededMissingSecretsRef.current = null;
+        });
+      }
+    });
+  }, [
+    adapter,
+    canReadHiderSecrets,
+    ownMember?.enabled,
+    ownMember?.isHost,
+    ownMember?.side,
+    publicState?.sessionId,
+  ]);
 
-  // Automatischer Rundenstart, sobald Verstecker-Passwort gesetzt ist und ALLE Mitglieder des Verstecker-Teams (auch offline) auf „Bereit" gedrückt haben!
+  // Automatischer Rundenstart, sobald ALLE eingeteilten Verstecker (auch offline) auf „Bereit" gedrückt haben!
   const autoStartedTokenRef = useRef<string | null>(null);
   useEffect(() => {
     if (!ownMember?.enabled || !publicState) return;
     if (publicState.status !== 'LOBBY') return;
-    if (!activeHiderLock?.passwordHash) return;
     if (!ownMember.isHost && ownMember.side !== 'HIDER') return;
 
     const requiredHiders = getRequiredReadyHiderMembers(
@@ -290,7 +310,7 @@ export function useGameState(
     );
     if (allSeekers.length === 0) return;
 
-    const roundReadyToken = `${publicState.sessionId}:${activeHiderLock.logoutGen}`;
+    const roundReadyToken = publicState.sessionId;
     if (autoStartedTokenRef.current === roundReadyToken) return;
 
     const onlineHost = onlineList.find((m) => m.isHost);
@@ -323,7 +343,6 @@ export function useGameState(
     return () => clearTimeout(timerId);
   }, [
     adapter,
-    activeHiderLock,
     hiderPrivate,
     members,
     ownMember,
@@ -399,7 +418,6 @@ export function useGameState(
     cluesByTeam,
     catchRequests,
     leaderboard,
-    activeHiderLock,
     activeLeashViolation,
     readyPlayerIds,
     emergencyMessages,

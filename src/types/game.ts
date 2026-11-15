@@ -56,6 +56,12 @@ export interface AnchorPoint extends LatLng {
   lockedByUid: string;
 }
 
+export interface AccountPublicRecord {
+  playerId: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface MemberRecord {
   uid: string;
   playerId: string;
@@ -64,7 +70,6 @@ export interface MemberRecord {
   enabled: boolean;
   side: PlayerSide;
   teamId: string | null;
-  adminAuthHash?: string;
 }
 
 export interface JoinRequest {
@@ -82,7 +87,6 @@ export interface PresenceSession {
     | 'TAB'
     | 'EMERGENCY_ALERT'
     | 'READY_STATE'
-    | 'HIDER_PW_LOCK'
     | 'ROUND_START_META'
     | 'LEASH_ALERT';
   playerId?: string;
@@ -93,9 +97,6 @@ export interface PresenceSession {
   emergencyAccuracy?: number;
   readyToken?: string;
   sessionId?: string;
-  passwordHash?: string;
-  hiderPlayerIds?: string[];
-  logoutGen?: string;
   gameStartTimestamp?: number;
   activeTeamIds?: string[];
   gameMode?: GameMode;
@@ -136,14 +137,6 @@ export interface EmergencyMessage {
   lat?: number;
   lng?: number;
   accuracy?: number;
-}
-
-export interface HiderLoginLock {
-  sessionId: string;
-  passwordHash: string;
-  hiderPlayerIds: string[];
-  logoutGen: string;
-  setAt: number;
 }
 
 export interface TeamPublic {
@@ -245,7 +238,6 @@ export interface PublicGameState {
   allowTestClicks: boolean;
   leashAlertActive: boolean;
   activeTeamIds: string[];
-  hiderLock?: HiderLoginLock | null;
 }
 
 export interface ControllerLease {

@@ -1,13 +1,7 @@
-export interface PresetPlayer {
-  id: string;
-  name: string;
-  canUnlockAdmin: boolean;
-  loginEmail: string;
-  isOverviewOnly?: boolean;
-  greeting?: string;
-}
+export const ADMIN_ACCOUNT_ID = 'admin';
 
 export const PLAYER_CUSTOM_GREETINGS: Record<string, string> = {
+  admin: 'Spielleiter-Konsole bereit.',
   linus: 'GOLD! GOLD! GOLD!',
   lasse: 'Welcome back, sir.',
   thomas: 'Papaya Rules sind heute aktiv!',
@@ -38,60 +32,138 @@ export function getPlayerGreeting(
   return `Hallo ${playerOrMember.name ?? 'Spieler'}!`;
 }
 
+export function isAdminAccountId(
+  playerId: string | null | undefined
+): boolean {
+  return (playerId ?? '').trim().toLowerCase() === ADMIN_ACCOUNT_ID;
+}
+
 /**
- * Exakte, abgeschlossene Spielerliste der Freundesgruppe (keine weiteren Namen erlaubt)
- * sowie der spezielle Overview-Account (nur per Admin-Code zugänglich).
- * Lasse und Linus sehen nach dem Login einen Button, um per Admin-Code ihre Admin-Rechte freizuschalten.
+ * Der Account `admin` dient ausschließlich als Spielleiter-Konsole & Live-Kartenübersicht
+ * und zählt nicht als regulärer Verstecker/Sucher bei Team- oder Bereit-Zählungen.
  */
-export const PRESET_PLAYERS: PresetPlayer[] = [
-  { id: 'lasse', name: 'Lasse', canUnlockAdmin: true, loginEmail: 'lasse@81247-sardinen.local' },
-  { id: 'linus', name: 'Linus', canUnlockAdmin: true, loginEmail: 'linus@81247-sardinen.local' },
-  { id: 'thomas', name: 'Thomas', canUnlockAdmin: false, loginEmail: 'thomas@81247-sardinen.local' },
-  { id: 'robert', name: 'Robert', canUnlockAdmin: false, loginEmail: 'robert@81247-sardinen.local' },
-  { id: 'nick', name: 'Nick', canUnlockAdmin: false, loginEmail: 'nick@81247-sardinen.local' },
-  { id: 'eric', name: 'Eric', canUnlockAdmin: false, loginEmail: 'eric@81247-sardinen.local' },
-  { id: 'jonah', name: 'Jonah', canUnlockAdmin: false, loginEmail: 'jonah@81247-sardinen.local' },
-  { id: 'lorenzo', name: 'Lorenzo', canUnlockAdmin: false, loginEmail: 'lorenzo@81247-sardinen.local' },
-  { id: 'louis', name: 'Louis', canUnlockAdmin: false, loginEmail: 'louis@81247-sardinen.local' },
-  { id: 'max', name: 'Max', canUnlockAdmin: false, loginEmail: 'max@81247-sardinen.local' },
-  { id: 'roman', name: 'Roman', canUnlockAdmin: false, loginEmail: 'roman@81247-sardinen.local' },
-  { id: 'theo', name: 'Theo', canUnlockAdmin: false, loginEmail: 'theo@81247-sardinen.local' },
-  { id: 'test-1', name: 'Test 1', canUnlockAdmin: true, loginEmail: 'test1@81247-sardinen.local' },
-  { id: 'test-2', name: 'Test 2', canUnlockAdmin: false, loginEmail: 'test2@81247-sardinen.local' },
-  {
-    id: 'overview',
-    name: 'Overview',
-    canUnlockAdmin: true,
-    isOverviewOnly: true,
-    loginEmail: 'test1@81247-sardinen.local',
-  },
-];
-
-export const REGULAR_PLAYER_COUNT = PRESET_PLAYERS.filter(
-  (p) => !p.isOverviewOnly
-).length;
-
 export function isOverviewMember(
   member?: { playerId?: string | null; name?: string | null } | null
 ): boolean {
   if (!member) return false;
-  if (member.playerId === 'overview') return true;
+  const pid = (member.playerId ?? '').trim().toLowerCase();
+  if (pid === ADMIN_ACCOUNT_ID || pid === 'overview') return true;
   const n = member.name?.trim().toLowerCase() ?? '';
-  return n === 'overview' || n === 'übersicht' || n === 'uebersicht';
+  return n === ADMIN_ACCOUNT_ID || n === 'overview';
 }
 
-/**
- * SHA-256-Prüfsumme des gesalzenen Admin-Codes — der Klartext-Code steht nirgends im Quellcode,
- * und Firebase database.rules.json erzwingt exakt diesen Hash beim Freischalten von isHost: true.
- */
-export const EXPECTED_ADMIN_AUTH_HASH =
-  '72bfd4d0aec4a76c76188c955cdfedfb75abd34584490c5d8ede99e15f71a5ae';
+export function normalizeAccountId(rawName: string): string {
+  return rawName
+    .trim()
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+export function validateAndNormalizeAccountName(
+  rawName: string | null | undefined
+):
+  | {
+      valid: true;
+      playerId: string;
+      displayName: string;
+      isAdmin: boolean;
+    }
+  | {
+      valid: false;
+      error: string;
+    } {
+  const cleaned = (rawName ?? '').trim().replace(/\s+/g, ' ');
+  if (cleaned.length < 2) {
+    return {
+      valid: false,
+      error: 'Der Benutzername muss mindestens 2 Zeichen lang sein.',
+    };
+  }
+  if (cleaned.length > 24) {
+    return {
+      valid: false,
+      error: 'Der Benutzername darf maximal 24 Zeichen lang sein.',
+    };
+  }
+  if (!/^[A-Za-zÄÖÜäöüß0-9 _-]+$/.test(cleaned)) {
+    return {
+      valid: false,
+      error:
+        'Der Benutzername darf nur Buchstaben, Zahlen, Leerzeichen, Bindestriche und Unterstriche enthalten.',
+    };
+  }
+
+  const playerId = normalizeAccountId(cleaned);
+  if (
+    playerId.length < 2 ||
+    playerId.length > 32 ||
+    !/^[a-z0-9_-]+$/.test(playerId)
+  ) {
+    return {
+      valid: false,
+      error: 'Ungültiger Benutzername.',
+    };
+  }
+
+  const isAdmin = playerId === ADMIN_ACCOUNT_ID;
+  return {
+    valid: true,
+    playerId,
+    displayName: isAdmin ? 'Admin' : cleaned,
+    isAdmin,
+  };
+}
+
+export function validateAccountPassword(
+  rawPassword: string | null | undefined
+):
+  | {
+      valid: true;
+      password: string;
+    }
+  | {
+      valid: false;
+      error: string;
+    } {
+  const pw = rawPassword ?? '';
+  if (pw.trim().length < 4) {
+    return {
+      valid: false,
+      error: 'Das Passwort muss mindestens 4 Zeichen lang sein.',
+    };
+  }
+  if (pw.length > 64) {
+    return {
+      valid: false,
+      error: 'Das Passwort darf maximal 64 Zeichen lang sein.',
+    };
+  }
+  return { valid: true, password: pw };
+}
+
+function toUtf8BinaryString(input: string): string {
+  if (typeof TextEncoder !== 'undefined') {
+    const bytes = new TextEncoder().encode(input);
+    let out = '';
+    for (let i = 0; i < bytes.length; i++) {
+      out += String.fromCharCode(bytes[i]);
+    }
+    return out;
+  }
+  return unescape(encodeURIComponent(input));
+}
 
 /**
  * Reine JS-SHA-256-Implementierung (funktioniert synchron und auch in lokalen HTTP-Umgebungen
  * ohne crypto.subtle).
  */
-export function sha256Hex(ascii: string): string {
+export function sha256Hex(input: string): string {
+  const ascii = toUtf8BinaryString(input);
   const rightRotate = (value: number, amount: number) =>
     (value >>> amount) | (value << (32 - amount));
 
@@ -175,64 +247,19 @@ export function sha256Hex(ascii: string): string {
   return result;
 }
 
-export function computeAdminCodeHash(rawCode: string): string {
-  // Akzeptiert sowohl den 4-stelligen Code direkt als auch mit vorangestelltem '#'
-  const cleaned = rawCode.trim().replace(/^#/, '');
-  return sha256Hex(`sardinen_81247_admin_code:${cleaned}`);
+export function computeAccountPasswordHash(
+  playerId: string,
+  rawPassword: string
+): string {
+  const normalizedId = normalizeAccountId(playerId);
+  return sha256Hex(`sardinen_81247_account_v1:${normalizedId}:${rawPassword}`);
 }
 
-export function verifyAdminCode(rawCode: string): {
-  valid: boolean;
-  adminAuthHash?: string;
-} {
-  const hash = computeAdminCodeHash(rawCode);
-  if (hash === EXPECTED_ADMIN_AUTH_HASH) {
-    return { valid: true, adminAuthHash: hash };
-  }
-  return { valid: false };
-}
-
-export function computeHiderPasswordHash(rawPassword: string): string {
-  const cleaned = rawPassword.trim().toLowerCase();
-  return sha256Hex(`sardinen_81247_hider_pw:${cleaned}`);
-}
-
-export function verifyHiderPasswordHash(
+export function verifyAccountPasswordHash(
+  playerId: string,
   rawPassword: string,
   expectedHash: string | null | undefined
 ): boolean {
-  if (!expectedHash || !rawPassword.trim()) return false;
-  return computeHiderPasswordHash(rawPassword) === expectedHash;
-}
-
-/**
- * Prüft eine Namenseingabe (Groß-/Kleinschreibung egal, Leerzeichen werden ignoriert)
- * strikt gegen die 11 erlaubten Spielernamen — nicht mehr und nicht weniger.
- */
-export function resolveAllowedPlayerByNameInput(
-  rawName: string | null | undefined
-): PresetPlayer | undefined {
-  if (!rawName) return undefined;
-  const normalized = rawName.trim().toLowerCase();
-  if (!normalized) return undefined;
-  if (
-    normalized === 'overview' ||
-    normalized === 'übersicht' ||
-    normalized === 'uebersicht'
-  ) {
-    return PRESET_PLAYERS.find((p) => p.id === 'overview');
-  }
-  return PRESET_PLAYERS.find((p) => p.name.toLowerCase() === normalized);
-}
-
-export function findPresetPlayerByEmail(
-  email: string | null | undefined
-): PresetPlayer | undefined {
-  if (!email) return undefined;
-  const normalized = email.trim().toLowerCase();
-  return PRESET_PLAYERS.find((p) => p.loginEmail.toLowerCase() === normalized);
-}
-
-export function findPresetPlayerById(id: string): PresetPlayer | undefined {
-  return PRESET_PLAYERS.find((p) => p.id === id);
+  if (!expectedHash || !rawPassword) return false;
+  return computeAccountPasswordHash(playerId, rawPassword) === expectedHash;
 }

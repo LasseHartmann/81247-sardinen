@@ -14,7 +14,7 @@
         "accountSecrets": {
           "$playerId": {
             ".read": false,
-            ".write": "auth != null && ((!data.exists() && newData.exists()) || (root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/isHost').val() === true))",
+            ".write": "auth != null && ((!data.exists() && newData.exists()) || (root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && (root.child('games/81247/members/' + auth.uid + '/isHost').val() === true || (root.child('games/81247/members/' + auth.uid + '/playerId').val() === $playerId && root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === $playerId && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === data.child('passwordHash').val()))))",
             ".validate": "!newData.exists() || (newData.hasChildren(['passwordHash']) && newData.child('passwordHash').isString() && newData.child('passwordHash').val().length === 64)"
           }
         },

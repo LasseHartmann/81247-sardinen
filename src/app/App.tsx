@@ -85,6 +85,7 @@ import {
 } from '../components/Lobby/LobbyView';
 import { GameMap, type MapClickInteractionMode } from '../components/Map/GameMap';
 import { BottomNav } from '../components/Navigation/BottomNav';
+import { ProfileView } from '../components/Profile/ProfileView';
 import { HiderQrView } from '../components/QR/HiderQrModal';
 import { SeekerScannerView } from '../components/QR/SeekerScannerModal';
 import { HiderMediaResponseModal } from '../components/Questions/HiderMediaResponseModal';
@@ -1896,7 +1897,30 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* TAB 5: SPIELLEITER (HOST) */}
+        {/* TAB 5: SPIELER-PROFIL (PASSWORT ÄNDERN, TEAM-WAHL & GERÄTE-DIAGNOSE) */}
+        {activeTab === 'PROFILE' && (
+          <ProfileView
+            adapter={adapter}
+            ownMember={ownMember}
+            ownTeam={ownTeam}
+            publicState={publicState}
+            members={gameState.members}
+            presence={gameState.presence}
+            teamsPublic={gameState.teamsPublic}
+            connected={gameState.connected}
+            ownFix={geo.currentFix}
+            gpsStatus={geo.gpsStatus}
+            gpsError={geo.gpsError}
+            onRetryGps={geo.retryGpsPermission}
+            onSelectOwnRole={handleSelectOwnRole}
+            onLogout={async () => {
+              setActiveTab('MAP');
+              await exitOrLogout();
+            }}
+          />
+        )}
+
+        {/* TAB 6: SPIELLEITER (HOST) */}
         {activeTab === 'HOST' && showHostTab && (
           <HostControlPanel
             adapter={adapter}

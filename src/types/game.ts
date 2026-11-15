@@ -407,6 +407,7 @@ export type BottomNavTab =
   | 'QUESTIONS'
   | 'QR'
   | 'LEADERBOARD'
+  | 'PROFILE'
   | 'HOST';
 
 export type DemoRoleId =

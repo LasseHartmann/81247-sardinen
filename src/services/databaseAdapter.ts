@@ -93,6 +93,11 @@ export interface DatabaseAdapter {
     name: string;
     password: string;
   }): Promise<{ user: AuthUserSummary; member: MemberRecord }>;
+  changeAccountPassword(params: {
+    playerId: string;
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<void>;
   registerSelfMemberIfMissing(member: MemberRecord): Promise<void>;
   fetchPlayerAssignment(playerId: string): Promise<{ side: MemberRecord['side']; teamId: string | null } | null>;
   savePlayerAssignment(playerId: string, side: MemberRecord['side'], teamId: string | null): Promise<void>;
@@ -807,6 +812,65 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         user: { uid, email: activeUser.email ?? null },
         member,
       };
+    },
+
+    async changeAccountPassword({
+      playerId,
+      currentPassword,
+      newPassword,
+    }): Promise<void> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) {
+        throw new Error('Ungültige Konto-ID.');
+      }
+      if (!currentPassword || !currentPassword.trim()) {
+        throw new Error('Bitte gib dein aktuelles Passwort ein.');
+      }
+      const pwCheck = validateAccountPassword(newPassword);
+      if (!pwCheck.valid) {
+        throw new Error(pwCheck.error);
+      }
+      if (!auth.currentUser) {
+        throw new Error('Nicht angemeldet. Bitte melde dich erneut an.');
+      }
+
+      const uid = auth.currentUser.uid;
+      const nowMs = adapter.getServerNow();
+      const currentHash = computeAccountPasswordHash(
+        normalizedId,
+        currentPassword
+      );
+      const nextHash = computeAccountPasswordHash(
+        normalizedId,
+        pwCheck.password
+      );
+
+      // 1. Aktuelles Passwort gegen /accountSecrets/$playerId/passwordHash prüfen
+      try {
+        await set(ref(db, `${ROOT_PATH}/memberAuth/${uid}`), {
+          playerId: normalizedId,
+          passwordHash: currentHash,
+          authenticatedAt: nowMs,
+        });
+      } catch (err) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        if (rawMsg.toLowerCase().includes('permission')) {
+          throw new Error('Das aktuelle Passwort ist nicht korrekt.');
+        }
+        throw new Error(
+          'Passwort konnte nicht geprüft werden. Bitte prüfe deine Internetverbindung.'
+        );
+      }
+
+      // 2. Neues Passwort-Secret schreiben & memberAuth aktualisieren
+      await set(ref(db, `${ROOT_PATH}/accountSecrets/${normalizedId}`), {
+        passwordHash: nextHash,
+      });
+      await set(ref(db, `${ROOT_PATH}/memberAuth/${uid}`), {
+        playerId: normalizedId,
+        passwordHash: nextHash,
+        authenticatedAt: nowMs,
+      });
     },
 
     async registerSelfMemberIfMissing(member): Promise<void> {

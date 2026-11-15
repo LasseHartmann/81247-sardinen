@@ -559,6 +559,45 @@ export function createDemoStore(options?: {
       };
     },
 
+    async changeAccountPassword({
+      playerId,
+      currentPassword,
+      newPassword,
+    }): Promise<void> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) {
+        throw new Error('Ungültige Konto-ID.');
+      }
+      if (!currentPassword || !currentPassword.trim()) {
+        throw new Error('Bitte gib dein aktuelles Passwort ein.');
+      }
+      const pwCheck = validateAccountPassword(newPassword);
+      if (!pwCheck.valid) {
+        throw new Error(pwCheck.error);
+      }
+
+      const curTree = readTree();
+      const acct = curTree.accounts?.[normalizedId];
+      if (!acct) {
+        throw new Error('Dieses Konto existiert nicht.');
+      }
+      const expectedHash = curTree.accountSecrets?.[normalizedId]?.passwordHash;
+      if (
+        !verifyAccountPasswordHash(normalizedId, currentPassword, expectedHash)
+      ) {
+        throw new Error('Das aktuelle Passwort ist nicht korrekt.');
+      }
+
+      const nextHash = computeAccountPasswordHash(
+        normalizedId,
+        pwCheck.password
+      );
+      writeTree((t) => {
+        if (!t.accountSecrets) t.accountSecrets = {};
+        t.accountSecrets[normalizedId] = { passwordHash: nextHash };
+      });
+    },
+
     async registerSelfMemberIfMissing(member): Promise<void> {
       writeTree((t) => {
         if (!t.members[member.uid]) {

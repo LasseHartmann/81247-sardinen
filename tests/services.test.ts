@@ -269,6 +269,44 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(loggedInSophie.playerId).toBe('sophie');
     expect(loggedInSophie.isHost).toBe(false);
 
+    // Passwort ändern im Profil: falsches altes Passwort oder zu kurzes neues Passwort wird abgelehnt
+    await expect(
+      store.adapter.changeAccountPassword({
+        playerId: 'sophie',
+        currentPassword: 'FalschesAltesPasswort',
+        newPassword: 'NeuesPasswort2026!',
+      })
+    ).rejects.toThrow(/aktuelle Passwort ist nicht korrekt/i);
+
+    await expect(
+      store.adapter.changeAccountPassword({
+        playerId: 'sophie',
+        currentPassword: 'Sardine2026!',
+        newPassword: '123',
+      })
+    ).rejects.toThrow(/mindestens 4 Zeichen/i);
+
+    // Korrektes Ändern des Passworts
+    await store.adapter.changeAccountPassword({
+      playerId: 'sophie',
+      currentPassword: 'Sardine2026!',
+      newPassword: 'NeuesPasswort2026!',
+    });
+
+    // Altes Passwort funktioniert nicht mehr, neues Passwort funktioniert
+    await expect(
+      store.adapter.loginWithAccount({
+        name: 'Sophie',
+        password: 'Sardine2026!',
+      })
+    ).rejects.toThrow(/Falsches Passwort/i);
+
+    const { member: reloggedSophie } = await store.adapter.loginWithAccount({
+      name: 'Sophie',
+      password: 'NeuesPasswort2026!',
+    });
+    expect(reloggedSophie.playerId).toBe('sophie');
+
     // Login als „admin“ -> erhält exklusiv isHost: true
     const { member: loggedInAdmin } = await store.adapter.loginWithAccount({
       name: 'Admin',

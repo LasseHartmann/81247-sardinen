@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, HelpCircle, QrCode, Shield, Trophy } from 'lucide-react';
+import { Compass, HelpCircle, QrCode, Shield, Trophy, User } from 'lucide-react';
 import type { BottomNavTab } from '../../types/game';
 
 export interface BottomNavProps {
@@ -51,6 +51,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       id: 'LEADERBOARD',
       label: 'Rangliste',
       icon: <Trophy className="h-5 w-5" />,
+    },
+    {
+      id: 'PROFILE',
+      label: 'Profil',
+      icon: <User className="h-5 w-5" />,
     },
   ];
 

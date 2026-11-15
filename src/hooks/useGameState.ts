@@ -4,6 +4,7 @@ import {
   createDefaultTeams,
   TEAM_PALETTE,
 } from '../config/gameConfig';
+import { isAdminAccountId } from '../config/players';
 import {
   deduplicateEnabledMembers,
   extractActiveLeashViolation,
@@ -122,10 +123,14 @@ export function useGameState(
     setTeamsPublic({});
     setLeaderboard({});
 
+    const isOwnHost = Boolean(
+      ownMember.isHost || isAdminAccountId(ownMember.playerId)
+    );
+
     const unsubs: UnsubscribeFn[] = [
       adapter.subscribePublicState((st) => {
         setRawPublicState(st);
-        if (!st && ownMember.isHost) {
+        if (!st && isOwnHost) {
           const sessionId = generateRandomId('session');
           const defaults = createDefaultPublicState(sessionId);
           const defaultTeams = createDefaultTeams();
@@ -143,7 +148,7 @@ export function useGameState(
       adapter.subscribeLeaderboard(setLeaderboard),
     ];
 
-    if (ownMember.isHost) {
+    if (isOwnHost) {
       unsubs.push(adapter.subscribeAllJoinRequests(setJoinRequests));
     } else {
       setJoinRequests({});
@@ -168,7 +173,13 @@ export function useGameState(
     return () => {
       for (const fn of unsubs) fn();
     };
-  }, [adapter, activeRoomCode, ownMember?.enabled, ownMember?.isHost]);
+  }, [
+    adapter,
+    activeRoomCode,
+    ownMember?.enabled,
+    ownMember?.isHost,
+    ownMember?.playerId,
+  ]);
 
   const publicState = useMemo<PublicGameState | null>(() => {
     if (!rawPublicState) return null;
@@ -225,11 +236,12 @@ export function useGameState(
   const canReadHiderSecrets = Boolean(
     ownMember?.enabled &&
       (ownMember.isHost ||
+        isAdminAccountId(ownMember.playerId) ||
         ownMember.side === 'HIDER' ||
         ownTeamStatus === 'JOINED_SARDINES')
   );
 
-  // Hider-Geheimnisse NUR abonnieren, wenn autorisiert (Host, Hider oder JOINED_SARDINES)
+  // Hider-Geheimnisse NUR abonnieren, wenn autorisiert (Host, Admin, Hider oder JOINED_SARDINES)
   const seededMissingSecretsRef = useRef<string | null>(null);
   useEffect(() => {
     if (!activeRoomCode || !canReadHiderSecrets) {
@@ -240,7 +252,10 @@ export function useGameState(
     return adapter.subscribeHiderPrivate((priv) => {
       setHiderPrivate(priv);
       const canWriteSecrets = Boolean(
-        ownMember?.enabled && (ownMember.isHost || ownMember.side === 'HIDER')
+        ownMember?.enabled &&
+          (ownMember.isHost ||
+            isAdminAccountId(ownMember.playerId) ||
+            ownMember.side === 'HIDER')
       );
       const hasValidRandomCode = Boolean(
         priv?.qrSecret &&
@@ -265,6 +280,7 @@ export function useGameState(
     canReadHiderSecrets,
     ownMember?.enabled,
     ownMember?.isHost,
+    ownMember?.playerId,
     ownMember?.side,
     publicState?.sessionId,
   ]);
@@ -274,7 +290,12 @@ export function useGameState(
   useEffect(() => {
     if (!ownMember?.enabled || !publicState) return;
     if (publicState.status !== 'LOBBY') return;
-    if (!ownMember.isHost && ownMember.side !== 'HIDER') return;
+    if (
+      !ownMember.isHost &&
+      !isAdminAccountId(ownMember.playerId) &&
+      ownMember.side !== 'HIDER'
+    )
+      return;
 
     const requiredHiders = getRequiredReadyHiderMembers(
       members,
@@ -351,7 +372,9 @@ export function useGameState(
     adapter.setRoomCode(activeRoomCode);
     const unsubs: UnsubscribeFn[] = [];
     const isControllerRole = Boolean(
-      ownMember.isHost || ownMember.side === 'HIDER'
+      ownMember.isHost ||
+        isAdminAccountId(ownMember.playerId) ||
+        ownMember.side === 'HIDER'
     );
     const isHiderTeamMember = Boolean(
       isControllerRole || ownTeamStatus === 'JOINED_SARDINES'

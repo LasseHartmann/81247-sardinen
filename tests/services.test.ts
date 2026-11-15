@@ -1106,4 +1106,64 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     unsubAnnaTab();
     unsubOverview();
   });
+
+  it('grants the admin account automatic host controls in any hosted room and prevents stripping admin isHost', async () => {
+    const store = createDemoStore();
+    const hostedByBen = await store.adapter.createHostedRoom({
+      hostPlayerId: 'ben',
+      hostName: 'Ben',
+    });
+
+    // Admin tritt dem von Ben gehosteten Raum bei -> isHost muss automatisch true sein
+    const adminJoined = await store.adapter.joinRoomByCode({
+      roomCode: hostedByBen.roomCode,
+      playerId: 'admin',
+      playerName: 'Admin',
+    });
+    expect(adminJoined.member.isHost).toBe(true);
+    expect(
+      store.getSnapshot().rooms?.[hostedByBen.roomCode]?.members?.[
+        adminJoined.member.uid
+      ]?.isHost
+    ).toBe(true);
+
+    // Auch updateMember oder registerSelfMemberIfMissing darf admin.isHost nicht auf false setzen
+    await store.adapter.updateMember(adminJoined.member.uid, {
+      ...adminJoined.member,
+      isHost: false,
+    });
+    expect(
+      store.getSnapshot().rooms?.[hostedByBen.roomCode]?.members?.[
+        adminJoined.member.uid
+      ]?.isHost
+    ).toBe(true);
+
+    await store.adapter.registerSelfMemberIfMissing({
+      uid: 'uid_admin_other',
+      playerId: 'admin',
+      name: 'Admin 2',
+      isHost: false,
+      enabled: true,
+      side: 'UNASSIGNED',
+      teamId: null,
+    });
+    expect(
+      store.getSnapshot().rooms?.[hostedByBen.roomCode]?.members?.[
+        'uid_admin_other'
+      ]?.isHost
+    ).toBe(true);
+
+    // Admin kann Host-Steuerungen in Bens Raum ausführen (z.B. Team umbenennen & Rundenzeit ändern)
+    store.adapter.setRoomCode(hostedByBen.roomCode);
+    const currentPublic =
+      store.getSnapshot().rooms?.[hostedByBen.roomCode]?.state.public!;
+    await store.adapter.savePublicStateByHost({
+      ...currentPublic,
+      classicSearchDurationMs: 42 * 60 * 1000,
+    });
+    expect(
+      store.getSnapshot().rooms?.[hostedByBen.roomCode]?.state.public
+        .classicSearchDurationMs
+    ).toBe(42 * 60 * 1000);
+  });
 });

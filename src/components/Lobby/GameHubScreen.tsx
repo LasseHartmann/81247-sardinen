@@ -1,14 +1,11 @@
 import React, { useState } from 'react';
 import {
   ArrowRight,
-  Clock,
-  Compass,
   Hash,
   LogOut,
   PlusCircle,
   Sliders,
 } from 'lucide-react';
-import { GAME_ID } from '../../config/gameConfig';
 import { isAdminAccountId } from '../../config/players';
 import type {
   RecentRoomEntry,
@@ -225,54 +222,6 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
               <ArrowRight className="h-4 w-4" />
             </button>
           </form>
-
-          {/* Zuletzt genutzte Räume & Klassischer Raum 81247 */}
-          <div className="border-t cmf-divider pt-2.5">
-            <span className="font-tech mb-1.5 flex items-center gap-1 text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              <Clock className="h-3 w-3" />
-              Schnellauswahl
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {recentRooms.map((r) => (
-                <button
-                  key={r.roomCode}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    onClearError();
-                    void onJoinByCode(r.roomCode);
-                  }}
-                  className="cmf-btn-secondary inline-flex min-h-[34px] items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold"
-                >
-                  <span className="font-dot text-xs text-[var(--cmf-orange)]">
-                    {r.roomCode}
-                  </span>
-                  {r.hostName && (
-                    <span className="text-[10px] text-[var(--text-muted)]">
-                      • {r.hostName}
-                    </span>
-                  )}
-                </button>
-              ))}
-
-              {!recentRooms.some((r) => r.roomCode === GAME_ID) && (
-                <button
-                  type="button"
-                  data-testid="hub-quickjoin-81247-btn"
-                  disabled={busy}
-                  onClick={() => {
-                    onClearError();
-                    void onJoinByCode(GAME_ID);
-                  }}
-                  className="cmf-btn-secondary inline-flex min-h-[34px] items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold"
-                >
-                  <Compass className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                  <span>Hauptraum</span>
-                  <span className="font-dot text-xs">{GAME_ID}</span>
-                </button>
-              )}
-            </div>
-          </div>
         </section>
       </div>
     </div>

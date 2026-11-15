@@ -1611,10 +1611,17 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async registerSelfMemberIfMissing(member): Promise<void> {
-      const memberRef = ref(db, `${getRoomRootPath()}/members/${member.uid}`);
+      const normalizedMember = {
+        ...member,
+        isHost: Boolean(member.isHost || isAdminAccountId(member.playerId)),
+      };
+      const memberRef = ref(
+        db,
+        `${getRoomRootPath()}/members/${normalizedMember.uid}`
+      );
       const snap = await get(memberRef);
       if (!snap.exists()) {
-        await set(memberRef, stripUndefinedDeep(member));
+        await set(memberRef, stripUndefinedDeep(normalizedMember));
       }
     },
 
@@ -1847,9 +1854,13 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     },
 
     async updateMember(uid, member): Promise<void> {
+      const normalizedMember = {
+        ...member,
+        isHost: Boolean(member.isHost || isAdminAccountId(member.playerId)),
+      };
       await set(
         ref(db, `${getRoomRootPath()}/members/${uid}`),
-        stripUndefinedDeep(member)
+        stripUndefinedDeep(normalizedMember)
       );
     },
 

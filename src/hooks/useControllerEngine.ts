@@ -20,6 +20,7 @@ import {
   getDueRadarCircle,
   getPhaseForElapsedMs,
 } from '../geo/radar';
+import { isAdminAccountId } from '../config/players';
 import type { DatabaseAdapter } from '../services/databaseAdapter';
 import { fetchOsmEnvironment81247 } from '../services/overpassService';
 import { generateRandomId, verifyCatchSubmission } from '../services/qrService';
@@ -1139,7 +1140,10 @@ export function useControllerEngine(params: UseControllerEngineParams): {
   latestRef.current = params;
 
   const eligibleToControl = Boolean(
-    ownMember?.enabled && (ownMember.isHost || ownMember.side === 'HIDER')
+    ownMember?.enabled &&
+      (ownMember.isHost ||
+        isAdminAccountId(ownMember.playerId) ||
+        ownMember.side === 'HIDER')
   );
 
   // Regelmäßiger 1s-Takt für Lease-Prüfung, Phasenwechsel und 120s-Medien-Timeout

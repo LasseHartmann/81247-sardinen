@@ -259,11 +259,14 @@ export const App: React.FC = () => {
   });
 
   useEffect(() => {
-    if (!publicState || !activeRoomCode) {
+    if (!activeRoomCode) {
       prevStatusAndRoomRef.current = {
-        roomCode: activeRoomCode,
+        roomCode: null,
         status: null,
       };
+      return;
+    }
+    if (!publicState) {
       return;
     }
     const prev = prevStatusAndRoomRef.current;
@@ -274,8 +277,10 @@ export const App: React.FC = () => {
       status: publicState.status,
     };
 
+    const isOverview = Boolean(ownMember && isOverviewMember(ownMember));
+
     if (roomChanged) {
-      if (ownMember && isOverviewMember(ownMember)) {
+      if (isOverview) {
         setActiveTab('HOST');
       } else {
         setActiveTab(publicState.status === 'LOBBY' ? 'LOBBY' : 'MAP');
@@ -285,14 +290,18 @@ export const App: React.FC = () => {
 
     if (statusChanged) {
       if (publicState.status === 'LOBBY') {
-        setActiveTab('LOBBY');
+        if (!(isOverview && activeTab === 'HOST')) {
+          setActiveTab('LOBBY');
+        }
         return;
       }
       if (
         publicState.status === 'RUNNING' &&
         (prev.status === 'LOBBY' || prev.status === 'FINISHED')
       ) {
-        setActiveTab('MAP');
+        if (!(isOverview && activeTab === 'HOST')) {
+          setActiveTab('MAP');
+        }
         return;
       }
     }
@@ -304,7 +313,7 @@ export const App: React.FC = () => {
     ) {
       setActiveTab('MAP');
     }
-  }, [activeRoomCode, publicState?.status, activeTab, publicState]);
+  }, [activeRoomCode, publicState?.status, activeTab, publicState, ownMember]);
 
   useEffect(() => {
     if (activeTab === 'HOST' && ownMember && !isOverviewMember(ownMember)) {
@@ -825,6 +834,7 @@ export const App: React.FC = () => {
   const isOverviewAccount = isOverviewMember(ownMember);
   const isRoomHost = Boolean(
     ownMember.isHost ||
+      isOverviewAccount ||
       (publicState.hostPlayerId &&
         publicState.hostPlayerId === ownMember.playerId)
   );
@@ -1534,6 +1544,9 @@ export const App: React.FC = () => {
               onToggleOwnReady={handleToggleOwnReady}
               onViewMap={() => setActiveTab('MAP')}
               onOpenCircleMapEditor={handleOpenCircleMapEditor}
+              onOpenHostConsole={
+                isOverviewAccount ? () => setActiveTab('HOST') : undefined
+              }
               onLeaveRoom={handleLeaveRoom}
             />
           )}

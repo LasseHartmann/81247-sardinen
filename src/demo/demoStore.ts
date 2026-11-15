@@ -952,10 +952,14 @@ export function createDemoStore(options?: {
     },
 
     async registerSelfMemberIfMissing(member): Promise<void> {
+      const normalizedMember = {
+        ...member,
+        isHost: Boolean(member.isHost || isAdminAccountId(member.playerId)),
+      };
       writeTree((t) => {
         const r = requireRoomSlice(t);
-        if (!r.members[member.uid]) {
-          r.members[member.uid] = structuredClone(member);
+        if (!r.members[normalizedMember.uid]) {
+          r.members[normalizedMember.uid] = structuredClone(normalizedMember);
         }
       });
     },
@@ -1147,9 +1151,13 @@ export function createDemoStore(options?: {
     },
 
     async updateMember(uid, member): Promise<void> {
+      const normalizedMember = {
+        ...member,
+        isHost: Boolean(member.isHost || isAdminAccountId(member.playerId)),
+      };
       writeTree((t) => {
         const r = requireRoomSlice(t);
-        r.members[uid] = structuredClone(member);
+        r.members[uid] = structuredClone(normalizedMember);
         for (const team of Object.values(r.teams)) {
           team.public.memberPlayerIds = team.public.memberPlayerIds.filter(
             (pid) => pid !== member.playerId

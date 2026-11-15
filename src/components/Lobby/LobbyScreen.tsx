@@ -98,6 +98,7 @@ export interface LobbyScreenProps {
   onToggleOwnReady: (nextReady: boolean) => Promise<void>;
   onViewMap: () => void;
   onOpenCircleMapEditor: () => void;
+  onOpenHostConsole?: () => void;
   onLeaveRoom?: () => Promise<void>;
 }
 
@@ -118,11 +119,13 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   onToggleOwnReady,
   onViewMap,
   onOpenCircleMapEditor,
+  onOpenHostConsole,
   onLeaveRoom,
 }) => {
   const isOverviewAccount = isOverviewMember(ownMember);
   const isHost = Boolean(
     ownMember.isHost ||
+      isOverviewAccount ||
       (publicState.hostPlayerId &&
         publicState.hostPlayerId === ownMember.playerId)
   );
@@ -686,9 +689,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   <span className="cmf-badge-teal rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase">
                     SPIEL-LOBBY
                   </span>
-                  {isHost && !isOverviewAccount && (
+                  {isHost && (
                     <span className="cmf-badge-orange rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase">
-                      DU BIST HOST
+                      {isOverviewAccount ? 'ADMIN // HOST' : 'DU BIST HOST'}
                     </span>
                   )}
                 </div>
@@ -698,17 +701,31 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               </div>
             </div>
 
-            {onLeaveRoom && (
-              <button
-                type="button"
-                data-testid="lobby-leave-room-btn"
-                onClick={() => void onLeaveRoom()}
-                className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Raum wechseln</span>
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {isOverviewAccount && onOpenHostConsole && (
+                <button
+                  type="button"
+                  data-testid="lobby-open-host-console-btn"
+                  onClick={onOpenHostConsole}
+                  className="cmf-btn-primary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+                >
+                  <Shield className="h-3.5 w-3.5" />
+                  <span>Admin-Konsole</span>
+                </button>
+              )}
+
+              {onLeaveRoom && (
+                <button
+                  type="button"
+                  data-testid="lobby-leave-room-btn"
+                  onClick={() => void onLeaveRoom()}
+                  className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  <span>Raum wechseln</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="cmf-oled flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">

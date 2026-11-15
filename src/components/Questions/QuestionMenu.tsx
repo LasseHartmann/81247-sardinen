@@ -24,6 +24,7 @@ import {
   TEAM_PALETTE,
   THERMOMETER_MIN_DISTANCE_METERS,
 } from '../../config/gameConfig';
+import { isOverviewMember } from '../../config/players';
 import { destinationPoint, distanceMeters } from '../../geo/distance';
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
 import { generateRandomId } from '../../services/qrService';
@@ -407,7 +408,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             onToggleClueOverlay={onToggleClueOverlay}
             getServerNow={() => adapter.getServerNow()}
             onUndoClue={
-              ownMember.isHost
+              ownMember.isHost || isOverviewMember(ownMember)
                 ? (clue) => adapter.undoClueByHost(clue.teamId, clue)
                 : undefined
             }
@@ -961,7 +962,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             onToggleClueOverlay={onToggleClueOverlay}
             getServerNow={() => adapter.getServerNow()}
             onUndoClue={
-              ownMember.isHost
+              ownMember.isHost || isOverviewMember(ownMember)
                 ? (clue) => adapter.undoClueByHost(clue.teamId, clue)
                 : undefined
             }

@@ -1014,5 +1014,32 @@ describe('Services: Location-Throttling (6s / 5m), QR-Alphabet & Synthetik-Audio
     expect(
       store.getSnapshot().rooms?.[hosted.roomCode]?.teams['team-5']?.public.name
     ).toBe('Team Papaya');
+
+    // 7. Admin-Lobby-Gesamtübersicht liefert live alle existierenden Lobbys (inkl. 81247 + gehostetem Raum, Teams & Status)
+    let latestOverview: Awaited<
+      Parameters<typeof store.adapter.subscribeAllLobbiesOverview>[0]
+    > extends (items: infer T) => void
+      ? T
+      : never = [];
+    const unsubOverview = store.adapter.subscribeAllLobbiesOverview((items) => {
+      latestOverview = items;
+    });
+
+    expect(latestOverview.length).toBeGreaterThanOrEqual(2);
+    const hostedEntry = latestOverview.find(
+      (item) => item.roomCode === hosted.roomCode
+    );
+    const mainEntry = latestOverview.find((item) => item.roomCode === '81247');
+    expect(hostedEntry).toBeDefined();
+    expect(hostedEntry?.hostPlayerId).toBe('anna');
+    expect(hostedEntry?.hostName).toBe('Anna');
+    expect(hostedEntry?.status).toBe('RUNNING');
+    expect(
+      hostedEntry?.seekerTeamSummaries.some((t) => t.name === 'Team Papaya')
+    ).toBe(true);
+    expect(mainEntry).toBeDefined();
+    expect(mainEntry?.roomCode).toBe('81247');
+
+    unsubOverview();
   });
 });

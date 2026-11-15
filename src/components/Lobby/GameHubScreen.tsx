@@ -14,10 +14,13 @@ import type {
   RecentRoomEntry,
   StoredPlayerSession,
 } from '../../hooks/useAuth';
+import type { DatabaseAdapter } from '../../services/databaseAdapter';
 import { normalizeRoomCode } from '../../services/qrService';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
+import { AdminLobbiesOverview } from './AdminLobbiesOverview';
 
 export interface GameHubScreenProps {
+  adapter: DatabaseAdapter;
   account: StoredPlayerSession;
   firebaseAvailable: boolean;
   recentRooms: RecentRoomEntry[];
@@ -30,6 +33,7 @@ export interface GameHubScreenProps {
 }
 
 export const GameHubScreen: React.FC<GameHubScreenProps> = ({
+  adapter,
   account,
   firebaseAvailable,
   recentRooms,
@@ -54,7 +58,11 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
       data-testid="game-hub-screen"
       className="cmf-drafting-bg cmf-scroll-area flex h-[100dvh] w-full flex-col items-center justify-start sm:justify-center pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] text-[var(--text-main)]"
     >
-      <div className="cmf-chassis cmf-sheet-up my-auto w-full max-w-lg space-y-4 p-5 sm:p-6">
+      <div
+        className={`cmf-chassis cmf-sheet-up my-auto w-full space-y-4 p-5 sm:p-6 ${
+          isAdmin ? 'max-w-2xl' : 'max-w-lg'
+        }`}
+      >
         {/* Kopfzeile mit Spielerkonto & Abmelden */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -113,6 +121,20 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
           >
             {roomError}
           </div>
+        )}
+
+        {/* Exklusive Live-Übersicht aller Lobbys für das Admin-Konto */}
+        {isAdmin && (
+          <AdminLobbiesOverview
+            adapter={adapter}
+            hintRoomCodes={recentRooms.map((r) => r.roomCode)}
+            busy={busy}
+            variant="hub"
+            onOpenLobby={async (code) => {
+              onClearError();
+              await onJoinByCode(code);
+            }}
+          />
         )}
 
         {/* Option 1: Eigenes Spiel hosten */}

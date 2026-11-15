@@ -39,6 +39,7 @@ import {
 import { preloadGreenPolygonsForPostalCode } from '../config/fallbackOsm81247';
 import {
   getPlayerGreeting,
+  isAdminAccountId,
   isOverviewMember,
 } from '../config/players';
 import {
@@ -274,7 +275,11 @@ export const App: React.FC = () => {
     };
 
     if (roomChanged) {
-      setActiveTab(publicState.status === 'LOBBY' ? 'LOBBY' : 'MAP');
+      if (ownMember && isOverviewMember(ownMember)) {
+        setActiveTab('HOST');
+      } else {
+        setActiveTab(publicState.status === 'LOBBY' ? 'LOBBY' : 'MAP');
+      }
       return;
     }
 
@@ -306,6 +311,23 @@ export const App: React.FC = () => {
       setActiveTab(publicState?.status === 'LOBBY' ? 'LOBBY' : 'MAP');
     }
   }, [activeTab, ownMember, publicState?.status]);
+
+  // Registriert den aktuell aktiven Spielraum automatisch im zentralen Raumverzeichnis (für die Admin-Gesamtübersicht)
+  useEffect(() => {
+    if (!publicState || !ownMember?.enabled) return;
+    void adapter.syncRoomDirectoryEntry(publicState);
+  }, [
+    adapter,
+    ownMember?.enabled,
+    publicState?.roomCode,
+    publicState?.status,
+    publicState?.currentPhase,
+    publicState?.gameMode,
+    publicState?.playArea?.name,
+    publicState?.hostPlayerId,
+    publicState?.hostName,
+    publicState,
+  ]);
 
   const activePostalCodes = getActivePostalCodes(publicState?.playArea);
   const activePostalCode = activePostalCodes[0];
@@ -681,6 +703,7 @@ export const App: React.FC = () => {
   if (!activeRoomCode) {
     return (
       <GameHubScreen
+        adapter={adapter}
         account={accountSession}
         firebaseAvailable={firebaseAvailable}
         recentRooms={recentRooms}
@@ -690,13 +713,17 @@ export const App: React.FC = () => {
         onHostNewGame={async () => {
           const createdCode = await hostNewGame();
           if (createdCode) {
-            setActiveTab('LOBBY');
+            setActiveTab(
+              isAdminAccountId(accountSession.playerId) ? 'HOST' : 'LOBBY'
+            );
           }
         }}
         onJoinByCode={async (code) => {
           const ok = await joinGameByCode(code);
           if (ok) {
-            setActiveTab('LOBBY');
+            setActiveTab(
+              isAdminAccountId(accountSession.playerId) ? 'HOST' : 'LOBBY'
+            );
           }
         }}
         onLogout={exitOrLogout}
@@ -2577,6 +2604,13 @@ export const App: React.FC = () => {
             cluesByTeam={gameState.cluesByTeam}
             requestsByTeam={gameState.requestsByTeam}
             onNavigateToMap={() => setActiveTab('MAP')}
+            recentRoomCodes={recentRooms.map((r) => r.roomCode)}
+            onSwitchRoom={async (targetCode) => {
+              const ok = await joinGameByCode(targetCode);
+              if (ok) {
+                setActiveTab('HOST');
+              }
+            }}
             onLeaveRoom={handleLeaveRoom}
             onOpenCircleMapEditor={handleOpenCircleMapEditor}
             onLogoutAdmin={() => {

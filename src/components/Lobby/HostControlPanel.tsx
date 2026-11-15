@@ -60,6 +60,7 @@ import {
 } from '../../hooks/useControllerEngine';
 import { HardwareKnob } from '../Common/HardwareKnob';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
+import { AdminLobbiesOverview } from './AdminLobbiesOverview';
 import { isOverviewMember } from '../../config/players';
 import {
   deduplicateEnabledMembers,
@@ -101,6 +102,8 @@ export interface HostControlPanelProps {
   requestsByTeam?: Record<string, Record<string, ClueRequest>>;
   onNavigateToMap: () => void;
   onOpenCircleMapEditor?: () => void;
+  recentRoomCodes?: string[];
+  onSwitchRoom?: (roomCode: string) => Promise<void>;
   onLeaveRoom?: () => Promise<void>;
   onLogoutAdmin?: () => void;
 }
@@ -119,6 +122,8 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   requestsByTeam = {},
   onNavigateToMap,
   onOpenCircleMapEditor,
+  recentRoomCodes = [],
+  onSwitchRoom,
   onLeaveRoom,
   onLogoutAdmin,
 }) => {
@@ -954,6 +959,19 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             </div>
           </div>
         </div>
+
+        {/* 0. Admin-Gesamtübersicht aller aktiven Lobbys & Spielräume */}
+        <AdminLobbiesOverview
+          adapter={adapter}
+          currentRoomCode={roomCode}
+          hintRoomCodes={recentRoomCodes}
+          variant="console"
+          onOpenLobby={async (targetCode) => {
+            if (onSwitchRoom) {
+              await onSwitchRoom(targetCode);
+            }
+          }}
+        />
 
         {/* 1. Offene Beitrittswünsche */}
         {openRequests.length > 0 && (

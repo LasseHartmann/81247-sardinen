@@ -47,6 +47,7 @@ import {
 import type {
   AccountPublicRecord,
   ActiveLeashViolationInfo,
+  AdminLobbyOverviewItem,
   AuthUserSummary,
   CatchRequest,
   CatchRequestStatus,
@@ -59,6 +60,7 @@ import type {
   HiderPrivateState,
   JoinRequest,
   LeaderboardEntry,
+  LobbyDirectoryEntry,
   MemberRecord,
   PlayerAllTimeStats,
   PlayerSeatClaim,
@@ -290,6 +292,12 @@ export interface DatabaseAdapter {
     currentHiderPrivate: HiderPrivateState | null;
     nowMs: number;
   }): Promise<void>;
+
+  syncRoomDirectoryEntry(publicState: PublicGameState): Promise<void>;
+  subscribeAllLobbiesOverview(
+    cb: (lobbies: AdminLobbyOverviewItem[]) => void,
+    hintRoomCodes?: string[]
+  ): UnsubscribeFn;
 }
 
 const ACCOUNTS_ROOT_PATH = `games/${GAME_ID}`;
@@ -398,6 +406,144 @@ export function getRequiredReadyHiderMembers(
   return deduplicateEnabledMembers(members, presence).filter(
     (m) => m.side === 'HIDER'
   );
+}
+
+export function buildDirectoryEntryFromPublicState(
+  pub: PublicGameState,
+  roomCodeFallback: string,
+  nowMs: number
+): LobbyDirectoryEntry {
+  const code = normalizeRoomCode(pub.roomCode ?? roomCodeFallback) || GAME_ID;
+  const safeStatus = pub.status === 'EMERGENCY_STOP' ? 'LOBBY' : pub.status;
+  return {
+    roomCode: code,
+    hostPlayerId: pub.hostPlayerId ?? 'admin',
+    hostName: pub.hostName ?? 'Admin',
+    status: safeStatus,
+    currentPhase: pub.currentPhase,
+    gameMode: pub.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
+    playAreaName: pub.playArea?.name ?? OFFICIAL_81247_AREA_NAME,
+    createdAt: pub.createdAt ?? nowMs,
+    updatedAt: nowMs,
+  };
+}
+
+export function buildAdminLobbyOverviewItem(params: {
+  roomCode: string;
+  publicState: PublicGameState | null;
+  directoryEntry?: LobbyDirectoryEntry | null;
+  members?: Record<string, MemberRecord>;
+  presence?: Record<string, Record<string, PresenceSession>>;
+  teamsPublic?: Record<string, TeamPublic>;
+}): AdminLobbyOverviewItem | null {
+  const {
+    roomCode,
+    publicState,
+    directoryEntry = null,
+    members = {},
+    presence = {},
+    teamsPublic = {},
+  } = params;
+
+  if (!publicState && !directoryEntry) {
+    return null;
+  }
+
+  const normalizedCode = normalizeRoomCode(roomCode) || GAME_ID;
+  const rawStatus = publicState?.status ?? directoryEntry?.status ?? 'LOBBY';
+  const status = rawStatus === 'EMERGENCY_STOP' ? 'LOBBY' : rawStatus;
+  const currentPhase =
+    publicState?.currentPhase ?? directoryEntry?.currentPhase ?? 'LOBBY';
+  const gameMode =
+    (publicState?.gameMode ?? directoryEntry?.gameMode) === 'MANHUNT'
+      ? 'MANHUNT'
+      : 'CLASSIC';
+  const playAreaName =
+    publicState?.playArea?.name ??
+    directoryEntry?.playAreaName ??
+    OFFICIAL_81247_AREA_NAME;
+  const hostPlayerId =
+    publicState?.hostPlayerId ?? directoryEntry?.hostPlayerId ?? 'admin';
+  const hostName =
+    publicState?.hostName ?? directoryEntry?.hostName ?? 'Admin';
+  const createdAt = publicState?.createdAt ?? directoryEntry?.createdAt ?? 0;
+
+  const enabledMembers = deduplicateEnabledMembers(members, presence);
+  const onlineMembers = filterOnlineEnabledMembers(members, presence);
+  const latestMemberUpdate = enabledMembers.reduce(
+    (maxTs, m) => Math.max(maxTs, m.updatedAt ?? 0),
+    0
+  );
+  const updatedAt = Math.max(
+    directoryEntry?.updatedAt ?? 0,
+    latestMemberUpdate,
+    createdAt
+  );
+
+  const hiderNames = enabledMembers
+    .filter((m) => m.side === 'HIDER')
+    .map((m) => m.name)
+    .sort((a, b) => a.localeCompare(b, 'de'));
+
+  const seekerTeamSummaries = TEAM_PALETTE.map((palette) => {
+    const assigned = enabledMembers.filter(
+      (m) => m.side === 'SEEKER' && m.teamId === palette.id
+    );
+    return {
+      id: palette.id,
+      name: teamsPublic[palette.id]?.name ?? palette.name,
+      color: teamsPublic[palette.id]?.color ?? palette.color,
+      memberNames: assigned
+        .map((m) => m.name)
+        .sort((a, b) => a.localeCompare(b, 'de')),
+    };
+  }).filter((t) => t.memberNames.length > 0);
+
+  const unassignedNames = enabledMembers
+    .filter(
+      (m) => m.side === 'UNASSIGNED' || (m.side === 'SEEKER' && !m.teamId)
+    )
+    .map((m) => m.name)
+    .sort((a, b) => a.localeCompare(b, 'de'));
+
+  return {
+    roomCode: normalizedCode,
+    hostPlayerId,
+    hostName,
+    status,
+    currentPhase,
+    gameMode,
+    playAreaName,
+    createdAt,
+    updatedAt,
+    memberCount: enabledMembers.length,
+    onlineCount: onlineMembers.length,
+    hiderNames,
+    seekerTeamSummaries,
+    unassignedNames,
+  };
+}
+
+export function sortAdminLobbyOverviews(
+  items: AdminLobbyOverviewItem[]
+): AdminLobbyOverviewItem[] {
+  const statusRank = (status: AdminLobbyOverviewItem['status']): number => {
+    if (status === 'RUNNING' || status === 'PAUSED') return 0;
+    if (status === 'LOBBY') return 1;
+    return 2;
+  };
+  return [...items].sort((a, b) => {
+    const rankDiff = statusRank(a.status) - statusRank(b.status);
+    if (rankDiff !== 0) return rankDiff;
+    if (b.onlineCount !== a.onlineCount) {
+      return b.onlineCount - a.onlineCount;
+    }
+    const timeDiff = (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt);
+    if (timeDiff !== 0) return timeDiff;
+    if (a.roomCode === GAME_ID) return -1;
+    if (b.roomCode === GAME_ID) return 1;
+    return a.roomCode.localeCompare(b.roomCode, 'de');
+  });
 }
 
 export function extractActiveLeashViolation(
@@ -608,6 +754,25 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
   let currentRoomCode: string = GAME_ID;
   const getRoomRootPath = (): string => `games/${currentRoomCode}`;
 
+  const writeRoomDirectoryBestEffort = async (
+    pubState: PublicGameState,
+    explicitRoomCode?: string
+  ): Promise<void> => {
+    const code = normalizeRoomCode(
+      explicitRoomCode ?? pubState.roomCode ?? currentRoomCode
+    );
+    if (!isValidRoomCode(code)) return;
+    const entry = buildDirectoryEntryFromPublicState(
+      pubState,
+      code,
+      adapter.getServerNow()
+    );
+    await set(
+      ref(db, `${ACCOUNTS_ROOT_PATH}/roomDirectory/${code}`),
+      stripUndefinedDeep(entry)
+    ).catch(() => {});
+  };
+
   // Initialer Listener auf Server-Zeitoffset
   onValue(ref(db, '.info/serverTimeOffset'), (snap) => {
     const val = snap.val();
@@ -729,6 +894,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       );
 
       currentRoomCode = roomCode;
+      void writeRoomDirectoryBestEffort(pubState, roomCode);
       return {
         roomCode,
         member,
@@ -818,6 +984,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           )
         );
         currentRoomCode = roomCode;
+        void writeRoomDirectoryBestEffort(initPub, roomCode);
         return {
           roomCode,
           member: initMember,
@@ -919,13 +1086,15 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       }
 
       currentRoomCode = roomCode;
+      const mergedPublic: PublicGameState = {
+        ...pubVal,
+        roomCode: pubVal.roomCode ?? roomCode,
+      };
+      void writeRoomDirectoryBestEffort(mergedPublic, roomCode);
       return {
         roomCode,
         member,
-        publicState: {
-          ...pubVal,
-          roomCode: pubVal.roomCode ?? roomCode,
-        },
+        publicState: mergedPublic,
       };
     },
 
@@ -1724,13 +1893,18 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
     ): Promise<void> {
       const stateSnap = await get(ref(db, `${getRoomRootPath()}/state/public`));
       if (!stateSnap.exists()) {
+        const seeded = {
+          ...defaultState,
+          roomCode: defaultState.roomCode ?? currentRoomCode,
+        };
         await set(
           ref(db, `${getRoomRootPath()}/state/public`),
-          stripUndefinedDeep({
-            ...defaultState,
-            roomCode: defaultState.roomCode ?? currentRoomCode,
-          })
+          stripUndefinedDeep(seeded)
         );
+        void writeRoomDirectoryBestEffort(seeded, currentRoomCode);
+      } else {
+        const existingPub = stateSnap.val() as PublicGameState;
+        void writeRoomDirectoryBestEffort(existingPub, currentRoomCode);
       }
       if (defaultSecrets) {
         const privSnap = await get(ref(db, `${getRoomRootPath()}/state/hiderPrivate`)).catch(
@@ -1772,6 +1946,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         ref(db, `${getRoomRootPath()}/state/public`),
         stripUndefinedDeep(normalized)
       );
+      void writeRoomDirectoryBestEffort(normalized, normalized.roomCode);
     },
 
     async patchControllerPublicTransition(patch): Promise<void> {
@@ -1781,6 +1956,18 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           val === undefined ? null : stripUndefinedDeep(val);
       }
       await update(ref(db), updates);
+      if (patch.status !== undefined || patch.currentPhase !== undefined) {
+        void get(ref(db, `${getRoomRootPath()}/state/public`))
+          .then((snap) => {
+            if (snap.exists()) {
+              return writeRoomDirectoryBestEffort(
+                snap.val() as PublicGameState,
+                currentRoomCode
+              );
+            }
+          })
+          .catch(() => {});
+      }
     },
 
     subscribeControllerLease(cb): UnsubscribeFn {
@@ -2231,6 +2418,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         ref(db, `${getRoomRootPath()}/state/public`),
         stripUndefinedDeep(nextPublic)
       );
+      void writeRoomDirectoryBestEffort(nextPublic, nextPublic.roomCode);
       await remove(ref(db, `${getRoomRootPath()}/state/controller`));
       await set(
         ref(db, `${getRoomRootPath()}/state/hiderPrivate`),
@@ -2472,6 +2660,195 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           leashAlertActive: false,
         });
       }
+      void writeRoomDirectoryBestEffort(
+        {
+          ...publicState,
+          roomCode: publicState.roomCode ?? currentRoomCode,
+          status: 'RUNNING',
+          currentPhase: initialPhase,
+          gameMode: publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC',
+        },
+        currentRoomCode
+      );
+    },
+
+    async syncRoomDirectoryEntry(publicState): Promise<void> {
+      await writeRoomDirectoryBestEffort(publicState);
+    },
+
+    subscribeAllLobbiesOverview(cb, hintRoomCodes = []): UnsubscribeFn {
+      let disposed = false;
+      let directoryEntries: Record<string, LobbyDirectoryEntry> = {};
+
+      interface RoomLiveRecord {
+        publicLoaded: boolean;
+        publicState: PublicGameState | null;
+        members: Record<string, MemberRecord>;
+        presence: Record<string, Record<string, PresenceSession>>;
+        teamsPublic: Record<string, TeamPublic>;
+        unsubs: UnsubscribeFn[];
+      }
+
+      const watchers = new Map<string, RoomLiveRecord>();
+
+      const emit = () => {
+        if (disposed) return;
+        const items: AdminLobbyOverviewItem[] = [];
+        for (const [code, rec] of watchers.entries()) {
+          if (rec.publicLoaded && !rec.publicState) {
+            continue;
+          }
+          const dirEntry = directoryEntries[code] ?? null;
+          if (!rec.publicState && !dirEntry) {
+            continue;
+          }
+          const built = buildAdminLobbyOverviewItem({
+            roomCode: code,
+            publicState: rec.publicState,
+            directoryEntry: dirEntry,
+            members: rec.members,
+            presence: rec.presence,
+            teamsPublic: rec.teamsPublic,
+          });
+          if (built) {
+            items.push(built);
+          }
+        }
+        cb(sortAdminLobbyOverviews(items));
+      };
+
+      const ensureWatcherForCode = (rawCode: string) => {
+        const code = normalizeRoomCode(rawCode);
+        if (!isValidRoomCode(code) || watchers.has(code)) return;
+
+        const rec: RoomLiveRecord = {
+          publicLoaded: false,
+          publicState: null,
+          members: {},
+          presence: {},
+          teamsPublic: {},
+          unsubs: [],
+        };
+        watchers.set(code, rec);
+
+        rec.unsubs.push(
+          onValue(
+            ref(db, `games/${code}/state/public`),
+            (snap) => {
+              rec.publicLoaded = true;
+              const val = snap.val() as PublicGameState | null;
+              rec.publicState = val
+                ? {
+                    ...val,
+                    roomCode: val.roomCode ?? code,
+                    playArea: sanitizePlayAreaState(val.playArea),
+                  }
+                : null;
+              emit();
+            },
+            () => {
+              rec.publicLoaded = true;
+              emit();
+            }
+          )
+        );
+
+        rec.unsubs.push(
+          onValue(
+            ref(db, `games/${code}/members`),
+            (snap) => {
+              const raw = (snap.val() ?? {}) as Record<string, MemberRecord>;
+              const mapped: Record<string, MemberRecord> = {};
+              for (const [uid, m] of Object.entries(raw)) {
+                mapped[uid] = {
+                  ...m,
+                  uid,
+                  isHost: Boolean(m.isHost || isAdminAccountId(m.playerId)),
+                };
+              }
+              rec.members = mapped;
+              emit();
+            },
+            () => {}
+          )
+        );
+
+        rec.unsubs.push(
+          onValue(
+            ref(db, `games/${code}/presence`),
+            (snap) => {
+              rec.presence =
+                (snap.val() as Record<string, Record<string, PresenceSession>> | null) ??
+                {};
+              emit();
+            },
+            () => {}
+          )
+        );
+
+        for (const palette of TEAM_PALETTE) {
+          rec.unsubs.push(
+            onValue(
+              ref(db, `games/${code}/teams/${palette.id}/public`),
+              (snap) => {
+                const tVal = snap.val() as TeamPublic | null;
+                if (tVal) {
+                  rec.teamsPublic = {
+                    ...rec.teamsPublic,
+                    [palette.id]: tVal,
+                  };
+                }
+                emit();
+              },
+              () => {}
+            )
+          );
+        }
+      };
+
+      const syncWatcherSet = () => {
+        const wanted = new Set<string>([
+          GAME_ID,
+          ...Object.keys(directoryEntries)
+            .map((k) => normalizeRoomCode(k))
+            .filter(isValidRoomCode),
+          ...hintRoomCodes.map((k) => normalizeRoomCode(k)).filter(isValidRoomCode),
+        ]);
+
+        for (const [existingCode, rec] of Array.from(watchers.entries())) {
+          if (!wanted.has(existingCode)) {
+            for (const u of rec.unsubs) u();
+            watchers.delete(existingCode);
+          }
+        }
+        for (const code of wanted) {
+          ensureWatcherForCode(code);
+        }
+        emit();
+      };
+
+      syncWatcherSet();
+
+      const unsubDir = onValue(
+        ref(db, `${ACCOUNTS_ROOT_PATH}/roomDirectory`),
+        (snap) => {
+          directoryEntries =
+            (snap.val() as Record<string, LobbyDirectoryEntry> | null) ?? {};
+          syncWatcherSet();
+        },
+        () => {
+          syncWatcherSet();
+        }
+      );
+
+      return () => {
+        disposed = true;
+        unsubDir();
+        for (const rec of watchers.values()) {
+          for (const u of rec.unsubs) u();
+        }
+        watchers.clear();
+      };
     },
   };
 

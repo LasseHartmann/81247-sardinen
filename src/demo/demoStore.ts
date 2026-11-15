@@ -16,7 +16,9 @@ import {
 import { snapPointIntoPlayArea } from '../geo/boundary';
 import { destinationPoint, roundLatLng5 } from '../geo/distance';
 import {
+  buildAdminLobbyOverviewItem,
   computeAveragedTeamLocationFromMemberFixes,
+  sortAdminLobbyOverviews,
   type ControllerPublicPatch,
   type DatabaseAdapter,
   type UnsubscribeFn,
@@ -30,6 +32,7 @@ import {
 } from '../services/qrService';
 import type {
   AccountPublicRecord,
+  AdminLobbyOverviewItem,
   AuthUserSummary,
   CatchRequest,
   CatchRequestStatus,
@@ -1828,6 +1831,43 @@ export function createDemoStore(options?: {
           activeTeamIds: occupiedTeamIds,
         };
       });
+    },
+
+    async syncRoomDirectoryEntry(): Promise<void> {
+      // Im Demo-Store liegen alle Räume direkt im lokalen DemoDatabaseTree.
+    },
+
+    subscribeAllLobbiesOverview(cb): UnsubscribeFn {
+      return subscribeSlice((tree) => {
+        const sliceEntries: Array<[string, DemoRoomSlice]> = [
+          [GAME_ID, tree],
+          ...Object.entries(tree.rooms ?? {}),
+        ];
+        const items: AdminLobbyOverviewItem[] = [];
+        for (const [code, slice] of sliceEntries) {
+          if (!slice?.state?.public) continue;
+          const teamsPub = Object.fromEntries(
+            Object.entries(slice.teams ?? {}).map(([tid, entry]) => [
+              tid,
+              entry.public,
+            ])
+          );
+          const built = buildAdminLobbyOverviewItem({
+            roomCode: code,
+            publicState: {
+              ...slice.state.public,
+              roomCode: slice.state.public.roomCode ?? code,
+            },
+            members: slice.members ?? {},
+            presence: slice.presence ?? {},
+            teamsPublic: teamsPub,
+          });
+          if (built) {
+            items.push(built);
+          }
+        }
+        return sortAdminLobbyOverviews(items);
+      }, cb);
     },
   };
 

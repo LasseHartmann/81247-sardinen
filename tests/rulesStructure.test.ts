@@ -111,5 +111,12 @@ describe('Security-Audit: database.rules.json & Client-Code-Garantien', () => {
 
     // Kein Hider-Passwort-Lock mehr unter /state/public
     expect(gameNode.state.public.hiderLock).toBeUndefined();
+
+    // /roomDirectory (Lobby-Gesamtübersicht) ist clientseitig ausschließlich für das verifizierte 'admin'-Konto lesbar
+    expect(gameNode.roomDirectory).toBeDefined();
+    expect(gameNode.roomDirectory['.read']).toContain("=== 'admin'");
+    expect(gameNode.roomDirectory['.read']).toContain(
+      'accountSecrets/admin/passwordHash'
+    );
   });
 });

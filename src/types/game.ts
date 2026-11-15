@@ -438,3 +438,37 @@ export type DemoRoleId =
   | 'TEAM_2'
   | 'TEAM_3'
   | 'TEAM_4';
+
+export interface LobbyDirectoryEntry {
+  roomCode: string;
+  hostPlayerId: string;
+  hostName: string;
+  status: GameStatus;
+  currentPhase: GamePhase;
+  gameMode: GameMode;
+  playAreaName: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AdminLobbyOverviewItem {
+  roomCode: string;
+  hostPlayerId: string;
+  hostName: string;
+  status: GameStatus;
+  currentPhase: GamePhase;
+  gameMode: GameMode;
+  playAreaName: string;
+  createdAt: number;
+  updatedAt: number;
+  memberCount: number;
+  onlineCount: number;
+  hiderNames: string[];
+  seekerTeamSummaries: Array<{
+    id: string;
+    name: string;
+    color: string;
+    memberNames: string[];
+  }>;
+  unassignedNames: string[];
+}

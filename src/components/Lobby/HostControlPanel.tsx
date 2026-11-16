@@ -69,8 +69,6 @@ import { HardwareKnob } from '../Common/HardwareKnob';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
 import { AdminAccountManager } from './AdminAccountManager';
 import { AdminLobbiesOverview } from './AdminLobbiesOverview';
-import { AdminSandboxConsolePanel } from './AdminSandboxPanel';
-import type { SandboxPuppetTarget } from '../../services/sandboxService';
 import { isOverviewMember } from '../../config/players';
 import {
   deduplicateEnabledMembers,
@@ -90,7 +88,6 @@ import type {
   PresenceSession,
   PublicGameState,
   RadarStageId,
-  TeamLocation,
   TeamPublic,
 } from '../../types/game';
 import {
@@ -110,11 +107,9 @@ export interface HostControlPanelProps {
   joinRequests: Record<string, JoinRequest>;
   presence: Record<string, Record<string, PresenceSession>>;
   teamsPublic: Record<string, TeamPublic>;
-  teamLocations?: Record<string, TeamLocation | null>;
   cluesByTeam?: Record<string, Record<string, ClueRecord>>;
   requestsByTeam?: Record<string, Record<string, ClueRequest>>;
   onNavigateToMap: () => void;
-  onSelectPuppetOnMap?: (target: SandboxPuppetTarget) => void;
   onOpenCircleMapEditor?: () => void;
   recentRoomCodes?: string[];
   onSwitchRoom?: (roomCode: string) => Promise<void>;
@@ -132,11 +127,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   joinRequests,
   presence,
   teamsPublic,
-  teamLocations = {},
   cluesByTeam = {},
   requestsByTeam = {},
   onNavigateToMap,
-  onSelectPuppetOnMap,
   onOpenCircleMapEditor,
   recentRoomCodes = [],
   onSwitchRoom,
@@ -1010,15 +1003,11 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 >
                   {roomCode}
                 </span>
-                {publicState.hostName &&
-                  !isOverviewMember({
-                    playerId: publicState.hostPlayerId,
-                    name: publicState.hostName,
-                  }) && (
-                    <span className="font-tech text-[11px] text-[#9AA4AE]">
-                      Host: {publicState.hostName}
-                    </span>
-                  )}
+                {publicState.hostName && (
+                  <span className="font-tech text-[11px] text-[#9AA4AE]">
+                    Host: {publicState.hostName}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -1082,19 +1071,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
         />
 
         {isOverviewMember(ownMember) && (
-          <>
-            <AdminSandboxConsolePanel
-              adapter={adapter}
-              publicState={publicState}
-              members={members}
-              presence={presence}
-              readyPlayerIds={readyPlayerIds}
-              teamsPublic={teamsPublic}
-              teamLocations={teamLocations}
-              onSelectPuppetOnMap={onSelectPuppetOnMap}
-            />
-            <AdminAccountManager adapter={adapter} defaultCollapsed />
-          </>
+          <AdminAccountManager adapter={adapter} defaultCollapsed />
         )}
 
         {/* 1. Offene Beitrittswünsche */}

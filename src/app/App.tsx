@@ -69,12 +69,6 @@ import {
   generateSessionSecrets,
 } from '../services/qrService';
 import {
-  moveSandboxTargetToPoint,
-  spawnDefaultSandboxPreset,
-  stepAutoWalkSandboxPuppets,
-  type SandboxPuppetTarget,
-} from '../services/sandboxService';
-import {
   applyPowerSaveAttributeToDom,
   createEmptyPlayerStats,
   dispatchSystemNotification,
@@ -107,7 +101,6 @@ import { LeashWarningBanner } from '../components/HUD/LeashWarningBanner';
 import { TopHud } from '../components/HUD/TopHud';
 import { LeaderboardView } from '../components/Leaderboard/LeaderboardView';
 import { HostControlPanel } from '../components/Lobby/HostControlPanel';
-import { AdminSandboxMapDock } from '../components/Lobby/AdminSandboxPanel';
 import { GameHubScreen } from '../components/Lobby/GameHubScreen';
 import { LateJoinTeamPicker } from '../components/Lobby/LateJoinTeamPicker';
 import { LobbyScreen } from '../components/Lobby/LobbyScreen';
@@ -231,85 +224,9 @@ export const App: React.FC = () => {
   const [hiderFilterTeamId, setHiderFilterTeamId] = useState<string>('NONE');
   const [circlePickError, setCirclePickError] = useState<string | null>(null);
   const [circleEditorCollapsed, setCircleEditorCollapsed] = useState(false);
-  const [sandboxPuppetTarget, setSandboxPuppetTarget] =
-    useState<SandboxPuppetTarget>({ kind: 'NONE' });
-  const [sandboxAutoWalk, setSandboxAutoWalk] = useState(false);
-  const pendingSandboxSeedRoomRef = useRef<string | null>(null);
 
   const latestPublicStateRef = useRef(publicState);
   latestPublicStateRef.current = publicState;
-
-  useEffect(() => {
-    setSandboxPuppetTarget({ kind: 'NONE' });
-    setSandboxAutoWalk(false);
-  }, [activeRoomCode]);
-
-  useEffect(() => {
-    if (
-      !activeRoomCode ||
-      !publicState ||
-      pendingSandboxSeedRoomRef.current !== activeRoomCode
-    ) {
-      return;
-    }
-    pendingSandboxSeedRoomRef.current = null;
-    void (async () => {
-      const nextPub = {
-        ...publicState,
-        allowTestClicks: true,
-      };
-      await adapter.savePublicStateByHost(nextPub).catch(() => {});
-      await spawnDefaultSandboxPreset({
-        adapter,
-        publicState: nextPub,
-        teamsPublic: gameState.teamsPublic,
-        teamLocations: gameState.teamLocations,
-      }).catch(() => {});
-      setSandboxPuppetTarget({ kind: 'TEAM', teamId: 'team-1' });
-    })();
-  }, [
-    activeRoomCode,
-    adapter,
-    gameState.teamLocations,
-    gameState.teamsPublic,
-    publicState,
-  ]);
-
-  const latestSandboxWalkRef = useRef({
-    publicState,
-    members: gameState.members,
-    presence: gameState.presence,
-    teamLocations: gameState.teamLocations,
-    hiderPrivate,
-    ownMember,
-  });
-  latestSandboxWalkRef.current = {
-    publicState,
-    members: gameState.members,
-    presence: gameState.presence,
-    teamLocations: gameState.teamLocations,
-    hiderPrivate,
-    ownMember,
-  };
-
-  useEffect(() => {
-    if (!sandboxAutoWalk) return;
-    const id = setInterval(() => {
-      const cur = latestSandboxWalkRef.current;
-      if (!cur.publicState || !cur.ownMember || !isOverviewMember(cur.ownMember)) {
-        return;
-      }
-      void stepAutoWalkSandboxPuppets({
-        adapter,
-        publicState: cur.publicState,
-        members: cur.members,
-        presence: cur.presence,
-        teamLocations: cur.teamLocations,
-        hiderPrivate: cur.hiderPrivate,
-      });
-    }, 2800);
-    return () => clearInterval(id);
-  }, [adapter, sandboxAutoWalk]);
 
   useEffect(() => {
     if (activeTab !== 'MAP' && mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE') {
@@ -818,17 +735,6 @@ export const App: React.FC = () => {
             );
           }
         }}
-        onStartSandboxTestServer={
-          isAdminAccountId(accountSession.playerId)
-            ? async () => {
-                const createdCode = await hostNewGame();
-                if (createdCode) {
-                  pendingSandboxSeedRoomRef.current = createdCode;
-                  setActiveTab('HOST');
-                }
-              }
-            : undefined
-        }
         onJoinByCode={async (code) => {
           const ok = await joinGameByCode(code);
           if (ok) {
@@ -1193,22 +1099,6 @@ export const App: React.FC = () => {
       setAnchorFeedbackError(null);
       setFineAdjustAnchorPt(pt);
       setMapClickMode({ kind: 'NONE' });
-      return;
-    }
-    if (
-      isOverviewAccount &&
-      mapClickMode.kind === 'NONE' &&
-      sandboxPuppetTarget.kind !== 'NONE'
-    ) {
-      void moveSandboxTargetToPoint({
-        adapter,
-        target: sandboxPuppetTarget,
-        point: pt,
-        members: gameState.members,
-        presence: gameState.presence,
-        teamLocations: gameState.teamLocations,
-        hiderPrivate,
-      });
       return;
     }
     if (mapClickMode.kind === 'TEST_LOCATION') {
@@ -1733,7 +1623,7 @@ export const App: React.FC = () => {
               );
             }}
             ownFix={
-              isOverviewAccount
+              isOverviewAccount && !canUseMapClicks
                 ? null
                 : fineAdjustAnchorPt
                   ? {
@@ -1775,13 +1665,7 @@ export const App: React.FC = () => {
               }
               setThermoPointB(pt);
             }}
-            clickMode={
-              mapClickMode.kind !== 'NONE'
-                ? mapClickMode
-                : isOverviewAccount && sandboxPuppetTarget.kind !== 'NONE'
-                  ? { kind: 'TEST_LOCATION', label: 'Sandbox-Bewegung aktiv' }
-                  : mapClickMode
-            }
+            clickMode={mapClickMode}
             onMapCoordinateClick={handleMapCoordinateClick}
             onRequestGpsPermission={geo.retryGpsPermission}
             layoutInvalidationKey={`${activeTab}_${publicState.status}`}
@@ -1790,25 +1674,8 @@ export const App: React.FC = () => {
             emergencyFocusTarget={emergencyFocusTarget}
           />
 
-          {/* Schwebende Admin-Sandbox-Marionetten-Steuerung auf der Karte */}
-          {isOverviewAccount && !isEditingCircleOnMap && (
-            <AdminSandboxMapDock
-              adapter={adapter}
-              publicState={publicState}
-              hiderPrivate={hiderPrivate}
-              members={gameState.members}
-              teamsPublic={gameState.teamsPublic}
-              teamLocations={gameState.teamLocations}
-              activeTarget={sandboxPuppetTarget}
-              onChangeTarget={setSandboxPuppetTarget}
-              autoWalkEnabled={sandboxAutoWalk}
-              onToggleAutoWalk={() => setSandboxAutoWalk((v) => !v)}
-              onOpenConsoleTab={() => setActiveTab('HOST')}
-            />
-          )}
-
           {/* Obere schlanke Status-Pills & Verstecker-Teamfilter auf der Karte */}
-          {((!isOverviewAccount && canUseMapClicks) ||
+          {(canUseMapClicks ||
             isJoinedSardines ||
             isOverviewAccount ||
             (!isManhunt &&
@@ -1816,11 +1683,9 @@ export const App: React.FC = () => {
               publicState.status !== 'LOBBY' &&
               roundSeekerTeamsForFilter.length > 0)) && (
             <div className="pointer-events-none absolute top-2.5 right-2.5 left-2.5 z-[400] flex flex-col gap-1.5">
-              {((!isOverviewAccount && canUseMapClicks) ||
-                isJoinedSardines ||
-                isOverviewAccount) && (
+              {(canUseMapClicks || isJoinedSardines || isOverviewAccount) && (
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  {!isOverviewAccount && canUseMapClicks && (
+                  {canUseMapClicks && (
                     <button
                       type="button"
                       data-testid="map-set-test-pos-btn"
@@ -2347,10 +2212,8 @@ export const App: React.FC = () => {
               </PhysicsBottomSheet>
             )}
 
-            {/* 2. Kompakte Karten-Vorschau-Leiste im Lobby-Modus (für Spieler/Hosts, nicht über dem Admin-Sandbox-Dock) */}
-            {!isOverviewAccount &&
-              publicState.status === 'LOBBY' &&
-              !isEditingCircleOnMap && (
+            {/* 2. Kompakte Karten-Vorschau-Leiste im Lobby-Modus */}
+            {publicState.status === 'LOBBY' && !isEditingCircleOnMap && (
               <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 shadow-xl">
                 <div className="min-w-0 flex-1">
                   <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase">
@@ -2797,14 +2660,9 @@ export const App: React.FC = () => {
             joinRequests={gameState.joinRequests}
             presence={gameState.presence}
             teamsPublic={gameState.teamsPublic}
-            teamLocations={gameState.teamLocations}
             cluesByTeam={gameState.cluesByTeam}
             requestsByTeam={gameState.requestsByTeam}
             onNavigateToMap={() => setActiveTab('MAP')}
-            onSelectPuppetOnMap={(target) => {
-              setSandboxPuppetTarget(target);
-              setActiveTab('MAP');
-            }}
             recentRoomCodes={recentRooms.map((r) => r.roomCode)}
             onSwitchRoom={async (targetCode) => {
               const ok = await joinGameByCode(targetCode);

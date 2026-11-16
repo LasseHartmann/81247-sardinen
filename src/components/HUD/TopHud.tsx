@@ -9,7 +9,6 @@ import {
   Send,
   Trash2,
 } from 'lucide-react';
-import { isOverviewMember } from '../../config/players';
 import type { GameTimerSnapshot } from '../../hooks/useGameTimer';
 import type { GpsPermissionState } from '../../hooks/useGeolocation';
 import type {
@@ -41,7 +40,6 @@ export interface TopHudProps {
 export const TopHud: React.FC<TopHudProps> = ({
   publicState,
   timer,
-  ownMember,
   ownTeam,
   connected,
   ownFix,
@@ -51,7 +49,6 @@ export const TopHud: React.FC<TopHudProps> = ({
   onSendEmergencyMessage,
   onClearOwnEmergencyMessage,
 }) => {
-  const isSpectator = isOverviewMember(ownMember);
   const activePhase =
     publicState.status === 'LOBBY' ? 'LOBBY' : timer.computedPhase;
   const isManhunt = (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT';
@@ -194,32 +191,30 @@ export const TopHud: React.FC<TopHudProps> = ({
               </div>
             ) : null)}
 
-          {!isSpectator && (
-            <div
-              title="GPS-Status & Genauigkeit"
-              className={`inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-bold uppercase sm:px-2 sm:text-[11px] ${
-                gpsStatus === 'DENIED' ? 'cmf-badge-orange' : 'cmf-badge-teal'
-              }`}
-            >
-              {gpsStatus === 'DENIED' ? (
-                <>
-                  <AlertTriangle className="h-3 w-3 shrink-0" />
-                  <span className="hidden min-[380px]:inline">NO GPS</span>
-                </>
-              ) : (
-                <>
-                  <Crosshair className="h-3 w-3 shrink-0" />
-                  <span>
-                    {gpsStatus === 'MANUAL_TEST'
-                      ? 'PIN'
-                      : ownFix
-                        ? `±${Math.min(999, Math.round(ownFix.accuracy))}m`
-                        : '...'}
-                  </span>
-                </>
-              )}
-            </div>
-          )}
+          <div
+            title="GPS-Status & Genauigkeit"
+            className={`inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-bold uppercase sm:px-2 sm:text-[11px] ${
+              gpsStatus === 'DENIED' ? 'cmf-badge-orange' : 'cmf-badge-teal'
+            }`}
+          >
+            {gpsStatus === 'DENIED' ? (
+              <>
+                <AlertTriangle className="h-3 w-3 shrink-0" />
+                <span className="hidden min-[380px]:inline">NO GPS</span>
+              </>
+            ) : (
+              <>
+                <Crosshair className="h-3 w-3 shrink-0" />
+                <span>
+                  {gpsStatus === 'MANUAL_TEST'
+                    ? 'PIN'
+                    : ownFix
+                      ? `±${Math.min(999, Math.round(ownFix.accuracy))}m`
+                      : '...'}
+                </span>
+              </>
+            )}
+          </div>
 
           <div
             title={connected ? 'Live verbunden' : 'Offline'}

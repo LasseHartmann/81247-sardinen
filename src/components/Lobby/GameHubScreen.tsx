@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   ArrowRight,
-  Bot,
   Hash,
   LogOut,
   PlusCircle,
@@ -27,7 +26,6 @@ export interface GameHubScreenProps {
   roomError: string | null;
   onClearError: () => void;
   onHostNewGame: () => Promise<void>;
-  onStartSandboxTestServer?: () => Promise<void>;
   onJoinByCode: (code: string) => Promise<void>;
   onLogout: () => Promise<void>;
 }
@@ -41,7 +39,6 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
   roomError,
   onClearError,
   onHostNewGame,
-  onStartSandboxTestServer,
   onJoinByCode,
   onLogout,
 }) => {
@@ -125,44 +122,9 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
           </div>
         )}
 
-        {/* Exklusive Live-Übersicht aller Lobbys, Test-Server & Konto-Verwaltung für das Admin-Konto */}
+        {/* Exklusive Live-Übersicht aller Lobbys & Konto-Verwaltung für das Admin-Konto */}
         {isAdmin && (
           <>
-            {onStartSandboxTestServer && (
-              <section className="rounded-2xl border border-emerald-500/45 bg-[#020804] p-4 text-[#F8FAFC] space-y-2.5 shadow-lg">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider text-[#00FF41] uppercase">
-                      <Bot className="h-3 w-3" />
-                      ADMIN // SANDBOX TEST-SERVER
-                    </span>
-                    <h2 className="font-industrial mt-1.5 text-base font-bold text-[#F8FAFC]">
-                      Test-Server mit bewegbaren Bots starten
-                    </h2>
-                    <p className="mt-0.5 text-xs leading-relaxed text-slate-300">
-                      Erstellt einen Test-Spielraum mit vorgefertigten, frei
-                      anpassbaren Charakteren und Teams (Sardinenbüchsen), die
-                      du alleine auf der Karte steuern kannst.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  data-testid="hub-start-test-server-btn"
-                  disabled={busy}
-                  onClick={() => void onStartSandboxTestServer()}
-                  className="font-dot flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-[#00FF41]/60 bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-95 disabled:opacity-50"
-                >
-                  <Bot className="h-4 w-4" />
-                  <span>
-                    {busy
-                      ? 'Starte Test-Server ...'
-                      : 'Test-Server mit Bots starten'}
-                  </span>
-                </button>
-              </section>
-            )}
-
             <AdminLobbiesOverview
               adapter={adapter}
               hintRoomCodes={recentRooms.map((r) => r.roomCode)}

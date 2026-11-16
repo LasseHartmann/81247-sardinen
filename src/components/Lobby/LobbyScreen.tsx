@@ -756,13 +756,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   {roomCode}
                 </span>
                 <span className="font-tech text-[11px] text-[#9AA4AE]">
-                  {publicState.hostName &&
-                  !isOverviewMember({
-                    playerId: publicState.hostPlayerId,
-                    name: publicState.hostName,
-                  })
+                  {publicState.hostName
                     ? `Host: ${publicState.hostName}`
-                    : 'Offizieller Spielraum'}{' '}
+                    : 'Klassischer Raum'}{' '}
                   • {onlineMemberList.length} Online
                 </span>
               </div>

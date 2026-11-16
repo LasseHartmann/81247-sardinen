@@ -676,12 +676,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         })()
         )}
 
-        {/* 3. All-Time Stats (Lebenszeit-Statistik — nur für Spieler, nicht für Admin/Overview-Zuschauer) */}
-        {!isOverviewAccount && (
-          <section
-            data-testid="profile-alltime-stats"
-            className="cmf-module p-4 sm:p-5 space-y-3.5"
-          >
+        {/* 3. All-Time Stats (Lebenszeit-Statistik) */}
+        <section
+          data-testid="profile-alltime-stats"
+          className="cmf-module p-4 sm:p-5 space-y-3.5"
+        >
           <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-[var(--cmf-amber)]" />
@@ -764,7 +763,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </span>
           </div>
         </section>
-        )}
 
         {/* 4. Team-Wahl & Aktuelle Team-Mitglieder */}
         {!isOverviewAccount && (

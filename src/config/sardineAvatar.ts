@@ -491,68 +491,72 @@ function renderCapeBackSvg(extra: SardineExtraId): string {
 }
 
 function renderHatSvg(hat: SardineHatId): string {
+  // Die Kopflinie der Sardine fällt von (40, 23.2) nach (53, 28.2) um ca. +21° ab.
+  // Durch die Transformation sitzt jede Kopfbedeckung geneigt & bündig direkt auf dem Fischkopf.
+  const headTransform = 'translate(46.5, 25.6) rotate(21)';
+
   switch (hat) {
     case 'crown':
       return `
-        <g>
-          <path d="M37 22 L35 11 L42 16 L46 8 L50 16 L56 11 L53 22 Z" fill="#FACC15" stroke="#713F12" stroke-width="1.6" stroke-linejoin="round" />
-          <rect x="37" y="20.5" width="16" height="3" rx="1" fill="#EAB308" stroke="#713F12" stroke-width="1.2" />
-          <circle cx="41" cy="18" r="1.3" fill="#EF4444" />
-          <circle cx="46" cy="16.8" r="1.5" fill="#0D9488" />
-          <circle cx="50.5" cy="18" r="1.3" fill="#EF4444" />
+        <g transform="${headTransform}">
+          <path d="M-7.5 0.6 L-9 -10 L-2.5 -5 L0 -12.5 L2.5 -5 L9 -10 L7.5 0.6 Z" fill="#FACC15" stroke="#713F12" stroke-width="1.5" stroke-linejoin="round" />
+          <rect x="-7.8" y="-1.6" width="15.6" height="2.8" rx="1" fill="#EAB308" stroke="#713F12" stroke-width="1.2" />
+          <circle cx="-4.2" cy="-3.8" r="1.25" fill="#EF4444" />
+          <circle cx="0" cy="-5" r="1.45" fill="#0D9488" />
+          <circle cx="4.2" cy="-3.8" r="1.25" fill="#EF4444" />
         </g>
       `;
     case 'ninja':
       return `
-        <g>
-          <path d="M27 20 C21 17 15 18 10 22 C15 23 20 22 27 23 Z" fill="#18181B" stroke="#09090B" stroke-width="1.3" />
-          <path d="M27 23 C21 24 16 27 12 31 C17 30 22 27 28 25 Z" fill="#27272A" stroke="#09090B" stroke-width="1.3" />
-          <path d="M33 22 C40 19.5 49 20.5 55 24.5 L53.5 27.5 C47.5 24 39.5 23.5 32.5 25.5 Z" fill="#18181B" stroke="#09090B" stroke-width="1.4" />
-          <rect x="44" y="21.2" width="6.5" height="3.6" rx="1" transform="rotate(12 47 23)" fill="#E2E8F0" stroke="#0F172A" stroke-width="1.1" />
+        <g transform="${headTransform}">
+          <path d="M-7.5 -0.5 C-13.5 -4.5 -19 -5 -24 -2 C-19 -0.5 -13.5 -0.2 -7.5 1.8 Z" fill="#18181B" stroke="#09090B" stroke-width="1.2" />
+          <path d="M-7.5 1.2 C-13.5 1.5 -18.5 3.5 -22.5 7 C-17.5 6.5 -12.5 4.2 -7 2.8 Z" fill="#27272A" stroke="#09090B" stroke-width="1.2" />
+          <path d="M-8.5 -0.8 C-3 -2.2 3.5 -2.2 8.5 -0.5 L7.8 2.6 C3 1.2 -3 1.2 -8.2 2.4 Z" fill="#18181B" stroke="#09090B" stroke-width="1.35" />
+          <rect x="-1.5" y="-1.3" width="6.5" height="3.3" rx="0.9" fill="#E2E8F0" stroke="#0F172A" stroke-width="1.05" />
         </g>
       `;
     case 'captain':
       return `
-        <g>
-          <path d="M35 21 C35 13.5 53 12.5 55 19.5 L52 22.5 L37 22.5 Z" fill="#F8FAFC" stroke="#0F172A" stroke-width="1.6" stroke-linejoin="round" />
-          <path d="M36.5 20.5 L53.5 20.5 L53 23.2 L36.5 23.2 Z" fill="#1E293B" />
-          <path d="M37 21.8 L53 21.8" stroke="#FACC15" stroke-width="1.4" />
-          <path d="M46 22.8 L57.5 24.5 C55.5 26.2 50.5 26 46 24.5 Z" fill="#0F172A" />
-          <circle cx="45.5" cy="17" r="1.8" fill="#FACC15" stroke="#713F12" stroke-width="0.8" />
+        <g transform="${headTransform}">
+          <path d="M-8.5 -0.8 C-9 -8.2 8.5 -8.8 9 -1.2 L7 0.8 L-7 0.8 Z" fill="#F8FAFC" stroke="#0F172A" stroke-width="1.5" stroke-linejoin="round" />
+          <rect x="-7.5" y="-1.8" width="15" height="2.8" rx="0.9" fill="#1E293B" stroke="#0F172A" stroke-width="1.1" />
+          <path d="M-7 -0.4 L7 -0.4" stroke="#FACC15" stroke-width="1.3" />
+          <path d="M1.5 0.5 L11.5 1.2 C10 3.2 5.2 3.2 1.2 1.8 Z" fill="#0F172A" />
+          <circle cx="0.5" cy="-4.6" r="1.7" fill="#FACC15" stroke="#713F12" stroke-width="0.8" />
         </g>
       `;
     case 'fedora':
       return `
-        <g>
-          <ellipse cx="45" cy="22" rx="12.5" ry="2.8" transform="rotate(-6 45 22)" fill="#78350F" stroke="#292524" stroke-width="1.4" />
-          <path d="M37 21.5 L39.5 13 C42.5 11.8 46.5 12 49.5 13.5 L52 21 Z" fill="#92400E" stroke="#292524" stroke-width="1.4" stroke-linejoin="round" />
-          <path d="M37.5 19.5 L51.5 19" stroke="#1C1917" stroke-width="2.2" />
+        <g transform="${headTransform}">
+          <ellipse cx="0" cy="0.4" rx="11.8" ry="2.4" fill="#78350F" stroke="#292524" stroke-width="1.35" />
+          <path d="M-7.2 0 L-5 -8.5 C-2 -9.6 2 -9.5 5 -8.2 L7.2 0 Z" fill="#92400E" stroke="#292524" stroke-width="1.35" stroke-linejoin="round" />
+          <path d="M-6.8 -1.8 L6.8 -1.8" stroke="#1C1917" stroke-width="2.1" />
         </g>
       `;
     case 'beanie':
       return `
-        <g>
-          <circle cx="44.5" cy="10.5" r="2.8" fill="#F97316" stroke="#431407" stroke-width="1.3" />
-          <path d="M36 22 C36 14 52.5 13.5 53.5 22 Z" fill="#EA580C" stroke="#431407" stroke-width="1.5" />
-          <rect x="35" y="20" width="19" height="3.8" rx="1.8" fill="#FB923C" stroke="#431407" stroke-width="1.3" />
+        <g transform="${headTransform}">
+          <circle cx="0" cy="-10.5" r="2.6" fill="#F97316" stroke="#431407" stroke-width="1.25" />
+          <path d="M-8 0.4 C-8 -7.8 8 -7.8 8 0.4 Z" fill="#EA580C" stroke="#431407" stroke-width="1.45" />
+          <rect x="-8.8" y="-1.6" width="17.6" height="3.5" rx="1.7" fill="#FB923C" stroke="#431407" stroke-width="1.25" />
         </g>
       `;
     case 'tracht':
       return `
-        <g>
-          <ellipse cx="45" cy="22" rx="12" ry="2.6" transform="rotate(-5 45 22)" fill="#166534" stroke="#052E16" stroke-width="1.4" />
-          <path d="M37.5 21.5 L40.5 13 C44 12 47 12.5 49.5 14 L51.5 21 Z" fill="#15803D" stroke="#052E16" stroke-width="1.4" />
-          <path d="M38 19.8 L51 19.3" stroke="#FEF08A" stroke-width="1.6" />
-          <path d="M40 19 C36.5 14 35.5 10.5 38 9 C40 11 41 15 41.2 19 Z" fill="#F8FAFC" stroke="#0F172A" stroke-width="1" />
+        <g transform="${headTransform}">
+          <ellipse cx="0" cy="0.4" rx="11.2" ry="2.3" fill="#166534" stroke="#052E16" stroke-width="1.35" />
+          <path d="M-6.8 0 L-4.2 -8.5 C-1 -9.5 2 -9 4.5 -7.5 L6.8 0 Z" fill="#15803D" stroke="#052E16" stroke-width="1.35" />
+          <path d="M-6.4 -1.6 L6.4 -1.6" stroke="#FEF08A" stroke-width="1.5" />
+          <path d="M-4.5 -2 C-8.2 -6.8 -9.2 -10.5 -6.5 -12 C-4.5 -10 -3.5 -6 -3.3 -2 Z" fill="#F8FAFC" stroke="#0F172A" stroke-width="1" />
         </g>
       `;
     case 'party':
       return `
-        <g>
-          <path d="M38 22 L45.5 8.5 L52 22 Z" fill="#EC4899" stroke="#500724" stroke-width="1.5" stroke-linejoin="round" />
-          <path d="M40.5 17.5 L49.5 17.5" stroke="#FACC15" stroke-width="1.8" />
-          <path d="M42.8 13.5 L47.8 13.5" stroke="#38BDF8" stroke-width="1.8" />
-          <circle cx="45.5" cy="8" r="2.3" fill="#FACC15" stroke="#500724" stroke-width="1.1" />
+        <g transform="${headTransform}">
+          <path d="M-6.8 0.6 L0 -12.2 L6.8 0.6 Z" fill="#EC4899" stroke="#500724" stroke-width="1.45" stroke-linejoin="round" />
+          <path d="M-4.5 -3.6 L4.5 -3.6" stroke="#FACC15" stroke-width="1.7" />
+          <path d="M-2.4 -7.5 L2.4 -7.5" stroke="#38BDF8" stroke-width="1.7" />
+          <circle cx="0" cy="-12.8" r="2.2" fill="#FACC15" stroke="#500724" stroke-width="1.05" />
         </g>
       `;
     default:

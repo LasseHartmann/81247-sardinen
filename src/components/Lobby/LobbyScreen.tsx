@@ -88,6 +88,7 @@ import {
 } from '../../utils/formatting';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
 import { PlayerHostedLobbiesSection } from './PlayerHostedLobbiesSection';
+import { ShrinkingBorderPreview } from './ShrinkingBorderPreview';
 
 export interface LobbyScreenProps {
   adapter: DatabaseAdapter;
@@ -1890,6 +1891,12 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 </div>
               </div>
             )}
+
+            <ShrinkingBorderPreview
+              playArea={publicState.playArea}
+              gameMode={publicState.gameMode}
+              radarSchedule={publicState.radarSchedule}
+            />
           </div>
 
           {/* Optionaler Testmodus-Schalter nur für den Host */}

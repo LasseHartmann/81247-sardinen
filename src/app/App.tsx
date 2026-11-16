@@ -29,6 +29,7 @@ import {
   formatPostalCodesLabel,
   getActivePostalCodes,
   getMunichPlzEntry,
+  MANHUNT_RADAR_RADII,
   parseAndValidateMunichPostalCodes,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
@@ -50,6 +51,7 @@ import {
   validateManualAnchorSelection,
 } from '../geo/boundary';
 import { destinationPoint, distanceMeters } from '../geo/distance';
+import { getClassicRadarRadiiForPlayArea } from '../geo/radar';
 import { useAuth } from '../hooks/useAuth';
 import {
   lockHiderAnchorAndGenerateRadar,
@@ -90,6 +92,7 @@ import type {
   PlayerAllTimeStats,
   PlayerSide,
   QuestionType,
+  RadarStageId,
   RadiusOptionMeters,
 } from '../types/game';
 import { formatDurationClock, getQuestionLabelDe } from '../utils/formatting';
@@ -224,6 +227,8 @@ export const App: React.FC = () => {
   const [hiderFilterTeamId, setHiderFilterTeamId] = useState<string>('NONE');
   const [circlePickError, setCirclePickError] = useState<string | null>(null);
   const [circleEditorCollapsed, setCircleEditorCollapsed] = useState(false);
+  const [lobbyPreviewStage, setLobbyPreviewStage] =
+    useState<RadarStageId | null>(null);
 
   const latestPublicStateRef = useRef(publicState);
   latestPublicStateRef.current = publicState;
@@ -1645,7 +1650,19 @@ export const App: React.FC = () => {
               !isManhunt &&
               Boolean(isSardineDashboardView || isOverviewAccount)
             }
-            publishedRadar={publicState.radarCircle}
+            publishedRadar={
+              publicState.status === 'LOBBY' && lobbyPreviewStage !== null
+                ? {
+                    stage: lobbyPreviewStage,
+                    radiusMeters: isManhunt
+                      ? MANHUNT_RADAR_RADII[lobbyPreviewStage]
+                      : getClassicRadarRadiiForPlayArea(publicState.playArea)[
+                          lobbyPreviewStage
+                        ],
+                    center: currentCircleCenter,
+                  }
+                : publicState.radarCircle
+            }
             exposedHiderLocation={exposedHiderLocation}
             liveHiderLocations={liveHiderLocations}
             visibleTeamLocations={visibleMapTeamLocations}
@@ -2216,39 +2233,85 @@ export const App: React.FC = () => {
               </PhysicsBottomSheet>
             )}
 
-            {/* 2. Kompakte Karten-Vorschau-Leiste im Lobby-Modus */}
+            {/* 2. Kompakte Karten- & Schrumpfgrenzen-Vorschau-Leiste im Lobby-Modus */}
             {publicState.status === 'LOBBY' && !isEditingCircleOnMap && (
-              <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 shadow-xl">
-                <div className="min-w-0 flex-1">
-                  <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase">
-                    GEBIETS-VORSCHAU // LOBBY
-                  </span>
-                  <span className="block truncate font-industrial text-xs font-bold text-[var(--text-main)] sm:text-sm">
-                    {publicState.playArea.name}
-                  </span>
+              <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg space-y-2.5 px-3.5 py-2.5 shadow-xl">
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="min-w-0 flex-1">
+                    <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase">
+                      GEBIETS- & SCHRUMPF-VORSCHAU // LOBBY
+                    </span>
+                    <span className="block truncate font-industrial text-xs font-bold text-[var(--text-main)] sm:text-sm">
+                      {publicState.playArea.name}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {isRoomHost &&
+                      publicState.playArea.shapeType === 'CUSTOM_CIRCLE' && (
+                        <button
+                          type="button"
+                          onClick={handleOpenCircleMapEditor}
+                          className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+                        >
+                          <Crosshair className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                          <span>Kreis ändern</span>
+                        </button>
+                      )}
+                    <button
+                      type="button"
+                      data-testid="map-return-to-lobby-btn"
+                      onClick={() => {
+                        setLobbyPreviewStage(null);
+                        setActiveTab('LOBBY');
+                      }}
+                      className="cmf-btn-primary font-dot inline-flex min-h-[38px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      <span>Zurück zur Lobby</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {isRoomHost &&
-                    publicState.playArea.shapeType === 'CUSTOM_CIRCLE' && (
+
+                {/* Schrumpf-Stufen-Wähler direkt auf der Vollbild-Karte */}
+                {(() => {
+                  const previewRadii = isManhunt
+                    ? MANHUNT_RADAR_RADII
+                    : getClassicRadarRadiiForPlayArea(publicState.playArea);
+                  return (
+                    <div
+                      data-testid="map-lobby-shrink-preview-bar"
+                      className="grid grid-cols-6 gap-1 border-t cmf-divider pt-2"
+                    >
                       <button
                         type="button"
-                        onClick={handleOpenCircleMapEditor}
-                        className="cmf-btn-secondary font-tech inline-flex min-h-[40px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+                        data-testid="map-lobby-shrink-stage-0"
+                        onClick={() => setLobbyPreviewStage(null)}
+                        className={`min-h-[32px] rounded-lg px-1.5 py-1 font-tech text-[10px] font-bold uppercase transition-all ${
+                          lobbyPreviewStage === null
+                            ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
+                            : 'cmf-btn-secondary'
+                        }`}
                       >
-                        <Crosshair className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                        <span>Kreis ändern</span>
+                        100%
                       </button>
-                    )}
-                  <button
-                    type="button"
-                    data-testid="map-return-to-lobby-btn"
-                    onClick={() => setActiveTab('LOBBY')}
-                    className="cmf-btn-primary font-dot inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold"
-                  >
-                    <Users className="h-3.5 w-3.5" />
-                    <span>Zurück zur Lobby</span>
-                  </button>
-                </div>
+                      {([1, 2, 3, 4, 5] as RadarStageId[]).map((st) => (
+                        <button
+                          key={st}
+                          type="button"
+                          data-testid={`map-lobby-shrink-stage-${st}`}
+                          onClick={() => setLobbyPreviewStage(st)}
+                          className={`min-h-[32px] rounded-lg px-1 py-1 font-tech text-[10px] font-bold transition-all ${
+                            lobbyPreviewStage === st
+                              ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
+                              : 'cmf-btn-secondary'
+                          }`}
+                        >
+                          S{st}: {previewRadii[st]}m
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

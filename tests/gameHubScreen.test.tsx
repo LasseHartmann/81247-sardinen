@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { GameHubScreen } from '../src/components/Lobby/GameHubScreen';
+import { ShrinkingBorderPreview } from '../src/components/Lobby/ShrinkingBorderPreview';
+import {
+  buildCustomCirclePlayAreaState,
+  buildRadarScheduleForHidingMinutes,
+} from '../src/config/gameConfig';
 import { createDemoStore } from '../src/demo/demoStore';
 
 describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
@@ -96,5 +101,38 @@ describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
 
     expect(store.getSnapshot().rooms?.[roomA.roomCode]).toBeUndefined();
     expect(store.getSnapshot().rooms?.[roomB.roomCode]).toBeDefined();
+  });
+
+  it('rendert die interaktive Schrumpf-Grenzen-Vorschau (ShrinkingBorderPreview) mit allen 5 Stufen und Animation', () => {
+    const circleArea = buildCustomCirclePlayAreaState({
+      center: { lat: 48.1632, lng: 11.4569 },
+      radiusMeters: 800,
+      postalCodes: ['81247'],
+      confirmedByUid: 'host',
+      nowMs: 1000,
+    });
+    const schedule = buildRadarScheduleForHidingMinutes(15, 60);
+
+    render(
+      <ShrinkingBorderPreview
+        playArea={circleArea}
+        gameMode="CLASSIC"
+        radarSchedule={schedule}
+      />
+    );
+
+    expect(screen.getByTestId('shrinking-border-preview')).toBeTruthy();
+    expect(screen.getByTestId('shrink-preview-radius-1').textContent).toBe(
+      '800 m'
+    );
+    expect(screen.getByTestId('shrink-preview-radius-5').textContent).toBe(
+      '25 m'
+    );
+
+    fireEvent.click(screen.getByTestId('shrink-preview-stage-3'));
+    expect(screen.getByText(/Stufe 3: Radius/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('shrink-preview-play-btn'));
+    expect(screen.getByText(/Stopp/i)).toBeTruthy();
   });
 });

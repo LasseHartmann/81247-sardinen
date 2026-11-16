@@ -69,6 +69,7 @@ import { HardwareKnob } from '../Common/HardwareKnob';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
 import { AdminAccountManager } from './AdminAccountManager';
 import { AdminLobbiesOverview } from './AdminLobbiesOverview';
+import { ShrinkingBorderPreview } from './ShrinkingBorderPreview';
 import { isOverviewMember } from '../../config/players';
 import {
   deduplicateEnabledMembers,
@@ -1392,6 +1393,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               </div>
             </div>
           )}
+
+          <ShrinkingBorderPreview
+            playArea={publicState.playArea}
+            gameMode={selectedMode}
+            radarSchedule={publicState.radarSchedule}
+          />
 
           {/* OLED Status- & Bereitschafts-Anzeige */}
           <div className="cmf-oled flex flex-wrap items-center justify-between gap-3 p-3.5">

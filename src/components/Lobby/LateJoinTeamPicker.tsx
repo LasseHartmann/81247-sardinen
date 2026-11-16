@@ -201,7 +201,7 @@ export const LateJoinTeamPicker: React.FC<LateJoinTeamPickerProps> = ({
                     key={m.playerId}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--shell-border)] bg-white/90 px-2.5 py-1 text-xs font-semibold text-[var(--text-main)] shadow-xs"
                   >
-                    <PlayerAvatar avatar={m.avatar} size="xs" />
+                    <PlayerAvatar avatar={m.avatar} playerId={m} size="xs" />
                     <span>{m.name}</span>
                     <span
                       title={online ? 'Online' : 'Offline'}
@@ -293,6 +293,7 @@ export const LateJoinTeamPicker: React.FC<LateJoinTeamPickerProps> = ({
                             >
                               <PlayerAvatar
                                 avatar={m.avatar}
+                                playerId={m}
                                 size="xs"
                               />
                               <span>{m.name}</span>

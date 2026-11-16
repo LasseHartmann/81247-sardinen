@@ -77,6 +77,7 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
               <div className="mt-0.5 flex items-center gap-2">
                 <PlayerAvatar
                   avatar={account.avatar}
+                  playerId={account}
                   size="sm"
                 />
                 <h1 className="font-dot truncate text-lg font-bold text-[var(--text-main)]">

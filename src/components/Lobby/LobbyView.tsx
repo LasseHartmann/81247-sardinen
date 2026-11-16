@@ -733,7 +733,7 @@ export const LobbyStatusCard: React.FC<LobbyStatusCardProps> = ({
                       : 'bg-[var(--cmf-amber)] opacity-75'
                   }`}
                 />
-                <PlayerAvatar avatar={m.avatar} size="xs" />
+                <PlayerAvatar avatar={m.avatar} playerId={m} size="xs" />
                 <span className="font-semibold text-[var(--text-main)]">
                   {m.name}
                 </span>

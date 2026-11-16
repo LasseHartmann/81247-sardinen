@@ -1,4 +1,15 @@
 import L from 'leaflet';
+import {
+  DEFAULT_SARDINE_AVATAR,
+  parseSardineAvatar,
+  renderCompleteSardineSvgString,
+} from '../../config/sardineAvatar';
+
+export interface OnlineTeamMemberBadge {
+  playerId: string;
+  name: string;
+  avatar?: string;
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -42,24 +53,109 @@ export function createAnchorPointIcon(): L.DivIcon {
 }
 
 /**
- * Sekundärer Team-Beacon-Marker (#14171A mit hellem Text und dezentem grauem Hardware-Rand).
+ * Team-Beacon-Marker als geöffnete Sardinenbüchse (Sardines Tin) mit allen aktuell
+ * online befindlichen Team-Mitgliedern als individuelle Sardinen im Inneren der Dose.
  */
-export function createTeamBeaconIcon(teamName: string, color: string): L.DivIcon {
-  const shortLabel = escapeHtml(teamName.replace(/\s*\(.*\)/, '').toUpperCase());
+export function createTeamBeaconIcon(
+  teamName: string,
+  color: string,
+  onlineMembers: OnlineTeamMemberBadge[] = []
+): L.DivIcon {
+  const shortLabel = escapeHtml(
+    teamName.replace(/\s*\(.*\)/, '').trim().toUpperCase()
+  );
+  const visibleMembers = onlineMembers.slice(0, 4);
+  const overflowCount = Math.max(0, onlineMembers.length - visibleMembers.length);
+
+  const sardinesInsideHtml =
+    visibleMembers.length > 0
+      ? visibleMembers
+          .map((m) => {
+            const cfg = parseSardineAvatar(m.avatar, m);
+            return `<span title="${escapeHtml(m.name)}" style="width:20px;height:22px;display:inline-flex;align-items:center;justify-content:center;margin:0 -1px;">${renderCompleteSardineSvgString(cfg, 22)}</span>`;
+          })
+          .join('') +
+        (overflowCount > 0
+          ? `<span style="margin-left:2px;padding:0 3px;border-radius:4px;background:${color};color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;line-height:14px;">+${overflowCount}</span>`
+          : '')
+      : `<span style="width:20px;height:22px;display:inline-flex;align-items:center;justify-content:center;opacity:0.38;">${renderCompleteSardineSvgString(DEFAULT_SARDINE_AVATAR, 20)}</span>`;
+
+  const slotCount = Math.max(1, visibleMembers.length) + (overflowCount > 0 ? 1 : 0);
+  const tinMinWidth = Math.max(66, 30 + slotCount * 19);
+  const iconWidth = Math.max(108, tinMinWidth + 24);
+  const iconHeight = 64;
+
+  const pullRingSvg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 22" width="12" height="19" style="display:block;flex-shrink:0;margin-right:-2px;">
+      <circle cx="5.5" cy="11" r="4.5" fill="none" stroke="#94A3B8" stroke-width="2.2" />
+      <circle cx="5.5" cy="11" r="4.5" fill="none" stroke="#F8FAFC" stroke-width="0.9" />
+      <rect x="9" y="8.5" width="5" height="5" rx="1.2" fill="#CBD5E1" stroke="#475569" stroke-width="1" />
+    </svg>
+  `;
+
   return L.divIcon({
-    className: 'sardinen-div-icon',
-    iconSize: [96, 36],
-    iconAnchor: [48, 18],
+    className: 'sardinen-div-icon sardinen-team-tin-icon',
+    iconSize: [iconWidth, iconHeight],
+    iconAnchor: [Math.round(iconWidth / 2), iconHeight - 5],
+    popupAnchor: [0, -(iconHeight - 10)],
     html: `
-      <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
-        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:9999px;background:#14171A;border:1px solid #9AA4AE;color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.05em;white-space:nowrap;box-shadow:0 4px 12px rgba(20,25,30,0.28);">
+      <div style="width:${iconWidth}px;height:${iconHeight}px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;pointer-events:auto;">
+        <!-- Team-Namensschild über der Büchse -->
+        <div style="display:inline-flex;align-items:center;gap:4px;padding:1.5px 7px;margin-bottom:2px;border-radius:9999px;background:#14171A;border:1.5px solid ${color};color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;letter-spacing:0.04em;white-space:nowrap;box-shadow:0 3px 8px rgba(15,23,42,0.32);">
           <span style="width:6px;height:6px;border-radius:9999px;background:${color};display:inline-block;"></span>
           <span>${shortLabel}</span>
+          <span style="opacity:0.75;font-size:8.5px;">• ${onlineMembers.length}</span>
         </div>
-        <div style="width:10px;height:10px;border-radius:9999px;background:#14171A;border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 5px rgba(20,25,30,0.3);"></div>
+
+        <!-- Geöffnete Sardinenbüchse (Aufreißlasche + Metallrand + aufgerollter Deckel + Online-Sardinen) -->
+        <div style="display:inline-flex;align-items:center;">
+          ${pullRingSvg}
+          <div style="min-width:${tinMinWidth}px;padding:2.5px;border-radius:10px;background:linear-gradient(180deg,#F8FAFC 0%,#CBD5E1 52%,#94A3B8 100%);border:2px solid ${color};box-shadow:0 5px 14px rgba(15,23,42,0.38);display:flex;align-items:center;">
+            <div style="flex:1;min-height:24px;padding:1px 5px;border-radius:6.5px;background:linear-gradient(180deg,#0F172A 0%,#1E293B 100%);border:1px solid #475569;box-shadow:inset 0 2px 4px rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;">
+              ${sardinesInsideHtml}
+            </div>
+            <!-- Aufgerollter Blechdeckel am rechten Büchsenrand -->
+            <div style="width:5px;height:24px;margin-left:2px;border-radius:3px;background:repeating-linear-gradient(180deg,#F8FAFC 0px,#F8FAFC 2px,#64748B 2px,#64748B 4px);border:1px solid #334155;"></div>
+          </div>
+        </div>
+
+        <!-- Präziser GPS-Ankerpunkt -->
+        <div style="width:9px;height:9px;border-radius:9999px;background:${color};border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 5px rgba(15,23,42,0.4);"></div>
       </div>
     `,
   });
+}
+
+export function renderTeamTinPopupHtml(params: {
+  teamName: string;
+  color: string;
+  accuracyMeters: number;
+  onlineMembers: OnlineTeamMemberBadge[];
+  activeContributorCount?: number;
+}): string {
+  const {
+    teamName,
+    color,
+    accuracyMeters,
+    onlineMembers,
+    activeContributorCount,
+  } = params;
+  const contributorInfo =
+    activeContributorCount && activeContributorCount > 1
+      ? ` [AVG:${activeContributorCount}]`
+      : '';
+
+  const membersListHtml =
+    onlineMembers.length > 0
+      ? `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">${onlineMembers
+          .map((m) => {
+            const cfg = parseSardineAvatar(m.avatar, m);
+            return `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:6px;background:#F1F5F9;border:1px solid #CBD5E1;font-size:11px;font-weight:700;color:#0F172A;">${renderCompleteSardineSvgString(cfg, 16)}<span>${escapeHtml(m.name)}</span></span>`;
+          })
+          .join('')}</div>`
+      : `<div style="margin-top:4px;font-size:11px;color:#64748B;">Aktuell niemand online</div>`;
+
+  return `<div style="min-width:140px;"><div style="display:flex;align-items:center;gap:5px;"><span style="width:8px;height:8px;border-radius:9999px;background:${color};display:inline-block;"></span><strong>${escapeHtml(teamName.toUpperCase())}</strong><span style="font-size:10px;color:#64748B;">${escapeHtml(contributorInfo)}</span></div><div style="font-size:11px;color:#475569;margin-top:2px;">GPS: ±${Math.round(accuracyMeters)} m • ${onlineMembers.length} in der Dose</div>${membersListHtml}</div>`;
 }
 
 /**

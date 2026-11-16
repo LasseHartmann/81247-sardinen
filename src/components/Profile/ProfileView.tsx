@@ -11,11 +11,13 @@ import {
   Copy,
   Footprints,
   KeyRound,
+  Lock,
   LogOut,
   Navigation,
   Radio,
   RotateCcw,
   Shield,
+  Shuffle,
   Smartphone,
   Sparkles,
   Trophy,
@@ -33,15 +35,29 @@ import {
   TEAM_PALETTE,
 } from '../../config/gameConfig';
 import { getPlayerGreeting, isOverviewMember } from '../../config/players';
+import {
+  canPlayerUseExclusiveTier,
+  createRandomSardineAvatar,
+  DEFAULT_SARDINE_AVATAR,
+  getExclusiveTierBadgeLabel,
+  getExclusiveTierDescriptionDe,
+  parseSardineAvatar,
+  sanitizeSardineAvatarForPlayer,
+  SARDINE_COLOR_OPTIONS,
+  SARDINE_EXTRA_OPTIONS,
+  SARDINE_GLASSES_OPTIONS,
+  SARDINE_HAT_OPTIONS,
+  serializeSardineAvatar,
+  type SardineAvatarConfig,
+  type SardineExclusiveTier,
+} from '../../config/sardineAvatar';
 import type { GpsPermissionState } from '../../hooks/useGeolocation';
 import {
   deduplicateEnabledMembers,
   type DatabaseAdapter,
 } from '../../services/databaseAdapter';
 import {
-  AVATAR_LOGO_ID,
   getNotificationSupportState,
-  PLAYER_AVATAR_OPTIONS,
   playFeedbackSound,
   requestSystemNotificationPermission,
   triggerFeedbackVibration,
@@ -125,6 +141,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const [roleBusy, setRoleBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarTab, setAvatarTab] = useState<
+    'COLOR' | 'HAT' | 'GLASSES' | 'EXTRA'
+  >('COLOR');
   const [rulesExpanded, setRulesExpanded] = useState(false);
   const [rulesModeTab, setRulesModeTab] = useState<'CLASSIC' | 'MANHUNT'>(
     (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC'
@@ -251,13 +270,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-center gap-3.5">
               <div className="cmf-oled flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/15">
-                {ownMember.avatar ? (
-                  <PlayerAvatar avatar={ownMember.avatar} size="lg" />
-                ) : (
-                  <span className="font-dot text-lg text-[#F8FAFC]">
-                    {ownMember.name.slice(0, 2).toUpperCase()}
-                  </span>
-                )}
+                <PlayerAvatar
+                  avatar={ownMember.avatar}
+                  playerId={ownMember}
+                  size="lg"
+                />
               </div>
               <div>
                 <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase">
@@ -294,69 +311,334 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         </div>
 
-        {/* 2. Avatar Emoji / 81247-Logo wählen */}
-        <section
-          data-testid="profile-avatar-section"
-          className="cmf-module p-4 sm:p-5 space-y-3"
-        >
-          <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-[var(--cmf-orange)]" />
-              <h3 className="font-industrial text-base text-[var(--text-main)]">
-                Avatar-Emoji / Logo
-              </h3>
-            </div>
-            <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-               FÜR ALLE SICHTBAR
-            </span>
-          </div>
+        {/* 2. Anpassbarer Sardinen-Avatar & Accessoires */}
+        {(() => {
+          const currentSardine = parseSardineAvatar(ownMember.avatar, ownMember);
+          const applySardineConfig = async (nextCfg: SardineAvatarConfig) => {
+            const safeCfg = sanitizeSardineAvatarForPlayer(nextCfg, ownMember);
+            const encoded = serializeSardineAvatar(safeCfg);
+            setAvatarBusy(true);
+            try {
+              await onSelectAvatar(encoded);
+            } finally {
+              setAvatarBusy(false);
+            }
+          };
 
-          <p className="text-xs text-[var(--text-muted)]">
-            Wähle das offizielle 81247-Sardinen-Logo oder ein Emoji für deinen Namen in der Lobby und Team-Übersicht:
-          </p>
+          const renderTierBadge = (
+            tier: SardineExclusiveTier,
+            unlocked: boolean
+          ) => {
+            const label = getExclusiveTierBadgeLabel(tier);
+            if (!label) return null;
+            const badgeStyle =
+              tier === 'OWNER'
+                ? 'bg-amber-400/20 text-amber-700 border-amber-500/40'
+                : tier === 'DEVELOPER'
+                  ? 'bg-sky-400/20 text-sky-700 border-sky-500/40'
+                  : 'bg-[var(--cmf-orange)]/15 text-[var(--cmf-orange)] border-[var(--cmf-orange)]/35';
+            return (
+              <span
+                className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.2 font-tech text-[8px] font-bold tracking-wider uppercase ${badgeStyle}`}
+              >
+                {!unlocked && <Lock className="h-2.5 w-2.5" />}
+                {label}
+              </span>
+            );
+          };
 
-          <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
-            {PLAYER_AVATAR_OPTIONS.map((opt) => {
-              const selected = (ownMember.avatar ?? '') === opt.id;
-              return (
-                <button
-                  key={opt.id || 'none'}
-                  type="button"
-                  disabled={avatarBusy}
-                  data-testid={`avatar-option-${opt.id || 'none'}`}
-                  title={opt.label}
-                  onClick={async () => {
-                    setAvatarBusy(true);
-                    try {
-                      await onSelectAvatar(opt.id);
-                    } finally {
-                      setAvatarBusy(false);
-                    }
-                  }}
-                  className={`flex min-h-[44px] flex-col items-center justify-center rounded-xl p-1.5 transition-all ${
-                    selected
-                      ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
-                      : 'cmf-well hover:bg-white/80'
-                  } disabled:opacity-50`}
-                >
-                  {opt.id === '' ? (
-                    <span className="font-tech text-[9px] font-bold text-[var(--text-muted)] uppercase">
-                      Keins
-                    </span>
-                  ) : opt.id === AVATAR_LOGO_ID ? (
-                    <img
-                      src="/logo.png"
-                      alt="81247 Logo"
-                      className="h-6 w-6 rounded bg-black object-contain"
+          const activeColorLabel =
+            SARDINE_COLOR_OPTIONS.find((c) => c.id === currentSardine.color)
+              ?.label ?? 'Klassik-Silber';
+          const activeHatLabel =
+            SARDINE_HAT_OPTIONS.find((h) => h.id === currentSardine.hat)
+              ?.label ?? 'Keine';
+          const activeGlassesLabel =
+            SARDINE_GLASSES_OPTIONS.find((g) => g.id === currentSardine.glasses)
+              ?.label ?? 'Keine';
+          const activeExtraLabel =
+            SARDINE_EXTRA_OPTIONS.find((e) => e.id === currentSardine.extra)
+              ?.label ?? 'Keins';
+
+          return (
+            <section
+              data-testid="profile-avatar-section"
+              className="cmf-module p-4 sm:p-5 space-y-3.5"
+            >
+              <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-[var(--cmf-orange)]" />
+                  <h3 className="font-industrial text-base text-[var(--text-main)]">
+                    Sardinen-Avatar & Accessoires
+                  </h3>
+                </div>
+                <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                  LOBBY & KARTEN-DOSE
+                </span>
+              </div>
+
+              {/* Große Live-Vorschau im OLED-Rahmen */}
+              <div className="cmf-oled flex flex-col sm:flex-row items-center justify-between gap-3 rounded-2xl p-3.5 sm:p-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-1">
+                    <PlayerAvatar
+                      config={currentSardine}
+                      playerId={ownMember}
+                      size="xl"
                     />
-                  ) : (
-                    <span className="text-lg leading-none">{opt.id}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </section>
+                  </div>
+                  <div className="space-y-1 text-left">
+                    <span className="font-tech block text-[10px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase">
+                      DEINE SARDINE
+                    </span>
+                    <div className="font-industrial text-sm font-bold text-[#F8FAFC]">
+                      {activeColorLabel}
+                    </div>
+                    <div className="flex flex-wrap gap-1 text-[10px] text-slate-300">
+                      <span className="rounded bg-white/10 px-1.5 py-0.5">
+                        Kopf: {activeHatLabel}
+                      </span>
+                      <span className="rounded bg-white/10 px-1.5 py-0.5">
+                        Brille: {activeGlassesLabel}
+                      </span>
+                      <span className="rounded bg-white/10 px-1.5 py-0.5">
+                        Extra: {activeExtraLabel}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex w-full sm:w-auto items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    data-testid="avatar-randomize-btn"
+                    disabled={avatarBusy}
+                    onClick={() =>
+                      void applySardineConfig(
+                        createRandomSardineAvatar(ownMember)
+                      )
+                    }
+                    className="cmf-btn-secondary font-tech inline-flex flex-1 sm:flex-initial min-h-[36px] items-center justify-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase"
+                  >
+                    <Shuffle className="h-3.5 w-3.5" />
+                    <span>Zufall</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="avatar-reset-btn"
+                    disabled={avatarBusy}
+                    onClick={() =>
+                      void applySardineConfig(DEFAULT_SARDINE_AVATAR)
+                    }
+                    className="cmf-btn-secondary font-tech inline-flex min-h-[36px] items-center justify-center gap-1 px-2.5 py-1.5 text-[10px] font-bold uppercase"
+                    title="Auf Klassik-Sardine zurücksetzen"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Kategorie-Reiter */}
+              <div className="grid grid-cols-4 gap-1.5">
+                {(
+                  [
+                    { id: 'COLOR', label: 'Farbe' },
+                    { id: 'HAT', label: 'Kopf' },
+                    { id: 'GLASSES', label: 'Brille' },
+                    { id: 'EXTRA', label: 'Extras' },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    data-testid={`avatar-tab-${tab.id.toLowerCase()}`}
+                    onClick={() => setAvatarTab(tab.id)}
+                    className={`min-h-[36px] rounded-xl font-tech text-[11px] font-bold uppercase transition-all ${
+                      avatarTab === tab.id
+                        ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
+                        : 'cmf-well hover:bg-white/80'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Options-Raster der gewählten Kategorie */}
+              {avatarTab === 'COLOR' && (
+                <div className="grid grid-cols-3 gap-2">
+                  {SARDINE_COLOR_OPTIONS.map((opt) => {
+                    const unlocked = canPlayerUseExclusiveTier(
+                      opt.tier,
+                      ownMember
+                    );
+                    const selected = currentSardine.color === opt.id;
+                    const previewCfg: SardineAvatarConfig = {
+                      ...currentSardine,
+                      color: opt.id,
+                    };
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        disabled={avatarBusy || !unlocked}
+                        data-testid={`avatar-color-${opt.id}`}
+                        title={
+                          unlocked
+                            ? opt.label
+                            : `${opt.label} — ${getExclusiveTierDescriptionDe(opt.tier)}`
+                        }
+                        onClick={() => void applySardineConfig(previewCfg)}
+                        className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
+                          selected
+                            ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
+                            : unlocked
+                              ? 'cmf-well hover:bg-white/80'
+                              : 'cmf-well opacity-55 cursor-not-allowed'
+                        }`}
+                      >
+                        <PlayerAvatar config={previewCfg} size="md" />
+                        <span className="font-tech text-[10px] font-bold leading-tight text-[var(--text-main)]">
+                          {opt.label}
+                        </span>
+                        {renderTierBadge(opt.tier, unlocked)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {avatarTab === 'HAT' && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {SARDINE_HAT_OPTIONS.map((opt) => {
+                    const unlocked = canPlayerUseExclusiveTier(
+                      opt.tier,
+                      ownMember
+                    );
+                    const selected = currentSardine.hat === opt.id;
+                    const previewCfg: SardineAvatarConfig = {
+                      ...currentSardine,
+                      hat: opt.id,
+                    };
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        disabled={avatarBusy || !unlocked}
+                        data-testid={`avatar-hat-${opt.id}`}
+                        title={
+                          unlocked
+                            ? opt.label
+                            : `${opt.label} — ${getExclusiveTierDescriptionDe(opt.tier)}`
+                        }
+                        onClick={() => void applySardineConfig(previewCfg)}
+                        className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
+                          selected
+                            ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
+                            : unlocked
+                              ? 'cmf-well hover:bg-white/80'
+                              : 'cmf-well opacity-55 cursor-not-allowed'
+                        }`}
+                      >
+                        <PlayerAvatar config={previewCfg} size="md" />
+                        <span className="font-tech text-[10px] font-bold leading-tight text-[var(--text-main)]">
+                          {opt.label}
+                        </span>
+                        {renderTierBadge(opt.tier, unlocked)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {avatarTab === 'GLASSES' && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {SARDINE_GLASSES_OPTIONS.map((opt) => {
+                    const unlocked = canPlayerUseExclusiveTier(
+                      opt.tier,
+                      ownMember
+                    );
+                    const selected = currentSardine.glasses === opt.id;
+                    const previewCfg: SardineAvatarConfig = {
+                      ...currentSardine,
+                      glasses: opt.id,
+                    };
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        disabled={avatarBusy || !unlocked}
+                        data-testid={`avatar-glasses-${opt.id}`}
+                        title={
+                          unlocked
+                            ? opt.label
+                            : `${opt.label} — ${getExclusiveTierDescriptionDe(opt.tier)}`
+                        }
+                        onClick={() => void applySardineConfig(previewCfg)}
+                        className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
+                          selected
+                            ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
+                            : unlocked
+                              ? 'cmf-well hover:bg-white/80'
+                              : 'cmf-well opacity-55 cursor-not-allowed'
+                        }`}
+                      >
+                        <PlayerAvatar config={previewCfg} size="md" />
+                        <span className="font-tech text-[10px] font-bold leading-tight text-[var(--text-main)]">
+                          {opt.label}
+                        </span>
+                        {renderTierBadge(opt.tier, unlocked)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {avatarTab === 'EXTRA' && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {SARDINE_EXTRA_OPTIONS.map((opt) => {
+                    const unlocked = canPlayerUseExclusiveTier(
+                      opt.tier,
+                      ownMember
+                    );
+                    const selected = currentSardine.extra === opt.id;
+                    const previewCfg: SardineAvatarConfig = {
+                      ...currentSardine,
+                      extra: opt.id,
+                    };
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        disabled={avatarBusy || !unlocked}
+                        data-testid={`avatar-extra-${opt.id}`}
+                        title={
+                          unlocked
+                            ? opt.label
+                            : `${opt.label} — ${getExclusiveTierDescriptionDe(opt.tier)}`
+                        }
+                        onClick={() => void applySardineConfig(previewCfg)}
+                        className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
+                          selected
+                            ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
+                            : unlocked
+                              ? 'cmf-well hover:bg-white/80'
+                              : 'cmf-well opacity-55 cursor-not-allowed'
+                        }`}
+                      >
+                        <PlayerAvatar config={previewCfg} size="md" />
+                        <span className="font-tech text-[10px] font-bold leading-tight text-[var(--text-main)]">
+                          {opt.label}
+                        </span>
+                        {renderTierBadge(opt.tier, unlocked)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          );
+        })()}
 
         {/* 3. All-Time Stats (Lebenszeit-Statistik) */}
         <section
@@ -551,7 +833,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                               : (ownTeam?.color ?? 'var(--cmf-teal)'),
                         }}
                       />
-                      <PlayerAvatar avatar={m.avatar} size="xs" />
+                      <PlayerAvatar
+                        avatar={m.avatar}
+                        playerId={m}
+                        size="xs"
+                      />
                       <span>{m.name}</span>
                     </span>
                   ))}

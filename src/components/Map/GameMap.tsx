@@ -36,6 +36,8 @@ import {
   createOwnPositionIcon,
   createSelectionPinIcon,
   createTeamBeaconIcon,
+  renderTeamTinPopupHtml,
+  type OnlineTeamMemberBadge,
 } from './CustomMarkers';
 
 export interface MapClickInteractionMode {
@@ -135,6 +137,7 @@ export interface GameMapProps {
   liveHiderLocations?: Record<string, { lat: number; lng: number; accuracy: number; label: string }>;
   visibleTeamLocations: Record<string, TeamLocation | null>;
   teamsPublic: Record<string, TeamPublic>;
+  onlineTeamMembersByTeamId?: Record<string, OnlineTeamMemberBadge[]>;
   activeTeamIds?: string[];
   clues: ClueRecord[];
   hiddenClueIds: Set<string>;
@@ -169,6 +172,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
   liveHiderLocations,
   visibleTeamLocations,
   teamsPublic,
+  onlineTeamMembersByTeamId = {},
   activeTeamIds,
   clues,
   hiddenClueIds,
@@ -204,7 +208,15 @@ const GameMapInner: React.FC<GameMapProps> = ({
   );
   const ownMarkerRef = useRef<L.Marker | null>(null);
   const teamMarkersRef = useRef<
-    Map<string, { marker: L.Marker; name: string; color: string }>
+    Map<
+      string,
+      {
+        marker: L.Marker;
+        name: string;
+        color: string;
+        membersSignature: string;
+      }
+    >
   >(new Map());
   const emergencyMarkersRef = useRef<
     Map<string, { marker: L.Marker; senderName: string }>
@@ -836,16 +848,22 @@ const GameMapInner: React.FC<GameMapProps> = ({
       if (!pub || pub.status === 'JOINED_SARDINES' || pub.memberPlayerIds.length === 0) continue;
 
       seenTeams.add(teamId);
-      const contributorInfo =
-        loc.activeContributorCount && loc.activeContributorCount > 1
-          ? ` [AVG:${loc.activeContributorCount}]`
-          : '';
-      const popupHtml = `<strong>${pub.name.toUpperCase()}</strong>${contributorInfo}<br/>GPS: ±${Math.round(loc.accuracy)}M`;
+      const onlineMembers = onlineTeamMembersByTeamId[teamId] ?? [];
+      const membersSignature = onlineMembers
+        .map((m) => `${m.playerId}:${m.name}:${m.avatar ?? ''}`)
+        .join('|');
+      const popupHtml = renderTeamTinPopupHtml({
+        teamName: pub.name,
+        color: pub.color,
+        accuracyMeters: loc.accuracy,
+        onlineMembers,
+        activeContributorCount: loc.activeContributorCount,
+      });
 
       const existing = teamMarkersRef.current.get(teamId);
       if (!existing) {
         const marker = L.marker([loc.lat, loc.lng], {
-          icon: createTeamBeaconIcon(pub.name, pub.color),
+          icon: createTeamBeaconIcon(pub.name, pub.color, onlineMembers),
         })
           .bindPopup(popupHtml)
           .addTo(group);
@@ -853,14 +871,22 @@ const GameMapInner: React.FC<GameMapProps> = ({
           marker,
           name: pub.name,
           color: pub.color,
+          membersSignature,
         });
       } else {
         existing.marker.setLatLng([loc.lat, loc.lng]);
         existing.marker.setPopupContent(popupHtml);
-        if (existing.name !== pub.name || existing.color !== pub.color) {
-          existing.marker.setIcon(createTeamBeaconIcon(pub.name, pub.color));
+        if (
+          existing.name !== pub.name ||
+          existing.color !== pub.color ||
+          existing.membersSignature !== membersSignature
+        ) {
+          existing.marker.setIcon(
+            createTeamBeaconIcon(pub.name, pub.color, onlineMembers)
+          );
           existing.name = pub.name;
           existing.color = pub.color;
+          existing.membersSignature = membersSignature;
         }
       }
     }
@@ -941,6 +967,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
     liveHiderLocations,
     visibleTeamLocations,
     teamsPublic,
+    onlineTeamMembersByTeamId,
     activeTeamIds,
     emergencyMessages,
   ]);

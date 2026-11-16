@@ -694,7 +694,11 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
-              <PlayerAvatar avatar={ownMember.avatar} size="md" />
+              <PlayerAvatar
+                avatar={ownMember.avatar}
+                playerId={ownMember}
+                size="md"
+              />
               <div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="cmf-badge-teal rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase">
@@ -967,7 +971,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                           online ? 'bg-emerald-500' : 'bg-zinc-300'
                         }`}
                       />
-                      <PlayerAvatar avatar={m.avatar} size="xs" />
+                      <PlayerAvatar avatar={m.avatar} playerId={m} size="xs" />
                       <span>{m.name}</span>
                       {ready && (
                         <span className="font-tech text-[10px] font-bold text-[var(--cmf-teal)] uppercase">
@@ -1107,7 +1111,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                                   online ? 'bg-emerald-500' : 'bg-zinc-300'
                                 }`}
                               />
-                              <PlayerAvatar avatar={m.avatar} size="xs" />
+                              <PlayerAvatar avatar={m.avatar} playerId={m} size="xs" />
                               <span>{m.name}</span>
                             </span>
                           );
@@ -1143,7 +1147,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                         online ? 'bg-emerald-500' : 'bg-zinc-300'
                       }`}
                     />
-                    <PlayerAvatar avatar={m.avatar} size="xs" />
+                    <PlayerAvatar avatar={m.avatar} playerId={m} size="xs" />
                     <span>{m.name}</span>
                   </span>
                 );

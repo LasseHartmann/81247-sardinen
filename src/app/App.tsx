@@ -62,6 +62,7 @@ import { useWakeLock } from '../hooks/useWakeLock';
 import {
   buildReadyToken,
   deduplicateEnabledMembers,
+  isPlayerOnline,
 } from '../services/databaseAdapter';
 import {
   generateRandomId,
@@ -931,6 +932,43 @@ export const App: React.FC = () => {
       ? { [ownTeam.id]: gameState.teamLocations[ownTeam.id] ?? null }
       : gameState.teamLocations;
 
+  const onlineTeamMembersByTeamId = (() => {
+    const result: Record<
+      string,
+      Array<{ playerId: string; name: string; avatar?: string }>
+    > = {};
+    const deduped = deduplicateEnabledMembers(
+      gameState.members,
+      gameState.presence
+    );
+    for (const m of deduped) {
+      if (isOverviewMember(m)) continue;
+      if (m.side !== 'SEEKER' || !m.teamId) continue;
+      if (
+        !isPlayerOnline(
+          m.playerId,
+          gameState.members,
+          gameState.presence,
+          ownMember.uid
+        )
+      ) {
+        continue;
+      }
+      if (!result[m.teamId]) {
+        result[m.teamId] = [];
+      }
+      result[m.teamId].push({
+        playerId: m.playerId,
+        name: m.name,
+        avatar: m.avatar,
+      });
+    }
+    for (const list of Object.values(result)) {
+      list.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    }
+    return result;
+  })();
+
   const exposedHiderLocation =
     gameState.activeLeashViolation &&
     typeof gameState.activeLeashViolation.exposedLat === 'number' &&
@@ -1608,6 +1646,7 @@ export const App: React.FC = () => {
             liveHiderLocations={liveHiderLocations}
             visibleTeamLocations={visibleMapTeamLocations}
             teamsPublic={gameState.teamsPublic}
+            onlineTeamMembersByTeamId={onlineTeamMembersByTeamId}
             activeTeamIds={activeRoundTeamIds}
             clues={isManhunt ? [] : visibleMapClues}
             hiddenClueIds={hiddenClueIds}

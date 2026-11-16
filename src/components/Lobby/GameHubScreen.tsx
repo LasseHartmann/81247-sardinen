@@ -16,6 +16,7 @@ import { normalizeRoomCode } from '../../services/qrService';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
 import { AdminAccountManager } from './AdminAccountManager';
 import { AdminLobbiesOverview } from './AdminLobbiesOverview';
+import { PlayerHostedLobbiesSection } from './PlayerHostedLobbiesSection';
 
 export interface GameHubScreenProps {
   adapter: DatabaseAdapter;
@@ -123,7 +124,7 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
         )}
 
         {/* Exklusive Live-Übersicht aller Lobbys & Konto-Verwaltung für das Admin-Konto */}
-        {isAdmin && (
+        {isAdmin ? (
           <>
             <AdminLobbiesOverview
               adapter={adapter}
@@ -137,6 +138,17 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
             />
             <AdminAccountManager adapter={adapter} />
           </>
+        ) : (
+          <PlayerHostedLobbiesSection
+            adapter={adapter}
+            playerId={account.playerId}
+            hintRoomCodes={recentRooms.map((r) => r.roomCode)}
+            busy={busy}
+            onOpenLobby={async (code) => {
+              onClearError();
+              await onJoinByCode(code);
+            }}
+          />
         )}
 
         {/* Option 1: Eigenes Spiel hosten */}

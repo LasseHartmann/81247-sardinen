@@ -309,6 +309,11 @@ export interface DatabaseAdapter {
     cb: (lobbies: AdminLobbyOverviewItem[]) => void,
     hintRoomCodes?: string[]
   ): UnsubscribeFn;
+  subscribePlayerHostedLobbies(
+    playerId: string,
+    cb: (lobbies: AdminLobbyOverviewItem[]) => void,
+    hintRoomCodes?: string[]
+  ): UnsubscribeFn;
 }
 
 export const LOBBY_INACTIVE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -844,10 +849,22 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       code,
       adapter.getServerNow()
     );
-    await set(
-      ref(db, `${ACCOUNTS_ROOT_PATH}/roomDirectory/${code}`),
-      stripUndefinedDeep(entry)
-    ).catch(() => {});
+    const hostId = (entry.hostPlayerId ?? '').trim().toLowerCase();
+    await Promise.all([
+      set(
+        ref(db, `${ACCOUNTS_ROOT_PATH}/roomDirectory/${code}`),
+        stripUndefinedDeep(entry)
+      ).catch(() => {}),
+      hostId && code !== GAME_ID
+        ? set(
+            ref(
+              db,
+              `${ACCOUNTS_ROOT_PATH}/accounts/${hostId}/hostedRoomCodes/${code}`
+            ),
+            true
+          ).catch(() => {})
+        : Promise.resolve(),
+    ]);
   };
 
   // Initialer Listener auf Server-Zeitoffset
@@ -1611,6 +1628,9 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           ...(existing?.stats ? { stats: existing.stats } : {}),
           ...(existing?.blocked ? { blocked: existing.blocked } : {}),
           ...(existing?.blockedAt ? { blockedAt: existing.blockedAt } : {}),
+          ...(existing?.hostedRoomCodes
+            ? { hostedRoomCodes: existing.hostedRoomCodes }
+            : {}),
         };
         if (patch.avatar !== undefined) {
           if (patch.avatar) {
@@ -2939,11 +2959,20 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       const code = normalizeRoomCode(roomCode);
       if (!isValidRoomCode(code)) return;
       const roomRoot = `games/${code}`;
-      const subPaths = [
-        `${roomRoot}/state/public`,
+
+      const pubSnap = await get(ref(db, `${roomRoot}/state/public`)).catch(
+        () => null
+      );
+      const hostId = (
+        (pubSnap?.val() as PublicGameState | null)?.hostPlayerId ?? ''
+      )
+        .trim()
+        .toLowerCase();
+
+      // 1. Zuerst alle untergeordneten Knoten löschen, solange members/$uid/isHost & state/public noch existieren
+      const childPaths = [
         `${roomRoot}/state/controller`,
         `${roomRoot}/state/hiderPrivate`,
-        `${roomRoot}/members`,
         `${roomRoot}/joinRequests`,
         `${roomRoot}/assignments`,
         `${roomRoot}/presence`,
@@ -2956,10 +2985,19 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           `${roomRoot}/teams/${p.id}/location`,
         ]),
         `${ACCOUNTS_ROOT_PATH}/roomDirectory/${code}`,
+        ...(hostId
+          ? [
+              `${ACCOUNTS_ROOT_PATH}/accounts/${hostId}/hostedRoomCodes/${code}`,
+            ]
+          : []),
       ];
       await Promise.all(
-        subPaths.map((p) => remove(ref(db, p)).catch(() => {}))
+        childPaths.map((p) => remove(ref(db, p)).catch(() => {}))
       );
+
+      // 2. Zum Schluss state/public und members entfernen
+      await remove(ref(db, `${roomRoot}/state/public`)).catch(() => {});
+      await remove(ref(db, `${roomRoot}/members`)).catch(() => {});
     },
 
     async pruneExpiredLobbies(nowMs = adapter.getServerNow()): Promise<string[]> {
@@ -3201,6 +3239,76 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           for (const u of rec.unsubs) u();
         }
         watchers.clear();
+      };
+    },
+
+    subscribePlayerHostedLobbies(
+      playerId,
+      cb,
+      hintRoomCodes = []
+    ): UnsubscribeFn {
+      const normalizedPlayerId = playerId.trim().toLowerCase();
+      if (!normalizedPlayerId) {
+        cb([]);
+        return () => {};
+      }
+
+      let disposed = false;
+      let innerUnsub: UnsubscribeFn | null = null;
+      let lastCodesKey = '';
+
+      const rebuildInner = (accountCodes: string[]) => {
+        if (disposed) return;
+        const mergedHints = Array.from(
+          new Set(
+            [...hintRoomCodes, ...accountCodes]
+              .map((c) => normalizeRoomCode(c))
+              .filter(isValidRoomCode)
+          )
+        ).sort();
+        const nextKey = mergedHints.join(',');
+        if (innerUnsub && nextKey === lastCodesKey) {
+          return;
+        }
+        lastCodesKey = nextKey;
+        if (innerUnsub) {
+          innerUnsub();
+          innerUnsub = null;
+        }
+        innerUnsub = adapter.subscribeAllLobbiesOverview((allItems) => {
+          if (disposed) return;
+          const hosted = allItems.filter(
+            (item) =>
+              item.roomCode !== GAME_ID &&
+              item.hostPlayerId.trim().toLowerCase() === normalizedPlayerId
+          );
+          cb(hosted);
+        }, mergedHints);
+      };
+
+      rebuildInner([]);
+
+      const unsubHostedRef = onValue(
+        ref(
+          db,
+          `${ACCOUNTS_ROOT_PATH}/accounts/${normalizedPlayerId}/hostedRoomCodes`
+        ),
+        (snap) => {
+          const val = (snap.val() ?? {}) as Record<string, boolean>;
+          rebuildInner(Object.keys(val));
+        },
+        () => {
+          rebuildInner([]);
+        }
+      );
+
+      return () => {
+        disposed = true;
+        unsubHostedRef();
+        if (innerUnsub) {
+          innerUnsub();
+          innerUnsub = null;
+        }
       };
     },
   };

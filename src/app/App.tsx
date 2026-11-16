@@ -1586,6 +1586,10 @@ export const App: React.FC = () => {
                 isOverviewAccount ? () => setActiveTab('HOST') : undefined
               }
               onLeaveRoom={handleLeaveRoom}
+              recentRoomCodes={recentRooms.map((r) => r.roomCode)}
+              onSwitchRoom={async (targetCode) => {
+                await joinGameByCode(targetCode);
+              }}
             />
           )}
 

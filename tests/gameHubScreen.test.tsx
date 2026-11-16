@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { GameHubScreen } from '../src/components/Lobby/GameHubScreen';
 import { createDemoStore } from '../src/demo/demoStore';
 
@@ -40,5 +40,61 @@ describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
     expect(screen.queryByText(/Schnellauswahl/i)).toBeNull();
     expect(screen.queryByText(/Hauptraum/i)).toBeNull();
     expect(screen.queryByTestId('hub-quickjoin-81247-btn')).toBeNull();
+  });
+
+  it('zeigt einem Spieler alle aktuell von ihm gehosteten Lobbys an und erlaubt deren Löschung', async () => {
+    const store = createDemoStore();
+    const roomA = await store.adapter.createHostedRoom({
+      hostPlayerId: 'anna',
+      hostName: 'Anna',
+    });
+    const roomB = await store.adapter.createHostedRoom({
+      hostPlayerId: 'anna',
+      hostName: 'Anna',
+    });
+    const otherRoom = await store.adapter.createHostedRoom({
+      hostPlayerId: 'ben',
+      hostName: 'Ben',
+    });
+
+    render(
+      <GameHubScreen
+        adapter={store.adapter}
+        account={{
+          playerId: 'anna',
+          name: 'Anna',
+        }}
+        firebaseAvailable={false}
+        recentRooms={[]}
+        busy={false}
+        roomError={null}
+        onClearError={() => {}}
+        onHostNewGame={async () => {}}
+        onJoinByCode={async () => {}}
+        onLogout={async () => {}}
+      />
+    );
+
+    expect(screen.getByTestId('player-hosted-lobbies-section')).toBeTruthy();
+    expect(
+      screen.getByTestId(`hosted-lobby-card-${roomA.roomCode}`)
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId(`hosted-lobby-card-${roomB.roomCode}`)
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId(`hosted-lobby-card-${otherRoom.roomCode}`)
+    ).toBeNull();
+
+    // Lösche roomA über den Löschen-Button
+    fireEvent.click(
+      screen.getByTestId(`hosted-lobby-delete-btn-${roomA.roomCode}`)
+    );
+    fireEvent.click(
+      screen.getByTestId(`hosted-lobby-confirm-delete-btn-${roomA.roomCode}`)
+    );
+
+    expect(store.getSnapshot().rooms?.[roomA.roomCode]).toBeUndefined();
+    expect(store.getSnapshot().rooms?.[roomB.roomCode]).toBeDefined();
   });
 });

@@ -2126,6 +2126,22 @@ export function createDemoStore(options?: {
         return sortAdminLobbyOverviews(items);
       }, cb);
     },
+
+    subscribePlayerHostedLobbies(playerId, cb): UnsubscribeFn {
+      const normalizedPlayerId = playerId.trim().toLowerCase();
+      if (!normalizedPlayerId) {
+        cb([]);
+        return () => {};
+      }
+      return adapter.subscribeAllLobbiesOverview((allItems) => {
+        const hosted = allItems.filter(
+          (item) =>
+            item.roomCode !== GAME_ID &&
+            item.hostPlayerId.trim().toLowerCase() === normalizedPlayerId
+        );
+        cb(hosted);
+      });
+    },
   };
 
   return {

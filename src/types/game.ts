@@ -76,6 +76,7 @@ export interface AccountPublicRecord {
   stats?: PlayerAllTimeStats;
   blocked?: boolean;
   blockedAt?: number;
+  hostedRoomCodes?: Record<string, boolean>;
 }
 
 export interface MemberRecord {

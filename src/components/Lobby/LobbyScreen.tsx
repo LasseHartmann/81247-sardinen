@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Settings2,
   Shield,
+  Trash2,
   Users,
   X,
 } from 'lucide-react';
@@ -86,6 +87,7 @@ import {
   formatMinutesHumanDe,
 } from '../../utils/formatting';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
+import { PlayerHostedLobbiesSection } from './PlayerHostedLobbiesSection';
 
 export interface LobbyScreenProps {
   adapter: DatabaseAdapter;
@@ -106,6 +108,8 @@ export interface LobbyScreenProps {
   onOpenCircleMapEditor: () => void;
   onOpenHostConsole?: () => void;
   onLeaveRoom?: () => Promise<void>;
+  recentRoomCodes?: string[];
+  onSwitchRoom?: (roomCode: string) => Promise<void>;
 }
 
 export const LobbyScreen: React.FC<LobbyScreenProps> = ({
@@ -127,6 +131,8 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   onOpenCircleMapEditor,
   onOpenHostConsole,
   onLeaveRoom,
+  recentRoomCodes = [],
+  onSwitchRoom,
 }) => {
   const isOverviewAccount = isOverviewMember(ownMember);
   const isHost = Boolean(
@@ -142,6 +148,22 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   const [changingRoleTo, setChangingRoleTo] = useState<string | null>(null);
   const [togglingReady, setTogglingReady] = useState(false);
   const [startingRound, setStartingRound] = useState(false);
+  const [confirmDeleteLobby, setConfirmDeleteLobby] = useState(false);
+  const [deletingLobby, setDeletingLobby] = useState(false);
+
+  const handleDeleteCurrentLobby = async () => {
+    if (!isHost || deletingLobby) return;
+    setDeletingLobby(true);
+    try {
+      await adapter.deleteLobbyRoom(roomCode);
+      setConfirmDeleteLobby(false);
+      if (onLeaveRoom) {
+        await onLeaveRoom();
+      }
+    } finally {
+      setDeletingLobby(false);
+    }
+  };
 
   // Teamnamen-Bearbeitung durch den Host
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
@@ -729,6 +751,46 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 </button>
               )}
 
+              {isHost &&
+                (confirmDeleteLobby ? (
+                  <div className="flex items-center gap-1.5 rounded-xl border border-[#DC2626]/50 bg-[#DC2626]/10 px-2.5 py-1">
+                    <span className="font-tech text-[10px] font-bold text-[#DC2626] uppercase">
+                      Lobby {roomCode} wirklich löschen?
+                    </span>
+                    <button
+                      type="button"
+                      data-testid="lobby-confirm-delete-room-btn"
+                      disabled={deletingLobby}
+                      onClick={() => void handleDeleteCurrentLobby()}
+                      className="inline-flex min-h-[30px] items-center gap-1 rounded-lg bg-[#DC2626] px-2.5 py-1 font-tech text-[10px] font-bold text-white uppercase hover:opacity-90 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      <span>
+                        {deletingLobby ? 'Lösche ...' : 'Ja, löschen'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="lobby-cancel-delete-room-btn"
+                      disabled={deletingLobby}
+                      onClick={() => setConfirmDeleteLobby(false)}
+                      className="cmf-btn-secondary inline-flex min-h-[30px] items-center px-2 py-1 font-tech text-[10px] font-bold uppercase"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="lobby-delete-room-btn"
+                    onClick={() => setConfirmDeleteLobby(true)}
+                    className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-[#DC2626] uppercase"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Lobby löschen</span>
+                  </button>
+                ))}
+
               {onLeaveRoom && (
                 <button
                   type="button"
@@ -838,6 +900,26 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             </div>
           )}
         </section>
+
+        {/* ÜBERSICHT ALLER VOM SPIELER GEHOSTETEN LOBBYS */}
+        {!isOverviewAccount && (
+          <PlayerHostedLobbiesSection
+            adapter={adapter}
+            playerId={ownMember.playerId}
+            currentRoomCode={roomCode}
+            hintRoomCodes={recentRoomCodes}
+            onOpenLobby={async (targetCode) => {
+              if (onSwitchRoom) {
+                await onSwitchRoom(targetCode);
+              }
+            }}
+            onAfterDeleteCurrentLobby={async () => {
+              if (onLeaveRoom) {
+                await onLeaveRoom();
+              }
+            }}
+          />
+        )}
 
         {/* SCHRITT 1: TEAM WÄHLEN & MITSPIELER */}
         <section

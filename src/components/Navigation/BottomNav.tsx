@@ -9,6 +9,7 @@ export interface BottomNavProps {
   inLobbyMode?: boolean;
   showHostTab: boolean;
   hostTabLabel?: string;
+  qrTabLabel?: string;
   hideQuestionsTab?: boolean;
   hasActiveEmergency?: boolean;
   pendingQuestionsBadgeCount?: number;
@@ -21,6 +22,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   inLobbyMode = false,
   showHostTab,
   hostTabLabel = 'Admin',
+  qrTabLabel = 'Gefunden!',
   hideQuestionsTab = false,
   hasActiveEmergency = false,
   pendingQuestionsBadgeCount = 0,
@@ -50,7 +52,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       : [
           {
             id: 'QUESTIONS' as BottomNavTab,
-            label: 'Hinweise',
+            label: 'Tipps',
             icon: <HelpCircle className="h-5 w-5" />,
             badge: pendingQuestionsBadgeCount,
           },
@@ -60,7 +62,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       : [
           {
             id: 'QR' as BottomNavTab,
-            label: 'QR / Catch',
+            label: qrTabLabel,
             icon: <QrCode className="h-5 w-5" />,
           },
         ]),

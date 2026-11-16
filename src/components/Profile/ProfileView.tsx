@@ -133,6 +133,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     'COLOR' | 'HAT' | 'GLASSES' | 'EXTRA'
   >('COLOR');
   const [rulesExpanded, setRulesExpanded] = useState(false);
+  const [pwExpanded, setPwExpanded] = useState(false);
+  const [gpsDiagExpanded, setGpsDiagExpanded] = useState(false);
   const [rulesModeTab, setRulesModeTab] = useState<'CLASSIC' | 'MANHUNT'>(
     (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC'
   );
@@ -255,14 +257,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 />
               </div>
               <div>
-                <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase">
-                  SPIELER-PROFIL // @{ownMember.playerId}
-                </span>
-                <h2 className="font-dot mt-1 text-xl sm:text-2xl text-[var(--text-main)]">
+                <h2 className="font-dot text-xl sm:text-2xl text-[var(--text-main)]">
                   {ownMember.name}
                 </h2>
                 <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                  {getPlayerGreeting(ownMember)}
+                  @{ownMember.playerId} • {getPlayerGreeting(ownMember)}
                 </p>
               </div>
             </div>
@@ -378,16 +377,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               data-testid="profile-avatar-section"
               className="cmf-module p-4 sm:p-5 space-y-3.5"
             >
-              <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-[var(--cmf-orange)]" />
-                  <h3 className="font-industrial text-base text-[var(--text-main)]">
-                    Sardinen-Avatar & Accessoires
-                  </h3>
-                </div>
-                <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                  LOBBY & KARTEN-DOSE
-                </span>
+              <div className="flex items-center gap-2 border-b cmf-divider pb-3">
+                <Sparkles className="h-4 w-4 text-[var(--cmf-orange)]" />
+                <h3 className="font-industrial text-base text-[var(--text-main)]">
+                  Dein Sardinen-Avatar
+                </h3>
               </div>
 
               {/* Große Live-Vorschau im OLED-Rahmen */}
@@ -654,21 +648,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         })()
         )}
 
-        {/* 3. All-Time Stats (Lebenszeit-Statistik) */}
+        {/* 3. Statistik */}
         <section
           data-testid="profile-alltime-stats"
           className="cmf-module p-4 sm:p-5 space-y-3.5"
         >
-          <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
-            <div className="flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-[var(--cmf-amber)]" />
-              <h3 className="font-industrial text-base text-[var(--text-main)]">
-                All-Time Stats
-              </h3>
-            </div>
-            <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase">
-              KONTO-STATISTIK
-            </span>
+          <div className="flex items-center gap-2 border-b cmf-divider pb-3">
+            <Trophy className="h-4 w-4 text-[var(--cmf-amber)]" />
+            <h3 className="font-industrial text-base text-[var(--text-main)]">
+              Deine Statistik
+            </h3>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -734,7 +723,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           <div className="cmf-well flex items-center justify-between px-3 py-2 text-xs">
             <span className="font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
-              INSGESAMT GEKAUFTE HINWEISE (IM TEAM)
+              GEKAUFTE TIPPS (TEAM)
             </span>
             <span className="font-dot text-sm font-bold text-[var(--text-main)]">
               {playerStats.cluesBought}
@@ -815,7 +804,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
                 <div className="cmf-well p-2.5">
                   <span className="block font-tech text-[9px] font-bold text-[var(--text-muted)] uppercase">
-                    HINWEISE
+                    TIPPS
                   </span>
                   <span className="font-dot text-xs font-bold text-[var(--text-main)]">
                     {ownTeam.clueCount}
@@ -823,7 +812,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
                 <div className="cmf-well p-2.5">
                   <span className="block font-tech text-[9px] font-bold text-[var(--text-muted)] uppercase">
-                    ZEIT-BONUS/STRAFE
+                    TIPP-STRAFE
                   </span>
                   <span className="font-dot text-xs font-bold text-[var(--text-main)]">
                     {formatPenaltyMinutes(ownTeam.penaltyMs)}
@@ -1187,234 +1176,249 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           )}
         </section>
 
-        {/* 7. Passwort ändern */}
-        <section className="cmf-module p-4 sm:p-5 space-y-3.5">
-          <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
+        {/* 7. Passwort ändern (einklappbar) */}
+        <section className="cmf-module p-4 sm:p-5 space-y-3">
+          <button
+            type="button"
+            onClick={() => setPwExpanded((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 text-left"
+          >
             <div className="flex items-center gap-2">
               <KeyRound className="h-4 w-4 text-[var(--cmf-orange)]" />
               <h3 className="font-industrial text-base text-[var(--text-main)]">
                 Passwort ändern
               </h3>
             </div>
-            <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              SHA-256 GESICHERT
+            <span className="cmf-btn-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl">
+              {pwExpanded ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
             </span>
-          </div>
+          </button>
 
-          <form onSubmit={handlePasswordSubmit} className="space-y-3">
-            <div>
-              <label
-                htmlFor="profile-current-password"
-                className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase mb-1"
-              >
-                Aktuelles Passwort
-              </label>
-              <input
-                id="profile-current-password"
-                type="password"
-                data-testid="profile-current-password-input"
-                autoComplete="current-password"
-                value={currentPassword}
-                onChange={(e) => {
-                  setCurrentPassword(e.target.value);
-                  if (pwError) setPwError(null);
-                  if (pwSuccess) setPwSuccess(null);
-                }}
-                placeholder="Dein bisheriges Passwort"
-                className="cmf-input w-full px-3.5 py-2.5 text-sm font-semibold"
-              />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label
-                  htmlFor="profile-new-password"
-                  className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase mb-1"
-                >
-                  Neues Passwort (mind. 4 Zeichen)
-                </label>
-                <input
-                  id="profile-new-password"
-                  type="password"
-                  data-testid="profile-new-password-input"
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(e) => {
-                    setNewPassword(e.target.value);
-                    if (pwError) setPwError(null);
-                    if (pwSuccess) setPwSuccess(null);
-                  }}
-                  placeholder="Neues Passwort"
-                  className="cmf-input w-full px-3.5 py-2.5 text-sm font-semibold"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="profile-confirm-password"
-                  className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase mb-1"
-                >
-                  Neues Passwort bestätigen
-                </label>
-                <input
-                  id="profile-confirm-password"
-                  type="password"
-                  data-testid="profile-confirm-password-input"
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => {
-                    setConfirmPassword(e.target.value);
-                    if (pwError) setPwError(null);
-                    if (pwSuccess) setPwSuccess(null);
-                  }}
-                  placeholder="Neues Passwort wiederholen"
-                  className="cmf-input w-full px-3.5 py-2.5 text-sm font-semibold"
-                />
-              </div>
-            </div>
-
-            {pwError && (
-              <div
-                data-testid="profile-password-error"
-                className="cmf-badge-orange cmf-shake rounded-xl px-3 py-2 text-xs font-semibold"
-              >
-                {pwError}
-              </div>
-            )}
-
-            {pwSuccess && (
-              <div
-                data-testid="profile-password-success"
-                className="cmf-badge-teal flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold"
-              >
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>{pwSuccess}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              data-testid="profile-change-password-btn"
-              disabled={pwBusy}
-              className="cmf-btn-primary font-dot inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold disabled:opacity-50"
+          {pwExpanded && (
+            <form
+              onSubmit={handlePasswordSubmit}
+              className="space-y-3 border-t cmf-divider pt-3"
             >
-              <KeyRound className="h-4 w-4" />
-              <span>
-                {pwBusy ? 'Wird gespeichert ...' : 'Passwort speichern'}
-              </span>
-            </button>
-          </form>
+              <div>
+                <label
+                  htmlFor="profile-current-password"
+                  className="mb-1 block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
+                >
+                  Aktuelles Passwort
+                </label>
+                <input
+                  id="profile-current-password"
+                  type="password"
+                  data-testid="profile-current-password-input"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => {
+                    setCurrentPassword(e.target.value);
+                    if (pwError) setPwError(null);
+                    if (pwSuccess) setPwSuccess(null);
+                  }}
+                  placeholder="Aktuelles Passwort"
+                  className="cmf-input w-full px-3.5 py-2.5 text-sm font-semibold"
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="profile-new-password"
+                    className="mb-1 block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
+                  >
+                    Neues Passwort (mind. 4 Zeichen)
+                  </label>
+                  <input
+                    id="profile-new-password"
+                    type="password"
+                    data-testid="profile-new-password-input"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      if (pwError) setPwError(null);
+                      if (pwSuccess) setPwSuccess(null);
+                    }}
+                    placeholder="Neues Passwort"
+                    className="cmf-input w-full px-3.5 py-2.5 text-sm font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="profile-confirm-password"
+                    className="mb-1 block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
+                  >
+                    Wiederholen
+                  </label>
+                  <input
+                    id="profile-confirm-password"
+                    type="password"
+                    data-testid="profile-confirm-password-input"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      if (pwError) setPwError(null);
+                      if (pwSuccess) setPwSuccess(null);
+                    }}
+                    placeholder="Neues Passwort bestätigen"
+                    className="cmf-input w-full px-3.5 py-2.5 text-sm font-semibold"
+                  />
+                </div>
+              </div>
+
+              {pwError && (
+                <div
+                  data-testid="profile-password-error"
+                  className="cmf-badge-orange cmf-shake rounded-xl px-3 py-2 text-xs font-semibold"
+                >
+                  {pwError}
+                </div>
+              )}
+
+              {pwSuccess && (
+                <div
+                  data-testid="profile-password-success"
+                  className="cmf-badge-teal flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold"
+                >
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span>{pwSuccess}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                data-testid="profile-change-password-btn"
+                disabled={pwBusy}
+                className="cmf-btn-primary font-dot inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold disabled:opacity-50"
+              >
+                <KeyRound className="h-4 w-4" />
+                <span>
+                  {pwBusy ? 'Speichere ...' : 'Passwort speichern'}
+                </span>
+              </button>
+            </form>
+          )}
         </section>
 
-        {/* 8. Geräte-, GPS- & Verbindungs-Diagnose */}
-        <section className="cmf-module p-4 sm:p-5 space-y-3.5">
-          <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
+        {/* 8. GPS- & Verbindungs-Diagnose (einklappbar) */}
+        <section className="cmf-module p-4 sm:p-5 space-y-3">
+          <button
+            type="button"
+            onClick={() => setGpsDiagExpanded((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 text-left"
+          >
             <div className="flex items-center gap-2">
               <Smartphone className="h-4 w-4 text-[var(--cmf-teal)]" />
               <h3 className="font-industrial text-base text-[var(--text-main)]">
-                Gerät &amp; GPS-Diagnose
+                GPS &amp; Verbindung prüfen
               </h3>
             </div>
-            <span
-              className={`rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold uppercase ${
-                connected ? 'cmf-badge-teal' : 'cmf-badge-orange'
-              }`}
-            >
-              {connected ? 'SERVER ONLINE' : 'OFFLINE'}
-            </span>
-          </div>
-
-          <div className="cmf-well p-3 space-y-1 text-xs">
-            <div className="flex items-center justify-between font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
-              <span className="flex items-center gap-1">
-                <Navigation className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                GPS-ORTUNG
+            <div className="flex items-center gap-2">
+              <span
+                className={`rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold uppercase ${
+                  connected ? 'cmf-badge-teal' : 'cmf-badge-orange'
+                }`}
+              >
+                {connected ? 'ONLINE' : 'OFFLINE'}
               </span>
-              <span>
-                {gpsStatus === 'TRACKING'
-                  ? `AKTIV (±${Math.round(ownFix?.accuracy ?? 0)}M)`
-                  : gpsStatus === 'MANUAL_TEST'
-                    ? 'TEST-KLICK'
-                    : gpsStatus === 'DENIED'
-                      ? 'BLOCKIERT'
-                      : 'SUCHE ...'}
+              <span className="cmf-btn-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl">
+                {gpsDiagExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
               </span>
             </div>
-            <p className="font-tech text-[11px] font-bold text-[var(--text-main)]">
-              {ownFix
-                ? `${ownFix.lat.toFixed(5)}, ${ownFix.lng.toFixed(5)}`
-                : (gpsError ?? 'Noch keine GPS-Koordinaten empfangen')}
-            </p>
-            <div className="flex flex-wrap items-center gap-2 pt-1">
+          </button>
+
+          {gpsDiagExpanded && (
+            <div className="cmf-well p-3 space-y-1.5 border-t cmf-divider text-xs">
+              <div className="flex items-center justify-between font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
+                <span className="flex items-center gap-1">
+                  <Navigation className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                  GPS-ORTUNG
+                </span>
+                <span>
+                  {gpsStatus === 'TRACKING'
+                    ? `AKTIV (±${Math.round(ownFix?.accuracy ?? 0)} m)`
+                    : gpsStatus === 'MANUAL_TEST'
+                      ? 'TEST-PIN'
+                      : gpsStatus === 'DENIED'
+                        ? 'BLOCKIERT'
+                        : 'SUCHE ...'}
+                </span>
+              </div>
+              <p className="font-tech text-[11px] font-bold text-[var(--text-main)]">
+                {ownFix
+                  ? `${ownFix.lat.toFixed(5)}, ${ownFix.lng.toFixed(5)}`
+                  : (gpsError ?? 'Noch kein GPS-Signal empfangen')}
+              </p>
               <button
                 type="button"
                 onClick={onRetryGps}
                 className="cmf-btn-secondary font-tech inline-flex min-h-[34px] items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase"
               >
                 <Radio className="h-3 w-3 text-[var(--cmf-orange)]" />
-                GPS neu synchronisieren
+                GPS neu verbinden
               </button>
-
-              {onReturnToLobbyByHost && (
-                <button
-                  type="button"
-                  data-testid="profile-host-return-lobby-btn"
-                  disabled={returningToLobby}
-                  onClick={async () => {
-                    setReturningToLobby(true);
-                    try {
-                      await onReturnToLobbyByHost();
-                    } finally {
-                      setReturningToLobby(false);
-                    }
-                  }}
-                  className="cmf-btn-secondary font-tech inline-flex min-h-[34px] items-center justify-center gap-1.5 border-[var(--cmf-orange)]/35 px-3 py-1 text-[10px] font-bold text-[var(--cmf-orange)] uppercase disabled:opacity-50"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  <span>
-                    {returningToLobby
-                      ? 'Öffne Lobby ...'
-                      : 'Als Host: Runde beenden & zurück zur Lobby'}
-                  </span>
-                </button>
-              )}
             </div>
-          </div>
+          )}
         </section>
 
-        {/* 9. Raum wechseln & Konto abmelden */}
-        <section className="cmf-module p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-start gap-2.5">
-            <Shield className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
-            <div>
-              <h3 className="font-industrial text-sm text-[var(--text-main)]">
-                Spielraum wechseln / Konto abmelden
-              </h3>
-              <p className="text-xs text-[var(--text-muted)]">
-                Angemeldet als @{ownMember.playerId} im Raum {roomCode}.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
+        {/* 9. Geordnete Aktionen am unteren Rand */}
+        <section className="cmf-module p-4 sm:p-5 space-y-3">
+          {onReturnToLobbyByHost && (
+            <button
+              type="button"
+              data-testid="profile-host-return-lobby-btn"
+              disabled={returningToLobby}
+              onClick={async () => {
+                setReturningToLobby(true);
+                try {
+                  await onReturnToLobbyByHost();
+                } finally {
+                  setReturningToLobby(false);
+                }
+              }}
+              className="cmf-btn-secondary font-tech flex min-h-[42px] w-full items-center justify-center gap-1.5 border-[var(--cmf-orange)]/35 px-4 py-2 text-xs font-bold text-[var(--cmf-orange)] uppercase disabled:opacity-50"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>
+                {returningToLobby
+                  ? 'Öffne Lobby ...'
+                  : 'Runde beenden & zurück zur Lobby'}
+              </span>
+            </button>
+          )}
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {onLeaveRoom && (
               <button
                 type="button"
                 data-testid="profile-leave-room-btn"
                 onClick={() => void onLeaveRoom()}
-                className="cmf-btn-secondary font-tech inline-flex min-h-[42px] items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold uppercase"
+                className="cmf-btn-secondary font-tech inline-flex min-h-[44px] items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold uppercase"
               >
                 <ArrowLeft className="h-4 w-4" />
-                <span>Raum wechseln</span>
+                <span>Lobby wechseln ({roomCode})</span>
               </button>
             )}
             <button
               type="button"
               data-testid="profile-logout-btn"
               onClick={() => void onLogout()}
-              className="cmf-btn-secondary font-tech inline-flex min-h-[42px] items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold text-[var(--cmf-orange)] uppercase"
+              className="cmf-btn-secondary font-tech inline-flex min-h-[44px] items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold text-[var(--cmf-orange)] uppercase"
             >
               <LogOut className="h-4 w-4" />
-              <span>Abmelden</span>
+              <span>Konto abmelden</span>
             </button>
           </div>
         </section>

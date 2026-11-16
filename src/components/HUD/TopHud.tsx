@@ -8,6 +8,7 @@ import {
   AlertOctagon,
   Send,
   Trash2,
+  X,
 } from 'lucide-react';
 import type { GameTimerSnapshot } from '../../hooks/useGameTimer';
 import type { GpsPermissionState } from '../../hooks/useGeolocation';
@@ -73,6 +74,16 @@ export const TopHud: React.FC<TopHudProps> = ({
     }
   };
 
+  const phaseShortLabel = isPaused
+    ? 'PAUSE'
+    : activePhase === 'LOBBY'
+      ? 'LOBBY'
+      : activePhase === 'HIDING'
+        ? 'VERSTECKEN'
+        : isManhunt
+          ? 'JAGD'
+          : 'SUCHE';
+
   return (
     <header
       data-emergency-active={hasActiveEmergency ? 'true' : 'false'}
@@ -83,16 +94,16 @@ export const TopHud: React.FC<TopHudProps> = ({
       }`}
     >
       <div className="mx-auto flex max-w-4xl items-center justify-between gap-1.5 sm:gap-2">
-        {/* Eingebettete schwarze OLED-Telemetrie-Insel: Timer + Phase + Radar (einzeilig & überlaufsicher auf Smartphones) */}
-        <div className="cmf-oled flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 sm:flex-initial sm:gap-2.5 sm:px-3">
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        {/* Schwarze OLED-Anzeige: Phase + Spieluhr + Nächstes Radar */}
+        <div className="cmf-oled flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 sm:flex-initial sm:gap-2.5 sm:px-3">
+          <div className="flex shrink-0 items-center gap-1.5">
             {!connected ? (
               <WifiOff
                 className="h-3.5 w-3.5 shrink-0 text-[var(--nothing-red)]"
                 aria-label="Offline"
               />
             ) : isRunning ? (
-              <span className="nothing-red-dot" title="Live-Sitzung aktiv" />
+              <span className="nothing-red-dot" title="Spiel läuft" />
             ) : (
               <span
                 className={`inline-block h-2 w-2 shrink-0 rounded-full ${
@@ -100,6 +111,9 @@ export const TopHud: React.FC<TopHudProps> = ({
                 }`}
               />
             )}
+            <span className="hidden font-tech text-[9px] font-bold tracking-wider text-[#9AA4AE] uppercase min-[400px]:inline sm:text-[10px]">
+              {phaseShortLabel}
+            </span>
             <span
               data-testid="hud-net-clock"
               className="font-dot text-sm leading-none text-[#F8FAFC] sm:text-lg"
@@ -123,29 +137,13 @@ export const TopHud: React.FC<TopHudProps> = ({
             ) : timer.nextStageRemainingMs !== null ? (
               <>
                 <span className="truncate whitespace-nowrap">
-                  {isManhunt ? (
-                    activePhase === 'HIDING' ? (
-                      <>
-                        Jagd<span className="hidden min-[410px]:inline"> in</span>
-                      </>
-                    ) : timer.manhuntIsInLastQuarter ? (
-                      <>
-                        5m-Ping<span className="hidden min-[420px]:inline"> in</span>
-                      </>
-                    ) : (
-                      <>
-                        Ping<span className="hidden min-[410px]:inline"> in</span>
-                      </>
-                    )
-                  ) : activePhase === 'HIDING' ? (
-                    <>
-                      Suche<span className="hidden min-[410px]:inline"> in</span>
-                    </>
-                  ) : (
-                    <>
-                      Tipp<span className="hidden min-[410px]:inline"> in</span>
-                    </>
-                  )}
+                  {isManhunt
+                    ? activePhase === 'HIDING'
+                      ? 'Jagd in'
+                      : 'Ping in'
+                    : activePhase === 'HIDING'
+                      ? 'Suche in'
+                      : 'Radar in'}
                 </span>
                 <span className="shrink-0 whitespace-nowrap font-dot text-[11px] leading-none text-[#FBBF24] sm:text-xs">
                   {formatDurationClock(timer.nextStageRemainingMs)}
@@ -159,25 +157,21 @@ export const TopHud: React.FC<TopHudProps> = ({
           </div>
         </div>
 
-        {/* Rechte Hardware-Statusleiste: Strafzeit, GPS, Funk & Notfall */}
+        {/* Rechte Statusleiste: Nur echte Tipp-Strafe, GPS & Notfall */}
         <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
           {ownTeam &&
             (ownTeam.status === 'JOINED_SARDINES' ? (
               <div
-                title="Euer gesamtes Team gehört jetzt zum Verstecker-Team (Sardinen)"
+                title="Euer Team versteckt sich jetzt mit den Sardinen"
                 className="cmf-badge-teal rounded-lg px-1.5 py-1 font-tech text-[10px] font-bold tracking-wide uppercase sm:px-2 sm:text-[11px]"
               >
-                SARDINEN
+                VERSTECKER
               </div>
-            ) : !isManhunt ? (
+            ) : !isManhunt && ownTeam.penaltyMs !== 0 ? (
               <div
-                title="Aufgelaufene Hinweis-Strafzeit / Zeitbonus deines Teams"
+                title="Tipp-Strafe / Zeitgutschrift deines Teams"
                 className={`rounded-lg px-1.5 py-1 text-[10px] font-bold tracking-wide uppercase sm:px-2 sm:text-[11px] ${
-                  ownTeam.penaltyMs > 0
-                    ? 'cmf-badge-orange'
-                    : ownTeam.penaltyMs < 0
-                      ? 'cmf-badge-teal'
-                      : 'cmf-well hidden font-tech text-[var(--text-muted)] min-[390px]:inline-flex'
+                  ownTeam.penaltyMs > 0 ? 'cmf-badge-orange' : 'cmf-badge-teal'
                 }`}
               >
                 <span className="sm:hidden">
@@ -192,7 +186,7 @@ export const TopHud: React.FC<TopHudProps> = ({
             ) : null)}
 
           <div
-            title="GPS-Status & Genauigkeit"
+            title="GPS-Genauigkeit"
             className={`inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-bold uppercase sm:px-2 sm:text-[11px] ${
               gpsStatus === 'DENIED' ? 'cmf-badge-orange' : 'cmf-badge-teal'
             }`}
@@ -200,24 +194,24 @@ export const TopHud: React.FC<TopHudProps> = ({
             {gpsStatus === 'DENIED' ? (
               <>
                 <AlertTriangle className="h-3 w-3 shrink-0" />
-                <span className="hidden min-[380px]:inline">NO GPS</span>
+                <span className="hidden min-[380px]:inline">Kein GPS</span>
               </>
             ) : (
               <>
                 <Crosshair className="h-3 w-3 shrink-0" />
                 <span>
                   {gpsStatus === 'MANUAL_TEST'
-                    ? 'PIN'
+                    ? 'Test-Pin'
                     : ownFix
                       ? `±${Math.min(999, Math.round(ownFix.accuracy))}m`
-                      : '...'}
+                      : 'GPS...'}
                 </span>
               </>
             )}
           </div>
 
           <div
-            title={connected ? 'Live verbunden' : 'Offline'}
+            title={connected ? 'Online' : 'Offline'}
             className="cmf-well hidden h-9 w-9 items-center justify-center sm:flex"
           >
             {connected ? (
@@ -231,8 +225,8 @@ export const TopHud: React.FC<TopHudProps> = ({
             type="button"
             data-testid="open-emergency-drawer-btn"
             onClick={() => setEmergencyDrawerOpen((v) => !v)}
-            aria-label="Notfallnachricht"
-            title="Notfallnachricht an alle senden oder eigene löschen"
+            aria-label="Notfall"
+            title="Notfallnachricht an alle senden"
             className={`inline-flex min-h-[40px] min-w-[40px] items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] font-bold tracking-wider uppercase sm:px-2.5 ${
               ownEmergencyMessage
                 ? 'cmf-btn-primary font-dot'
@@ -249,26 +243,27 @@ export const TopHud: React.FC<TopHudProps> = ({
         </div>
       </div>
 
-      {/* Aufklappbares Hardware-Modul: Notfallnachricht */}
+      {/* Aufklappbares Notfall-Fenster */}
       {emergencyDrawerOpen && (
         <div className="cmf-module cmf-drawer-down mx-auto mt-2 max-w-xl space-y-2.5 p-3">
           <div className="flex items-center justify-between border-b cmf-divider pb-2">
-            <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase sm:text-[11px]">
-              NOTFALL-KANAL // FÜR ALLE SICHTBAR
+            <span className="font-tech text-[11px] font-bold text-[var(--cmf-orange)] uppercase">
+              Notfallnachricht an alle Spieler
             </span>
             <button
               type="button"
+              aria-label="Schließen"
               onClick={() => setEmergencyDrawerOpen(false)}
-              className="min-h-[32px] px-1.5 font-tech text-[11px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)] uppercase"
+              className="cmf-btn-secondary inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-main)]"
             >
-              [Schließen]
+              <X className="h-4 w-4" />
             </button>
           </div>
 
           {ownEmergencyMessage && (
             <div className="cmf-well flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs">
               <span className="text-[var(--text-main)]">
-                Aktiv gesendet: <strong>{ownEmergencyMessage.text}</strong>
+                Gesendet: <strong>{ownEmergencyMessage.text}</strong>
               </span>
               <button
                 type="button"
@@ -276,10 +271,10 @@ export const TopHud: React.FC<TopHudProps> = ({
                   await onClearOwnEmergencyMessage();
                   setEmergencyDrawerOpen(false);
                 }}
-                className="cmf-btn-active font-tech inline-flex min-h-[38px] items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold uppercase"
+                className="cmf-btn-active font-tech inline-flex min-h-[36px] items-center gap-1 px-2.5 py-1 text-[11px] font-bold uppercase"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Nachricht löschen
+                Löschen
               </button>
             </div>
           )}
@@ -296,11 +291,7 @@ export const TopHud: React.FC<TopHudProps> = ({
               autoFocus
               value={emergencyDraft}
               onChange={(e) => setEmergencyDraft(e.target.value)}
-              placeholder={
-                ownEmergencyMessage
-                  ? 'Nachricht aktualisieren ...'
-                  : 'Was ist passiert? (Verletzung, Hilfe, Standort ...)'
-              }
+              placeholder="Was ist passiert? (z. B. Hilfe benötigt ...)"
               className="cmf-input cmf-input-orange min-h-[44px] flex-1 px-3 py-2 text-base font-medium sm:text-xs"
             />
             <button

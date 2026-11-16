@@ -39,19 +39,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   return (
     <div className="cmf-drafting-bg cmf-scroll-area flex h-[100dvh] w-full flex-col items-center justify-start sm:justify-center pt-[max(1.25rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] text-[var(--text-main)]">
       <div className="cmf-chassis cmf-sheet-up my-auto w-full max-w-md p-5 sm:p-7">
-        {/* Hardware-Kopfzeile mit Serien-Tag & OLED-Emblem */}
-        <div className="flex items-center justify-between">
-          <span className="cmf-badge-teal inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--cmf-teal)]" />
-            MÜNCHEN // SARDINEN
-          </span>
-          <span className="font-tech text-[10px] font-medium tracking-widest text-[var(--text-muted)] uppercase">
-            SYS.V3 // ACCOUNTS
-          </span>
-        </div>
-
-        <div className="mt-5 flex items-center gap-3.5">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#27272A] bg-black p-1 shadow-md">
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-15 w-15 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#27272A] bg-black p-1 shadow-md">
             <img
               src="/logo.png"
               alt="81247 Sardinen Logo"
@@ -63,8 +52,36 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               81247 SARDINEN
             </h1>
             <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-              Taktisches Outdoor-Versteckspiel • München
+              Outdoor-Versteckspiel für Gruppen in München
             </p>
+          </div>
+        </div>
+
+        {/* Kurze 3-Schritte-Erklärung für Erstbesucher */}
+        <div className="cmf-well mt-4 grid grid-cols-3 gap-1.5 p-2.5 text-center text-[11px] leading-tight">
+          <div className="rounded-xl bg-white/75 px-2 py-1.5">
+            <span className="font-dot block text-xs font-bold text-[var(--cmf-orange)]">
+              1. Verstecken
+            </span>
+            <span className="text-[10px] text-[var(--text-muted)]">
+              Ein Team versteckt sich
+            </span>
+          </div>
+          <div className="rounded-xl bg-white/75 px-2 py-1.5">
+            <span className="font-dot block text-xs font-bold text-[var(--cmf-teal)]">
+              2. Tipps
+            </span>
+            <span className="text-[10px] text-[var(--text-muted)]">
+              Andere suchen per Karte
+            </span>
+          </div>
+          <div className="rounded-xl bg-white/75 px-2 py-1.5">
+            <span className="font-dot block text-xs font-bold text-[var(--text-main)]">
+              3. Gefunden!
+            </span>
+            <span className="text-[10px] text-[var(--text-muted)]">
+              QR scannen &amp; mitverstecken
+            </span>
           </div>
         </div>
 
@@ -79,7 +96,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               setMode('LOGIN');
               onClearError();
             }}
-            className={`inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 font-tech text-xs font-bold uppercase transition-all ${
+            className={`inline-flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 font-tech text-xs font-bold uppercase transition-all ${
               mode === 'LOGIN'
                 ? 'cmf-btn-active text-[var(--text-main)] shadow-sm'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
@@ -95,7 +112,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               setMode('REGISTER');
               onClearError();
             }}
-            className={`inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 font-tech text-xs font-bold uppercase transition-all ${
+            className={`inline-flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 font-tech text-xs font-bold uppercase transition-all ${
               mode === 'REGISTER'
                 ? 'cmf-btn-active text-[var(--text-main)] shadow-sm'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
@@ -106,13 +123,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </button>
         </div>
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3.5">
           <div>
             <label
               htmlFor="player-name-input"
-              className="mb-1.5 block font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
+              className="mb-1 block font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
             >
-              Benutzername
+              Spielername
             </label>
             <input
               id="player-name-input"
@@ -128,16 +145,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 setTypedName(e.target.value);
               }}
               placeholder={
-                mode === 'REGISTER'
-                  ? 'Deinen Spielernamen wählen ...'
-                  : 'Dein Name ...'
+                mode === 'REGISTER' ? 'Name wählen ...' : 'Dein Name ...'
               }
-              className="cmf-input min-h-[50px] w-full px-4 py-3 text-base font-semibold"
+              className="cmf-input min-h-[48px] w-full px-4 py-2.5 text-base font-semibold"
             />
           </div>
 
           <div>
-            <div className="mb-1.5 flex items-center justify-between">
+            <div className="mb-1 flex items-center justify-between">
               <label
                 htmlFor="player-password-input"
                 className="font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
@@ -155,7 +170,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   </>
                 ) : (
                   <>
-                    <Eye className="h-3.5 w-3.5" /> Anzeigen
+                    <Eye className="h-3.5 w-3.5" /> Zeigen
                   </>
                 )}
               </button>
@@ -175,17 +190,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 setPassword(e.target.value);
               }}
               placeholder={
-                mode === 'REGISTER'
-                  ? 'Passwort wählen (mind. 4 Zeichen) ...'
-                  : 'Dein Passwort ...'
+                mode === 'REGISTER' ? 'Mind. 4 Zeichen ...' : 'Dein Passwort ...'
               }
-              className="cmf-input min-h-[50px] w-full px-4 py-3 text-base font-semibold"
+              className="cmf-input min-h-[48px] w-full px-4 py-2.5 text-base font-semibold"
             />
           </div>
 
           {!firebaseAvailable && (
-            <div className="cmf-badge-amber rounded-xl p-3 text-xs font-medium">
-              Hinweis: Lokaler Demo-Modus aktiv (keine Firebase-Konfiguration hinterlegt).
+            <div className="cmf-badge-amber rounded-xl p-2.5 text-xs font-medium">
+              Lokaler Demo-Modus aktiv.
             </div>
           )}
 
@@ -202,9 +215,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           <button
             type="submit"
             data-testid="login-submit-btn"
-            disabled={
-              submitting || !typedName.trim() || !password.trim()
-            }
+            disabled={submitting || !typedName.trim() || !password.trim()}
             className="cmf-btn-primary font-dot flex min-h-[50px] w-full items-center justify-center gap-2 px-4 py-3 text-sm font-bold"
           >
             {mode === 'REGISTER' ? (
@@ -215,15 +226,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             {submitting
               ? 'Prüfe ...'
               : mode === 'REGISTER'
-                ? 'Konto erstellen & Beitreten'
+                ? 'Konto erstellen'
                 : 'Anmelden'}
           </button>
-
-          <p className="text-center text-[11px] leading-relaxed text-[var(--text-muted)]">
-            {mode === 'LOGIN'
-              ? 'Noch kein Konto? Wechsle oben auf „Konto erstellen“.'
-              : 'Wähle deinen Namen und ein persönliches Passwort, um dauerhaft mit deinem Account beizutreten.'}
-          </p>
         </form>
       </div>
     </div>

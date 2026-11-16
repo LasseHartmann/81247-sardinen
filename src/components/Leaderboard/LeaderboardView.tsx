@@ -50,23 +50,20 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
   return (
     <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
-      <div className="mx-auto max-w-2xl space-y-4 sm:space-y-5 pb-10">
+      <div className="mx-auto max-w-2xl space-y-4 pb-10">
         <div className="cmf-chassis cmf-card-enter flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
           <div className="flex items-center gap-3">
-            <div className="cmf-oled flex h-12 w-12 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
-              <Trophy className="h-6 w-6" />
+            <div className="cmf-oled flex h-11 w-11 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
+              <Trophy className="h-5 w-5" />
             </div>
             <div>
-              <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                TELEMETRIE // WERTUNG {isManhunt ? '// MANHUNT' : ''}
-              </span>
               <h2 className="font-dot text-lg text-[var(--text-main)] sm:text-xl">
-                Offizielle Rangliste — 81247
+                Rangliste
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
                 {isManhunt
-                  ? 'Wertung nach Netto-Jagdzeit bis zum Fang der Verstecker'
-                  : 'Gesamtzeit = Netto-Suchzeit + gültige Hinweis-Strafzeiten'}
+                  ? 'Schnellste Fangzeit gewinnt'
+                  : 'Kürzeste Gesamtzeit (Suchzeit + Tipp-Strafe) gewinnt'}
               </p>
             </div>
           </div>
@@ -88,9 +85,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             >
               <RotateCcw className="h-4 w-4" />
               <span>
-                {returningToLobby
-                  ? 'Öffne Lobby ...'
-                  : 'Neue Runde in der Lobby starten'}
+                {returningToLobby ? 'Öffne Lobby ...' : 'Neue Runde starten'}
               </span>
             </button>
           )}
@@ -99,10 +94,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         {ranked.length === 0 ? (
           <div className="cmf-module p-6 text-center">
             <p className="font-industrial text-sm text-[var(--text-main)]">
-              Noch kein Sucher-Team bei den Sardinen eingetroffen!
+              Noch kein Team am Ziel!
             </p>
             <p className="mt-1 text-xs text-[var(--text-muted)]">
-              Sobald ein Team den QR-Code der Verstecker scannt oder das Verstecker-Passwort eingibt, erscheint hier die offizielle Wertung.
+              Sobald ein Team den QR-Code der Verstecker scannt, erscheint es hier.
             </p>
           </div>
         ) : (
@@ -143,8 +138,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                         </div>
                         <span className="font-tech text-[11px] font-medium text-[var(--cmf-teal)] uppercase">
                           {isManhunt
-                            ? 'BEIM SARDINEN-RUDEL'
-                            : `BEI DEN SARDINEN // ${entry.clueCount} HINWEISE`}
+                            ? 'Gefunden!'
+                            : `Gefunden • ${entry.clueCount} Tipps`}
                         </span>
                       </div>
                     </div>
@@ -164,7 +159,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       <div className="cmf-well flex items-center justify-between px-3 py-1.5">
                         <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
                           <Clock className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                          Netto:
+                          Suchzeit:
                         </span>
                         <strong className="font-tech text-[var(--text-main)]">
                           {formatDurationClock(entry.searchTimeMs)}
@@ -179,7 +174,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                                 : 'text-[var(--cmf-orange)]'
                             }`}
                           />
-                          {entry.penaltyMs < 0 ? 'Zeitbonus:' : 'Strafzeit:'}
+                          {entry.penaltyMs < 0 ? 'Zeitgutschrift:' : 'Tipp-Strafe:'}
                         </span>
                         <strong
                           className={`font-tech ${
@@ -200,18 +195,18 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         )}
 
         {stillSearching.length > 0 && (
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             <h3 className="flex items-center gap-2 px-1 font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
               <span className="nothing-red-dot" />
               <Users className="h-3.5 w-3.5" />
-              Aktuell noch auf der Suche ({stillSearching.length})
+              Noch auf der Suche ({stillSearching.length})
             </h3>
             {stillSearching.map((team) => (
               <div
                 key={team.id}
                 className="cmf-module flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs"
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <span
                     className="inline-block h-3 w-3 rounded-full border border-white/60"
                     style={{ backgroundColor: team.color }}
@@ -219,22 +214,24 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                   <span className="font-industrial text-sm text-[var(--text-main)]">
                     {team.name}
                   </span>
-                  <span className="font-tech text-[11px] text-[var(--text-muted)]">
-                    [{team.memberPlayerIds.length} SPIELER]
+                  <span className="text-[11px] text-[var(--text-muted)]">
+                    ({team.memberPlayerIds.length})
                   </span>
                 </div>
                 {!isManhunt && (
-                  <div className="flex items-center gap-2.5">
-                    <span className="font-tech text-[11px] text-[var(--text-muted)] uppercase">
-                      HINWEISE: <strong className="text-[var(--text-main)]">{team.clueCount}</strong>
+                  <div className="flex items-center gap-2">
+                    <span className="font-tech text-[11px] text-[var(--text-muted)]">
+                      {team.clueCount} Tipps
                     </span>
-                    <span
-                      className={`rounded-md px-2 py-0.5 text-[11px] font-bold uppercase ${
-                        team.penaltyMs > 0 ? 'cmf-badge-orange' : 'cmf-badge-teal'
-                      }`}
-                    >
-                      {formatPenaltyMinutes(team.penaltyMs)}
-                    </span>
+                    {team.penaltyMs !== 0 && (
+                      <span
+                        className={`rounded-md px-2 py-0.5 text-[11px] font-bold uppercase ${
+                          team.penaltyMs > 0 ? 'cmf-badge-orange' : 'cmf-badge-teal'
+                        }`}
+                      >
+                        {formatPenaltyMinutes(team.penaltyMs)}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

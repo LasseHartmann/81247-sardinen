@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Compass,
   Copy,
@@ -46,7 +48,6 @@ import {
   GAME_ID,
   getActivePostalCodes,
   getMunichPlzEntry,
-  getQuestionPenaltyMs,
   isAllMunichPostalCodes,
   parseAndValidateMunichPostalCodes,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
@@ -55,7 +56,7 @@ import {
   TEAM_PALETTE,
 } from '../../config/gameConfig';
 import { preloadGreenPolygonsForPostalCode } from '../../config/fallbackOsm81247';
-import { getPlayerGreeting, isOverviewMember } from '../../config/players';
+import { isOverviewMember } from '../../config/players';
 import {
   isPointInMunichPlz,
   snapPointIntoMunichPlz,
@@ -82,10 +83,7 @@ import type {
   PublicGameState,
   TeamPublic,
 } from '../../types/game';
-import {
-  formatDurationClock,
-  formatMinutesHumanDe,
-} from '../../utils/formatting';
+import { formatMinutesHumanDe } from '../../utils/formatting';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
 import { PlayerHostedLobbiesSection } from './PlayerHostedLobbiesSection';
 import { ShrinkingBorderPreview } from './ShrinkingBorderPreview';
@@ -151,6 +149,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   const [startingRound, setStartingRound] = useState(false);
   const [confirmDeleteLobby, setConfirmDeleteLobby] = useState(false);
   const [deletingLobby, setDeletingLobby] = useState(false);
+  const [showAllSeekerTeams, setShowAllSeekerTeams] = useState(false);
+  const [guestDetailsExpanded, setGuestDetailsExpanded] = useState(false);
+  const [hostAdvancedExpanded, setHostAdvancedExpanded] = useState(false);
 
   const handleDeleteCurrentLobby = async () => {
     if (!isHost || deletingLobby) return;
@@ -680,28 +681,39 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   };
 
   // Hilfswerte für verständliche Einstellungs-Zusammenfassung
-  const classicSearchDurationMs = classicSearchMin * 60_000;
   const classicRadii = getClassicRadarRadiiForPlayArea(publicState.playArea);
   const radarStartAfterSearchMin = Math.round(
     (publicState.radarSchedule.stage1Ms -
       publicState.radarSchedule.hidingDurationMs) /
       60_000
   );
-  const splitPenaltyMin = Math.round(
-    getQuestionPenaltyMs('SPLIT_NS', classicSearchDurationMs) / 60_000
-  );
-  const photoPenaltyMin = Math.round(
-    getQuestionPenaltyMs('MEDIA_SKY', classicSearchDurationMs) / 60_000
-  );
+
+  // Zeige standardmäßig alle besetzten Sucher-Teams + 2 freie Teams (Rest aufklappbar)
+  const visibleSeekerTeams = showAllSeekerTeams
+    ? seekerTeams
+    : (() => {
+        let freeShown = 0;
+        return seekerTeams.filter((t) => {
+          if (t.members.length > 0 || ownSelection === t.id || editingTeamId === t.id) {
+            return true;
+          }
+          if (freeShown < 2) {
+            freeShown += 1;
+            return true;
+          }
+          return false;
+        });
+      })();
+  const hiddenSeekerTeamCount = seekerTeams.length - visibleSeekerTeams.length;
 
   const activeZoneSummaryTitle = isCirclePlayArea
-    ? `Kreis-Zone (Radius ${circleRadiusMeters} m)`
+    ? `Kreis (Radius ${circleRadiusMeters} m)`
     : isFullMunich
-      ? 'Ganz München (Alle 75 PLZ)'
+      ? 'Ganz München'
       : `PLZ ${activePostalCodesLabel}`;
 
   const activeZoneSummaryDetail = isCirclePlayArea
-    ? `Durchmesser ${circleRadiusMeters * 2} m in ${activePostalCodesLabel} (${activeDistrictsSummary})`
+    ? `Ø ${circleRadiusMeters * 2} m in ${activePostalCodesLabel}`
     : activeDistrictsSummary;
 
   return (
@@ -710,106 +722,48 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
       className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]"
     >
       <div className="mx-auto max-w-3xl space-y-4 pb-12">
-        {/* KOPFBEREICH: SPIELRAUM-CODE, HOST & EINLADUNG */}
+        {/* KOPFBEREICH: VERLASSEN + SPIEL-CODE + EINLADEN */}
         <section
           data-testid="lobby-room-header"
           className="cmf-chassis cmf-card-enter space-y-3 p-4 sm:p-5"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5">
-              <PlayerAvatar
-                avatar={ownMember.avatar}
-                playerId={ownMember}
-                size="md"
-              />
-              <div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="cmf-badge-teal rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase">
-                    SPIEL-LOBBY
-                  </span>
-                  {isHost && (
-                    <span className="cmf-badge-orange rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase">
-                      {isOverviewAccount ? 'ADMIN // HOST' : 'DU BIST HOST'}
-                    </span>
-                  )}
-                </div>
-                <h1 className="font-industrial mt-0.5 text-base font-bold text-[var(--text-main)] sm:text-lg">
-                  {ownMember.name} • {getPlayerGreeting(ownMember)}
-                </h1>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {isOverviewAccount && onOpenHostConsole && (
-                <button
-                  type="button"
-                  data-testid="lobby-open-host-console-btn"
-                  onClick={onOpenHostConsole}
-                  className="cmf-btn-primary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
-                >
-                  <Shield className="h-3.5 w-3.5" />
-                  <span>Admin-Konsole</span>
-                </button>
-              )}
-
-              {isHost &&
-                (confirmDeleteLobby ? (
-                  <div className="flex items-center gap-1.5 rounded-xl border border-[#DC2626]/50 bg-[#DC2626]/10 px-2.5 py-1">
-                    <span className="font-tech text-[10px] font-bold text-[#DC2626] uppercase">
-                      Lobby {roomCode} wirklich löschen?
-                    </span>
-                    <button
-                      type="button"
-                      data-testid="lobby-confirm-delete-room-btn"
-                      disabled={deletingLobby}
-                      onClick={() => void handleDeleteCurrentLobby()}
-                      className="inline-flex min-h-[30px] items-center gap-1 rounded-lg bg-[#DC2626] px-2.5 py-1 font-tech text-[10px] font-bold text-white uppercase hover:opacity-90 disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      <span>
-                        {deletingLobby ? 'Lösche ...' : 'Ja, löschen'}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="lobby-cancel-delete-room-btn"
-                      disabled={deletingLobby}
-                      onClick={() => setConfirmDeleteLobby(false)}
-                      className="cmf-btn-secondary inline-flex min-h-[30px] items-center px-2 py-1 font-tech text-[10px] font-bold uppercase"
-                    >
-                      Abbrechen
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    data-testid="lobby-delete-room-btn"
-                    onClick={() => setConfirmDeleteLobby(true)}
-                    className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-[#DC2626] uppercase"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    <span>Lobby löschen</span>
-                  </button>
-                ))}
-
+            <div className="flex items-center gap-2">
               {onLeaveRoom && (
                 <button
                   type="button"
                   data-testid="lobby-leave-room-btn"
                   onClick={() => void onLeaveRoom()}
-                  className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+                  className="cmf-btn-secondary font-tech inline-flex min-h-[36px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
-                  <span>Raum wechseln</span>
+                  <span>Lobby verlassen</span>
                 </button>
               )}
+              {isHost && (
+                <span className="cmf-badge-orange rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold uppercase">
+                  {isOverviewAccount ? 'Admin' : 'Host'}
+                </span>
+              )}
             </div>
+
+            {isOverviewAccount && onOpenHostConsole && (
+              <button
+                type="button"
+                data-testid="lobby-open-host-console-btn"
+                onClick={onOpenHostConsole}
+                className="cmf-btn-primary font-tech inline-flex min-h-[36px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+              >
+                <Shield className="h-3.5 w-3.5" />
+                <span>Admin-Konsole</span>
+              </button>
+            )}
           </div>
 
           <div className="cmf-oled flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <span className="font-tech block text-[10px] font-bold tracking-wider text-[#9AA4AE] uppercase">
-                SPIEL-CODE ZUM MITSPIELEN
+                LOBBY-CODE ZUM EINLADEN
               </span>
               <div className="mt-0.5 flex flex-wrap items-baseline gap-2.5">
                 <span
@@ -819,10 +773,8 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   {roomCode}
                 </span>
                 <span className="font-tech text-[11px] text-[#9AA4AE]">
-                  {publicState.hostName
-                    ? `Host: ${publicState.hostName}`
-                    : 'Klassischer Raum'}{' '}
-                  • {onlineMemberList.length} Online
+                  {publicState.hostName ? `Host: ${publicState.hostName} • ` : ''}
+                  {onlineMemberList.length} Online
                 </span>
               </div>
             </div>
@@ -855,12 +807,12 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 {copiedKind === 'LINK' ? (
                   <>
                     <CheckCircle2 className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                    <span>Link kopiert!</span>
+                    <span>Kopiert!</span>
                   </>
                 ) : (
                   <>
                     <Link2 className="h-3.5 w-3.5" />
-                    <span>Einladungslink</span>
+                    <span>Link teilen</span>
                   </>
                 )}
               </button>
@@ -873,42 +825,37 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               data-testid="lobby-gps-warning"
               className="cmf-badge-orange flex flex-col gap-2 rounded-xl p-3 text-xs sm:flex-row sm:items-center sm:justify-between"
             >
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <div>
-                  <p className="font-tech text-[11px] font-bold uppercase">
-                    GPS noch nicht aktiv
-                  </p>
-                  <p className="text-[11px] opacity-95">
-                    {gpsStatus === 'DENIED'
-                      ? 'Bitte erlaube den Standortzugriff im Browser vor dem Spielstart.'
-                      : (gpsError ??
-                        'Bitte aktiviere kurz dein GPS, damit deine Position im Spiel funktioniert.')}
-                  </p>
-                </div>
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>
+                  {gpsStatus === 'DENIED'
+                    ? 'Standort blockiert – bitte im Browser freigeben.'
+                    : (gpsError ?? 'Bitte GPS vor dem Start aktivieren.')}
+                </span>
               </div>
               {onRetryGps && (
                 <button
                   type="button"
                   data-testid="lobby-retry-gps-btn"
                   onClick={() => void onRetryGps()}
-                  className="cmf-btn-secondary font-tech inline-flex min-h-[36px] shrink-0 items-center justify-center gap-1.5 bg-white/95 px-3 py-1.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                  className="cmf-btn-secondary font-tech inline-flex min-h-[34px] shrink-0 items-center justify-center gap-1.5 bg-white/95 px-3 py-1 text-[11px] font-bold text-[var(--text-main)] uppercase"
                 >
                   <LocateFixed className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                  <span>GPS prüfen</span>
+                  <span>GPS aktivieren</span>
                 </button>
               )}
             </div>
           )}
         </section>
 
-        {/* ÜBERSICHT ALLER VOM SPIELER GEHOSTETEN LOBBYS */}
+        {/* WEITERE OFFENE LOBBYS DES SPIELERS (nur sichtbar bei 2+ gehosteten Lobbys) */}
         {!isOverviewAccount && (
           <PlayerHostedLobbiesSection
             adapter={adapter}
             playerId={ownMember.playerId}
             currentRoomCode={roomCode}
             hintRoomCodes={recentRoomCodes}
+            hideWhenOnlyCurrentRoom
             onOpenLobby={async (targetCode) => {
               if (onSwitchRoom) {
                 await onSwitchRoom(targetCode);
@@ -922,22 +869,18 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
           />
         )}
 
-        {/* SCHRITT 1: TEAM WÄHLEN & MITSPIELER */}
+        {/* 1. TEAM WÄHLEN */}
         <section
           data-testid="lobby-teams-section"
           className="cmf-module space-y-3.5 p-4 sm:p-5"
         >
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-2.5">
             <div>
-              <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase">
-                SCHRITT 1 // TEAMS &amp; MITSPIELER
-              </span>
               <h2 className="font-industrial text-base font-bold text-[var(--text-main)]">
-                Wähle dein Team
+                1. Team wählen
               </h2>
               <p className="text-xs text-[var(--text-muted)]">
-                Tippe auf ein Team, um beizutreten. Mindestens ein Spieler muss{' '}
-                <strong>Die Sardinen</strong> wählen und mindestens ein Sucher-Team besetzt sein.
+                Mindestens 1 Verstecker und 1 Sucher-Team nötig.
               </p>
             </div>
 
@@ -949,7 +892,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   onClick={() => void handleResetAllTeamNames()}
                   className="cmf-btn-secondary font-tech min-h-[32px] px-2.5 py-1 text-[10px] font-bold uppercase"
                 >
-                  Standard-Teamnamen
+                  Standardnamen
                 </button>
               )}
               {!isOverviewAccount && ownSelection !== 'UNASSIGNED' && (
@@ -960,7 +903,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   onClick={() => void handleChooseTeam('UNASSIGNED')}
                   className="cmf-btn-secondary font-tech min-h-[32px] px-2.5 py-1 text-[10px] font-bold text-[var(--cmf-orange)] uppercase disabled:opacity-50"
                 >
-                  Kein Team
+                  Team verlassen
                 </button>
               )}
             </div>
@@ -983,7 +926,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-industrial text-sm font-bold text-[var(--text-main)]">
-                      Die Sardinen (Verstecker)
+                      Verstecker (Die Sardinen)
                     </h3>
                     {totalRequiredReady > 0 && (
                       <span className="cmf-badge-teal rounded-full px-2 py-0.5 font-tech text-[10px] font-bold uppercase">
@@ -992,8 +935,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                     )}
                   </div>
                   <span className="font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
-                    {hiderMembers.length}{' '}
-                    {hiderMembers.length === 1 ? 'Spieler' : 'Spieler'} • Verstecken sich gemeinsam
+                    {hiderMembers.length} Spieler
                   </span>
                 </div>
               </div>
@@ -1018,17 +960,17 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                       <span>Dein Team</span>
                     </>
                   ) : changingRoleTo === 'HIDER' ? (
-                    <span>Wechsle ...</span>
+                    <span>...</span>
                   ) : (
-                    <span>Als Sardine spielen</span>
+                    <span>Verstecker werden</span>
                   )}
                 </button>
               )}
             </div>
 
             {hiderMembers.length === 0 ? (
-              <p className="text-xs italic text-[var(--text-muted)]">
-                Noch niemand als Verstecker eingetragen.
+              <p className="text-xs text-[var(--text-muted)]">
+                Noch frei
               </p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
@@ -1058,7 +1000,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                       <span>{m.name}</span>
                       {ready && (
                         <span className="font-tech text-[10px] font-bold text-[var(--cmf-teal)] uppercase">
-                          ✓ Bereit
+                          ✓
                         </span>
                       )}
                     </span>
@@ -1068,9 +1010,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             )}
           </div>
 
-          {/* 6 Sucher-Teams als übersichtliches Grid */}
+          {/* Sucher-Teams */}
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {seekerTeams.map((team) => {
+            {visibleSeekerTeams.map((team) => {
               const isSelected = ownSelection === team.id;
               const isEditingThisName = editingTeamId === team.id;
 
@@ -1078,7 +1020,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 <div
                   key={team.id}
                   data-testid={`lobby-team-card-${team.id}`}
-                  className={`flex flex-col justify-between gap-2.5 rounded-2xl border-[1.5px] p-3 transition-all ${
+                  className={`flex flex-col justify-between gap-2 rounded-2xl border-[1.5px] p-3 transition-all ${
                     isSelected
                       ? 'border-[var(--cmf-teal)] bg-white shadow-sm ring-1 ring-[var(--cmf-teal)]/30'
                       : 'border-[var(--shell-border)] bg-[var(--surface-inset)]'
@@ -1111,7 +1053,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                             <button
                               type="submit"
                               disabled={savingTeamName}
-                              aria-label="Teamname speichern"
+                              aria-label="Speichern"
                               data-testid={`lobby-team-name-save-${team.id}`}
                               className="cmf-btn-active flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
                             >
@@ -1173,7 +1115,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
                     {team.members.length === 0 ? (
                       <p className="text-[11px] text-[var(--text-muted)]">
-                        Frei (0 Spieler)
+                        Frei
                       </p>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
@@ -1207,7 +1149,26 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             })}
           </div>
 
-          {/* Noch unentschiedene Spieler */}
+          {hiddenSeekerTeamCount > 0 || showAllSeekerTeams ? (
+            <button
+              type="button"
+              onClick={() => setShowAllSeekerTeams((v) => !v)}
+              className="cmf-btn-secondary font-tech flex min-h-[36px] w-full items-center justify-center gap-1.5 py-1.5 text-[11px] font-bold uppercase"
+            >
+              {showAllSeekerTeams ? (
+                <>
+                  <ChevronUp className="h-3.5 w-3.5" />
+                  <span>Leere Teams ausblenden</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                  <span>Weitere Sucher-Teams anzeigen ({hiddenSeekerTeamCount})</span>
+                </>
+              )}
+            </button>
+          ) : null}
+
           {unassignedMembers.length > 0 && (
             <div className="cmf-well flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
               <span className="font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
@@ -1239,67 +1200,106 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
           )}
         </section>
 
-        {/* SCHRITT 2: SPIELEINSTELLUNGEN (HOST BEARBEITET • SPIELER SEHEN ALLES KLAR GEGLIEDERT) */}
+        {/* 2. SPIELEINSTELLUNGEN (kompakt für Mitspieler, strukturiert für den Host) */}
         <section
           data-testid="lobby-settings-section"
-          className="cmf-module space-y-4 p-4 sm:p-5"
+          className="cmf-module space-y-3.5 p-4 sm:p-5"
         >
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
-            <div>
-              <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
-                SCHRITT 2 // SPIELEINSTELLUNGEN
-              </span>
-              <h2 className="font-industrial flex items-center gap-2 text-base font-bold text-[var(--text-main)]">
-                <Settings2 className="h-4 w-4 text-[var(--cmf-orange)]" />
-                {canEditSettings
-                  ? 'Runde konfigurieren (Modus, Gebiet & Zeiten)'
-                  : 'Aktuelle Regeln & Einstellungen dieser Runde'}
-              </h2>
-              <p className="text-xs text-[var(--text-muted)]">
-                {canEditSettings
-                  ? 'Alle Änderungen sind sofort live für alle Mitspieler in der Lobby sichtbar.'
-                  : `Eingestellt vom Host${
-                      publicState.hostName ? ` (${publicState.hostName})` : ''
-                    } – wird automatisch live aktualisiert.`}
-              </p>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-2.5">
+            <h2 className="font-industrial flex items-center gap-2 text-base font-bold text-[var(--text-main)]">
+              <Settings2 className="h-4 w-4 text-[var(--cmf-orange)]" />
+              {canEditSettings ? '2. Regeln & Gebiet einstellen' : '2. Regeln dieser Runde'}
+            </h2>
 
-            <span className="cmf-well rounded-full px-2.5 py-1 font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
-              {canEditSettings ? 'HOST-STEUERUNG' : 'LIVE-VORSCHAU'}
-            </span>
+            <button
+              type="button"
+              data-testid="lobby-preview-map-btn"
+              onClick={onViewMap}
+              className="cmf-btn-secondary font-tech inline-flex min-h-[34px] items-center gap-1.5 px-3 py-1 text-[11px] font-bold uppercase"
+            >
+              <Compass className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+              <span>Karte öffnen</span>
+            </button>
           </div>
 
-          {/* 2A. SPIELMODUS */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5 font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              <Shield className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-              <span>1. Spielmodus</span>
-            </div>
+          {!canEditSettings ? (
+            /* Kompakte 3-Kachel-Zusammenfassung für Nicht-Hosts */
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="cmf-well p-3">
+                  <span className="font-tech block text-[9px] font-bold text-[var(--text-muted)] uppercase">
+                    MODUS
+                  </span>
+                  <span className="font-industrial text-sm font-bold text-[var(--text-main)]">
+                    {isManhunt ? 'Manhunt (Bewegung)' : 'Klassisch (Festes Versteck)'}
+                  </span>
+                </div>
+                <div data-testid="lobby-zone-summary" className="cmf-well p-3">
+                  <span className="font-tech block text-[9px] font-bold text-[var(--text-muted)] uppercase">
+                    SPIELGEBIET
+                  </span>
+                  <span className="font-industrial text-sm font-bold text-[var(--text-main)]">
+                    {activeZoneSummaryTitle}
+                  </span>
+                </div>
+                <div className="cmf-well p-3">
+                  <span className="font-tech block text-[9px] font-bold text-[var(--text-muted)] uppercase">
+                    ZEITEN
+                  </span>
+                  <span className="font-industrial text-sm font-bold text-[var(--text-main)]">
+                    {isManhunt
+                      ? `${manhuntHeadStartMin} Min. Vorsprung • ${manhuntShrinkMin} Min. Jagd`
+                      : `${classicHidingMin} Min. Verstecken • ${formatMinutesHumanDe(classicSearchMin)} Suche`}
+                  </span>
+                </div>
+              </div>
 
-            {canEditSettings ? (
+              <button
+                type="button"
+                onClick={() => setGuestDetailsExpanded((v) => !v)}
+                className="cmf-btn-secondary font-tech flex min-h-[36px] w-full items-center justify-center gap-1.5 py-1.5 text-[11px] font-bold uppercase"
+              >
+                {guestDetailsExpanded ? (
+                  <>
+                    <ChevronUp className="h-3.5 w-3.5" />
+                    <span>Zonen-Vorschau ausblenden</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    <span>Zonen-Schrumpfung ansehen</span>
+                  </>
+                )}
+              </button>
+
+              {guestDetailsExpanded && (
+                <ShrinkingBorderPreview
+                  playArea={publicState.playArea}
+                  gameMode={publicState.gameMode}
+                  radarSchedule={publicState.radarSchedule}
+                />
+              )}
+            </div>
+          ) : (
+            /* Übersichtliche Host-Konfiguration */
+            <div className="space-y-4">
+              {/* Modus */}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button
                   type="button"
                   data-testid="lobby-mode-classic-btn"
                   onClick={() => handleSelectGameMode('CLASSIC')}
-                  className={`flex flex-col items-start gap-1 rounded-2xl p-3.5 text-left transition-all ${
+                  className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
                     !isManhunt
                       ? 'cmf-btn-active ring-2 ring-[var(--cmf-teal)]'
                       : 'cmf-well opacity-80 hover:opacity-100'
                   }`}
                 >
-                  <div className="flex w-full items-center justify-between">
-                    <span className="font-dot text-xs font-bold uppercase">
-                      Klassisch (Sardinen)
-                    </span>
-                    {!isManhunt && (
-                      <span className="cmf-badge-teal rounded-full px-2 py-0.5 text-[9px] font-bold uppercase">
-                        Aktiv
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs leading-relaxed text-[var(--text-muted)]">
-                    Verstecker bleiben an einem festen Versteck (50 m Radius). Sucher kaufen Hinweis-Fragen gegen Zeitstrafe.
+                  <span className="font-dot text-xs font-bold uppercase">
+                    Klassisch (Sardinen)
+                  </span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    Festes Versteck (50 m) • Tipps kaufen
                   </span>
                 </button>
 
@@ -1307,350 +1307,268 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   type="button"
                   data-testid="lobby-mode-manhunt-btn"
                   onClick={() => handleSelectGameMode('MANHUNT')}
-                  className={`flex flex-col items-start gap-1 rounded-2xl p-3.5 text-left transition-all ${
+                  className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
                     isManhunt
                       ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
                       : 'cmf-well opacity-80 hover:opacity-100'
                   }`}
                 >
-                  <div className="flex w-full items-center justify-between">
-                    <span className="font-dot text-xs font-bold uppercase">
-                      Manhunt (Bewegungsjagd)
-                    </span>
-                    {isManhunt && (
-                      <span className="cmf-badge-orange rounded-full px-2 py-0.5 text-[9px] font-bold uppercase">
-                        Aktiv
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs leading-relaxed text-[var(--text-muted)]">
-                    Kein festes Versteck – die Sardinen bleiben in Bewegung! Alle 10 Min. (am Ende 5 Min.) erscheint ein Ping.
+                  <span className="font-dot text-xs font-bold uppercase">
+                    Manhunt (Bewegung)
+                  </span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    Frei bewegen • Standort-Ping alle 10/5 Min.
                   </span>
                 </button>
               </div>
-            ) : (
-              <div className="cmf-well flex flex-col gap-1 p-3.5">
-                <div className="flex items-center gap-2">
+
+              {/* Spielgebiet */}
+              <div className="space-y-2.5 border-t cmf-divider pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 font-tech text-[11px] font-bold text-[var(--text-muted)] uppercase">
+                    <MapPin className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                    Spielgebiet
+                  </span>
                   <span
-                    className={`rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold uppercase ${
-                      isManhunt ? 'cmf-badge-orange' : 'cmf-badge-teal'
-                    }`}
+                    data-testid="lobby-zone-summary"
+                    className="font-tech text-xs font-bold text-[var(--text-main)]"
                   >
-                    {isManhunt ? 'MANHUNT' : 'KLASSISCH (SARDINEN)'}
+                    {activeZoneSummaryTitle} ({activeZoneSummaryDetail})
                   </span>
                 </div>
-                <p className="text-xs leading-relaxed text-[var(--text-muted)]">
-                  {isManhunt
-                    ? 'Verstecker dürfen sich im gesamten Gebiet frei bewegen. Alle 10 Min. (im letzten Viertel alle 5 Min.) erhalten die Sucher einen Standort-Ping und eine schrumpfende Zone.'
-                    : 'Verstecker wählen in der Versteckzeit einen festen Ort (50 m Radius). Sucher können auf der Suche Hinweis-Fragen (Richtung, Radar, Thermometer, Fotos) gegen Strafminuten kaufen.'}
-                </p>
-              </div>
-            )}
-          </div>
 
-          {/* 2B. SPIELGEBIET / GRENZEN */}
-          <div className="space-y-2.5 border-t cmf-divider pt-3.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                <MapPin className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                <span>2. Spielgebiet / Grenzen</span>
-              </div>
-              <button
-                type="button"
-                data-testid="lobby-preview-map-btn"
-                onClick={onViewMap}
-                className="cmf-btn-secondary font-tech inline-flex min-h-[32px] items-center gap-1.5 px-3 py-1 text-[10px] font-bold uppercase"
-              >
-                <Compass className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                <span>Gebiet auf Karte ansehen</span>
-              </button>
-            </div>
-
-            {/* Aktuelle Gebiets-Zusammenfassung (für Host & Spieler sichtbar) */}
-            <div
-              data-testid="lobby-zone-summary"
-              className="cmf-oled flex flex-wrap items-center justify-between gap-2 p-3"
-            >
-              <div>
-                <span className="font-tech block text-[9px] font-bold tracking-wider text-[#9AA4AE] uppercase">
-                  AKTIVE VERSTECK-ZONE
-                </span>
-                <span className="font-industrial text-sm font-bold text-[#F8FAFC]">
-                  {activeZoneSummaryTitle}
-                </span>
-                <span className="block text-[11px] text-[#9AA4AE]">
-                  {activeZoneSummaryDetail}
-                </span>
-              </div>
-              <span
-                className={`rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold uppercase ${
-                  isCirclePlayArea ? 'cmf-badge-orange' : 'cmf-badge-teal'
-                }`}
-              >
-                {isCirclePlayArea
-                  ? `R = ${circleRadiusMeters} m`
-                  : isFullMunich
-                    ? '75 PLZ'
-                    : `${activePostalCodes.length} PLZ`}
-              </span>
-            </div>
-
-            {canEditSettings && (
-              <div className="cmf-well space-y-3 p-3.5">
-                {/* 3 klare Zonen-Typ-Reiter */}
-                <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    data-testid="lobby-zone-type-plz-btn"
-                    onClick={handleSelectPlzZoneTab}
-                    className={`min-h-[38px] rounded-xl px-2 py-1.5 font-tech text-[11px] font-bold uppercase transition-all ${
-                      !isCirclePlayArea && !isFullMunich
-                        ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
-                        : 'cmf-btn-secondary'
-                    }`}
-                  >
-                    PLZ wählen
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="lobby-zone-type-munich-btn"
-                    onClick={handleSelectFullMunichZoneTab}
-                    className={`min-h-[38px] rounded-xl px-2 py-1.5 font-tech text-[11px] font-bold uppercase transition-all ${
-                      !isCirclePlayArea && isFullMunich
-                        ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
-                        : 'cmf-btn-secondary'
-                    }`}
-                  >
-                    Ganz München
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="lobby-zone-type-circle-btn"
-                    onClick={() =>
-                      handleSelectOrResizeCircleZone(circleRadiusMeters)
-                    }
-                    className={`min-h-[38px] rounded-xl px-2 py-1.5 font-tech text-[11px] font-bold uppercase transition-all ${
-                      isCirclePlayArea
-                        ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
-                        : 'cmf-btn-secondary'
-                    }`}
-                  >
-                    Eigener Kreis
-                  </button>
-                </div>
-
-                {/* Details je nach gewähltem Zonen-Typ */}
-                {!isCirclePlayArea && !isFullMunich && (
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="lobby-plz-input"
-                      className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
-                    >
-                      Münchner Postleitzahl(en) eingeben (mehrere mit Komma trennen)
-                    </label>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        handleApplyPlzInput(plzInputText, true);
-                      }}
-                      className="flex flex-col gap-2 sm:flex-row"
-                    >
-                      <input
-                        id="lobby-plz-input"
-                        type="text"
-                        data-testid="lobby-plz-input"
-                        value={plzInputText}
-                        onFocus={() => setIsPlzInputFocused(true)}
-                        onBlur={() => {
-                          setIsPlzInputFocused(false);
-                          handleApplyPlzInput(plzInputText, true);
-                        }}
-                        onChange={(e) => {
-                          const nextText = e.target.value;
-                          setPlzInputText(nextText);
-                          const { validCodes, notFoundCodes } =
-                            parseAndValidateMunichPostalCodes(nextText);
-                          const completedUnknowns = notFoundCodes.filter(
-                            (tok) =>
-                              tok.length >= 5 ||
-                              !/^\d+$/.test(tok) ||
-                              nextText.trimEnd().length >
-                                nextText.lastIndexOf(tok) + tok.length
-                          );
-                          if (completedUnknowns.length > 0) {
-                            setPlzValidationError(
-                              formatNotFoundPlzMessage(completedUnknowns)
-                            );
-                          } else {
-                            setPlzValidationError(null);
-                          }
-                          if (
-                            validCodes.length > 0 &&
-                            notFoundCodes.length === 0
-                          ) {
-                            applyPostalCodesAsZone(validCodes);
-                          }
-                        }}
-                        placeholder="z. B. 81247 oder 81247, 81245"
-                        className="cmf-input min-h-[40px] flex-1 px-3 py-1.5 font-tech text-xs font-bold"
-                      />
-                      <button
-                        type="submit"
-                        data-testid="lobby-plz-apply-btn"
-                        className="cmf-btn-active font-tech min-h-[40px] shrink-0 px-4 py-1.5 text-xs font-bold uppercase"
-                      >
-                        Übernehmen
-                      </button>
-                    </form>
-
-                    {plzValidationError && (
-                      <div
-                        data-testid="lobby-plz-error"
-                        className="cmf-badge-orange cmf-shake rounded-xl px-3 py-2 font-tech text-xs font-bold"
-                      >
-                        {plzValidationError}
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-1.5">
-                      {activePlzEntries.map((entry) => (
-                        <span
-                          key={entry.postalCode}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-white px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--text-main)]"
-                        >
-                          <span>
-                            {entry.postalCode} ({entry.district})
-                          </span>
-                          {activePostalCodes.length > 1 && (
-                            <button
-                              type="button"
-                              aria-label={`PLZ ${entry.postalCode} entfernen`}
-                              onClick={() => {
-                                const remaining = activePostalCodes.filter(
-                                  (c) => c !== entry.postalCode
-                                );
-                                setPlzValidationError(null);
-                                setPlzInputText(remaining.join(', '));
-                                applyPostalCodesAsZone(remaining);
-                              }}
-                              className="rounded px-1 text-xs font-bold text-[var(--cmf-orange)] hover:bg-black/10"
-                            >
-                              ×
-                            </button>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {!isCirclePlayArea && isFullMunich && (
-                  <p className="text-xs text-[var(--text-muted)]">
-                    Das gesamte Stadtgebiet München (alle 75 Postleitzahlen ohne innere Teilgrenzen) ist als Versteck-Zone freigegeben.
-                  </p>
-                )}
-
-                {isCirclePlayArea && (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-tech text-[11px] font-bold text-[var(--text-main)] uppercase">
-                        Kreis-Radius: {circleRadiusMeters} m (Ø{' '}
-                        {circleRadiusMeters * 2} m)
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          aria-label="Radius verkleinern"
-                          disabled={
-                            circleRadiusMeters <=
-                            PLAY_AREA_CIRCLE_MIN_RADIUS_METERS
-                          }
-                          onClick={() =>
-                            handleSelectOrResizeCircleZone(
-                              circleRadiusMeters - PLAY_AREA_CIRCLE_STEP_METERS
-                            )
-                          }
-                          className="cmf-btn-secondary flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-40"
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Radius vergrößern"
-                          disabled={
-                            circleRadiusMeters >=
-                            PLAY_AREA_CIRCLE_MAX_RADIUS_METERS
-                          }
-                          onClick={() =>
-                            handleSelectOrResizeCircleZone(
-                              circleRadiusMeters + PLAY_AREA_CIRCLE_STEP_METERS
-                            )
-                          }
-                          className="cmf-btn-secondary flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-40"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <input
-                      type="range"
-                      aria-label="Kreis-Radius in Metern"
-                      data-testid="lobby-circle-radius-slider"
-                      min={PLAY_AREA_CIRCLE_MIN_RADIUS_METERS}
-                      max={PLAY_AREA_CIRCLE_MAX_RADIUS_METERS}
-                      step={PLAY_AREA_CIRCLE_STEP_METERS}
-                      value={circleRadiusMeters}
-                      onChange={(e) =>
-                        handleSelectOrResizeCircleZone(Number(e.target.value))
-                      }
-                      className="w-full accent-[var(--cmf-orange)]"
-                    />
-
+                <div className="cmf-well space-y-3 p-3">
+                  <div className="grid grid-cols-3 gap-1.5">
                     <button
                       type="button"
-                      data-testid="lobby-open-circle-picker-btn"
-                      onClick={onOpenCircleMapEditor}
-                      className="cmf-btn-primary font-dot inline-flex min-h-[42px] w-full items-center justify-center gap-2 px-4 py-2 text-xs font-bold"
+                      data-testid="lobby-zone-type-plz-btn"
+                      onClick={handleSelectPlzZoneTab}
+                      className={`min-h-[38px] rounded-xl px-2 py-1.5 font-tech text-[11px] font-bold uppercase transition-all ${
+                        !isCirclePlayArea && !isFullMunich
+                          ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
+                          : 'cmf-btn-secondary'
+                      }`}
                     >
-                      <Crosshair className="h-4 w-4" />
-                      <span>Mittelpunkt auf der Karte wählen / verschieben</span>
+                      Postleitzahl
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="lobby-zone-type-munich-btn"
+                      onClick={handleSelectFullMunichZoneTab}
+                      className={`min-h-[38px] rounded-xl px-2 py-1.5 font-tech text-[11px] font-bold uppercase transition-all ${
+                        !isCirclePlayArea && isFullMunich
+                          ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
+                          : 'cmf-btn-secondary'
+                      }`}
+                    >
+                      Ganz München
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="lobby-zone-type-circle-btn"
+                      onClick={() =>
+                        handleSelectOrResizeCircleZone(circleRadiusMeters)
+                      }
+                      className={`min-h-[38px] rounded-xl px-2 py-1.5 font-tech text-[11px] font-bold uppercase transition-all ${
+                        isCirclePlayArea
+                          ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
+                          : 'cmf-btn-secondary'
+                      }`}
+                    >
+                      Eigener Kreis
                     </button>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
 
-          {/* 2C. ZEITEN (VERSTECKZEIT & SUCHDAUER) */}
-          <div className="space-y-2.5 border-t cmf-divider pt-3.5">
-            <div className="flex items-center gap-1.5 font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              <Clock className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-              <span>3. Zeiten</span>
-            </div>
-
-            {!isManhunt ? (
-              <div className="space-y-2.5">
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  {/* Klassisch: Versteckzeit */}
-                  <div className="cmf-well flex flex-col justify-between gap-2 p-3.5">
-                    <div>
-                      <span className="font-tech block text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                        VERSTECKZEIT AM ANFANG
-                      </span>
-                      <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                        Zeit für die Sardinen, um ein Versteck zu finden.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      <span
-                        data-testid="lobby-classic-hiding-value"
-                        className="font-dot text-xl font-bold text-[var(--text-main)]"
+                  {!isCirclePlayArea && !isFullMunich && (
+                    <div className="space-y-2">
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleApplyPlzInput(plzInputText, true);
+                        }}
+                        className="flex flex-col gap-2 sm:flex-row"
                       >
-                        {classicHidingMin} Min.
-                      </span>
-                      {canEditSettings && (
+                        <input
+                          id="lobby-plz-input"
+                          type="text"
+                          data-testid="lobby-plz-input"
+                          value={plzInputText}
+                          onFocus={() => setIsPlzInputFocused(true)}
+                          onBlur={() => {
+                            setIsPlzInputFocused(false);
+                            handleApplyPlzInput(plzInputText, true);
+                          }}
+                          onChange={(e) => {
+                            const nextText = e.target.value;
+                            setPlzInputText(nextText);
+                            const { validCodes, notFoundCodes } =
+                              parseAndValidateMunichPostalCodes(nextText);
+                            const completedUnknowns = notFoundCodes.filter(
+                              (tok) =>
+                                tok.length >= 5 ||
+                                !/^\d+$/.test(tok) ||
+                                nextText.trimEnd().length >
+                                  nextText.lastIndexOf(tok) + tok.length
+                            );
+                            if (completedUnknowns.length > 0) {
+                              setPlzValidationError(
+                                formatNotFoundPlzMessage(completedUnknowns)
+                              );
+                            } else {
+                              setPlzValidationError(null);
+                            }
+                            if (
+                              validCodes.length > 0 &&
+                              notFoundCodes.length === 0
+                            ) {
+                              applyPostalCodesAsZone(validCodes);
+                            }
+                          }}
+                          placeholder="PLZ eingeben, z. B. 81247, 81245"
+                          className="cmf-input min-h-[40px] flex-1 px-3 py-1.5 font-tech text-xs font-bold"
+                        />
+                        <button
+                          type="submit"
+                          data-testid="lobby-plz-apply-btn"
+                          className="cmf-btn-active font-tech min-h-[40px] shrink-0 px-4 py-1.5 text-xs font-bold uppercase"
+                        >
+                          OK
+                        </button>
+                      </form>
+
+                      {plzValidationError && (
+                        <div
+                          data-testid="lobby-plz-error"
+                          className="cmf-badge-orange cmf-shake rounded-xl px-3 py-2 font-tech text-xs font-bold"
+                        >
+                          {plzValidationError}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {activePlzEntries.map((entry) => (
+                          <span
+                            key={entry.postalCode}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-white px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--text-main)]"
+                          >
+                            <span>
+                              {entry.postalCode} ({entry.district})
+                            </span>
+                            {activePostalCodes.length > 1 && (
+                              <button
+                                type="button"
+                                aria-label={`PLZ ${entry.postalCode} entfernen`}
+                                onClick={() => {
+                                  const remaining = activePostalCodes.filter(
+                                    (c) => c !== entry.postalCode
+                                  );
+                                  setPlzValidationError(null);
+                                  setPlzInputText(remaining.join(', '));
+                                  applyPostalCodesAsZone(remaining);
+                                }}
+                                className="rounded px-1 text-xs font-bold text-[var(--cmf-orange)] hover:bg-black/10"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {isCirclePlayArea && (
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-tech text-xs font-bold text-[var(--text-main)]">
+                          Radius: {circleRadiusMeters} m
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            aria-label="Radius verkleinern"
+                            disabled={
+                              circleRadiusMeters <=
+                              PLAY_AREA_CIRCLE_MIN_RADIUS_METERS
+                            }
+                            onClick={() =>
+                              handleSelectOrResizeCircleZone(
+                                circleRadiusMeters - PLAY_AREA_CIRCLE_STEP_METERS
+                              )
+                            }
+                            className="cmf-btn-secondary flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-40"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Radius vergrößern"
+                            disabled={
+                              circleRadiusMeters >=
+                              PLAY_AREA_CIRCLE_MAX_RADIUS_METERS
+                            }
+                            onClick={() =>
+                              handleSelectOrResizeCircleZone(
+                                circleRadiusMeters + PLAY_AREA_CIRCLE_STEP_METERS
+                              )
+                            }
+                            className="cmf-btn-secondary flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-40"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <input
+                        type="range"
+                        aria-label="Kreis-Radius in Metern"
+                        data-testid="lobby-circle-radius-slider"
+                        min={PLAY_AREA_CIRCLE_MIN_RADIUS_METERS}
+                        max={PLAY_AREA_CIRCLE_MAX_RADIUS_METERS}
+                        step={PLAY_AREA_CIRCLE_STEP_METERS}
+                        value={circleRadiusMeters}
+                        onChange={(e) =>
+                          handleSelectOrResizeCircleZone(Number(e.target.value))
+                        }
+                        className="w-full accent-[var(--cmf-orange)]"
+                      />
+
+                      <button
+                        type="button"
+                        data-testid="lobby-open-circle-picker-btn"
+                        onClick={onOpenCircleMapEditor}
+                        className="cmf-btn-primary font-dot inline-flex min-h-[40px] w-full items-center justify-center gap-2 px-4 py-2 text-xs font-bold"
+                      >
+                        <Crosshair className="h-4 w-4" />
+                        <span>Kreis auf Karte verschieben</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Zeiten */}
+              <div className="space-y-2.5 border-t cmf-divider pt-3">
+                <span className="flex items-center gap-1.5 font-tech text-[11px] font-bold text-[var(--text-muted)] uppercase">
+                  <Clock className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                  Zeiten
+                </span>
+
+                {!isManhunt ? (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                      <div className="cmf-well flex items-center justify-between gap-2 p-3">
+                        <div>
+                          <span className="font-tech block text-[10px] font-bold text-[var(--text-muted)] uppercase">
+                            Versteckzeit
+                          </span>
+                          <span
+                            data-testid="lobby-classic-hiding-value"
+                            className="font-dot text-lg font-bold text-[var(--text-main)]"
+                          >
+                            {classicHidingMin} Min.
+                          </span>
+                        </div>
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
@@ -1675,30 +1593,21 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                             <Plus className="h-4 w-4" />
                           </button>
                         </div>
-                      )}
-                    </div>
-                  </div>
+                      </div>
 
-                  {/* Klassisch: Suchdauer */}
-                  <div className="cmf-well flex flex-col justify-between gap-2 p-3.5">
-                    <div>
-                      <span className="font-tech block text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                        SUCHDAUER (30 MIN. – 10 STD. • BIS 25M-RADAR)
-                      </span>
-                      <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                        Reguläre Suchzeit in 15-Minuten-Schritten bis zur kleinsten Radar-Stufe.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2 pt-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span
-                          data-testid="lobby-classic-search-value"
-                          className="font-dot text-xl font-bold text-[var(--text-main)]"
-                        >
-                          {formatMinutesHumanDe(classicSearchMin)}
-                        </span>
-                        {canEditSettings && (
+                      <div className="cmf-well space-y-2 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <span className="font-tech block text-[10px] font-bold text-[var(--text-muted)] uppercase">
+                              Suchdauer
+                            </span>
+                            <span
+                              data-testid="lobby-classic-search-value"
+                              className="font-dot text-lg font-bold text-[var(--text-main)]"
+                            >
+                              {formatMinutesHumanDe(classicSearchMin)}
+                            </span>
+                          </div>
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
@@ -1735,283 +1644,252 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                               <Plus className="h-4 w-4" />
                             </button>
                           </div>
-                        )}
+                        </div>
+
+                        <input
+                          type="range"
+                          data-testid="lobby-search-duration-slider"
+                          aria-label="Suchdauer in Minuten"
+                          min={CLASSIC_SEARCH_DURATION_MIN_MINUTES}
+                          max={CLASSIC_SEARCH_DURATION_MAX_MINUTES}
+                          step={CLASSIC_SEARCH_DURATION_STEP_MINUTES}
+                          value={classicSearchMin}
+                          onChange={(e) =>
+                            handleChangeClassicSearchMin(Number(e.target.value))
+                          }
+                          className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-black/15 accent-[var(--cmf-teal)]"
+                        />
                       </div>
+                    </div>
 
-                      {canEditSettings && (
-                        <div className="space-y-1">
-                          <input
-                            type="range"
-                            data-testid="lobby-search-duration-slider"
-                            aria-label="Suchdauer in Minuten (30 Min. bis 10 Std.)"
-                            min={CLASSIC_SEARCH_DURATION_MIN_MINUTES}
-                            max={CLASSIC_SEARCH_DURATION_MAX_MINUTES}
-                            step={CLASSIC_SEARCH_DURATION_STEP_MINUTES}
-                            value={classicSearchMin}
-                            onChange={(e) =>
-                              handleChangeClassicSearchMin(
-                                Number(e.target.value)
-                              )
-                            }
-                            className="h-2.5 w-full cursor-pointer appearance-none rounded-lg bg-black/15 accent-[var(--cmf-teal)]"
-                          />
-                          <div className="flex justify-between font-tech text-[10px] font-bold text-[var(--text-muted)]">
-                            <span>30 Min.</span>
-                            <span>2,5 Std.</span>
-                            <span>5 Std.</span>
-                            <span>7,5 Std.</span>
-                            <span>10 Std.</span>
-                          </div>
-                        </div>
-                      )}
+                    {/* Klare 3-Schritte-Zeitleiste statt langem Fließtext */}
+                    <div className="cmf-well flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-tech text-[11px] font-bold text-[var(--text-muted)]">
+                      <span>1. {classicHidingMin} Min. Verstecken</span>
+                      <span>→</span>
+                      <span>2. {formatMinutesHumanDe(classicSearchMin)} Suche</span>
+                      <span>→</span>
+                      <span>
+                        3. Radar ab +{formatMinutesHumanDe(radarStartAfterSearchMin)} ({classicRadii[1]}m → 25m)
+                      </span>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <div className="cmf-well flex items-center justify-between gap-2 p-3">
+                      <div>
+                        <span className="font-tech block text-[10px] font-bold text-[var(--text-muted)] uppercase">
+                          Vorsprung
+                        </span>
+                        <span
+                          data-testid="lobby-manhunt-headstart-value"
+                          className="font-dot text-lg font-bold text-[var(--text-main)]"
+                        >
+                          {manhuntHeadStartMin} Min.
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={manhuntHeadStartMin <= 0}
+                          onClick={() =>
+                            handleChangeManhuntHeadStartMin(
+                              manhuntHeadStartMin - 1
+                            )
+                          }
+                          className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
+                        >
+                          <Minus className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={manhuntHeadStartMin >= 30}
+                          onClick={() =>
+                            handleChangeManhuntHeadStartMin(
+                              manhuntHeadStartMin + 1
+                            )
+                          }
+                          className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
 
-                <div className="cmf-well px-3.5 py-2.5 text-xs text-[var(--text-muted)]">
-                  <strong>Ablauf:</strong> Nach{' '}
-                  <strong>{classicHidingMin} Min.</strong> Versteckzeit beginnt
-                  die Suche ({formatMinutesHumanDe(classicSearchMin)}). Ab{' '}
-                  <strong>+{formatMinutesHumanDe(radarStartAfterSearchMin)}</strong>{' '}
-                  der Suche schrumpft das Radar passend zur Kartengröße schrittweise (
-                  {classicRadii[1]} m → {classicRadii[2]} m →{' '}
-                  {classicRadii[3]} m → {classicRadii[4]} m →{' '}
-                  {classicRadii[5]} m). Tipp-Preise: Richtung/Radar +{splitPenaltyMin}{' '}
-                  Min., Foto +{photoPenaltyMin} Min.
-                </div>
+                    <div className="cmf-well flex items-center justify-between gap-2 p-3">
+                      <div>
+                        <span className="font-tech block text-[10px] font-bold text-[var(--text-muted)] uppercase">
+                          Jagddauer
+                        </span>
+                        <span
+                          data-testid="lobby-manhunt-shrink-value"
+                          className="font-dot text-lg font-bold text-[var(--text-main)]"
+                        >
+                          {manhuntShrinkMin} Min.
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={manhuntShrinkMin <= 10}
+                          onClick={() =>
+                            handleChangeManhuntShrinkMin(manhuntShrinkMin - 5)
+                          }
+                          className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
+                        >
+                          <Minus className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={manhuntShrinkMin >= 80}
+                          onClick={() =>
+                            handleChangeManhuntShrinkMin(manhuntShrinkMin + 5)
+                          }
+                          className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="space-y-2.5">
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  {/* Manhunt: Vorsprung */}
-                  <div className="cmf-well flex flex-col justify-between gap-2 p-3.5">
-                    <div>
-                      <span className="font-tech block text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                        VORSPRUNG DER VERSTECKER
-                      </span>
-                      <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                        Freilaufzeit, bevor die Jagd beginnt.
-                      </p>
-                    </div>
 
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      <span
-                        data-testid="lobby-manhunt-headstart-value"
-                        className="font-dot text-xl font-bold text-[var(--text-main)]"
-                      >
-                        {manhuntHeadStartMin} Min.
-                      </span>
-                      {canEditSettings && (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={manhuntHeadStartMin <= 0}
-                            onClick={() =>
-                              handleChangeManhuntHeadStartMin(
-                                manhuntHeadStartMin - 1
-                              )
-                            }
-                            className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
-                          >
-                            <Minus className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={manhuntHeadStartMin >= 30}
-                            onClick={() =>
-                              handleChangeManhuntHeadStartMin(
-                                manhuntHeadStartMin + 1
-                              )
-                            }
-                            className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Manhunt: Jagd-/Schrumpfdauer */}
-                  <div className="cmf-well flex flex-col justify-between gap-2 p-3.5">
-                    <div>
-                      <span className="font-tech block text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                        JAGDDAUER (BIS 150M-ZONE)
-                      </span>
-                      <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                        Zeit bis die Zone auf 150 m geschrumpft ist.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      <span
-                        data-testid="lobby-manhunt-shrink-value"
-                        className="font-dot text-xl font-bold text-[var(--text-main)]"
-                      >
-                        {manhuntShrinkMin} Min.
-                      </span>
-                      {canEditSettings && (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={manhuntShrinkMin <= 10}
-                            onClick={() =>
-                              handleChangeManhuntShrinkMin(manhuntShrinkMin - 5)
-                            }
-                            className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
-                          >
-                            <Minus className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={manhuntShrinkMin >= 80}
-                            onClick={() =>
-                              handleChangeManhuntShrinkMin(manhuntShrinkMin + 5)
-                            }
-                            className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="cmf-well px-3.5 py-2.5 text-xs text-[var(--text-muted)]">
-                  <strong>Ablauf:</strong> Nach{' '}
-                  <strong>{manhuntHeadStartMin} Min.</strong> Vorsprung startet
-                  die Jagd. In den ersten 3/4 (bis{' '}
-                  {formatDurationClock(
-                    Math.round(manhuntShrinkMin * 60_000 * 0.75)
+              {/* Einklappbare Vorschau & Profi-Optionen */}
+              <div className="border-t cmf-divider pt-3 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setHostAdvancedExpanded((v) => !v)}
+                  className="cmf-btn-secondary font-tech flex min-h-[38px] w-full items-center justify-between px-3.5 py-2 text-[11px] font-bold uppercase"
+                >
+                  <span>Zonen-Vorschau &amp; Test-Optionen</span>
+                  {hostAdvancedExpanded ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
                   )}
-                  ) erscheint alle <strong>10 Min.</strong> ein Verstecker-Ping,
-                  im letzten Viertel alle <strong>5 Min.</strong> (Zone: 1200 m →
-                  150 m).
-                </div>
-              </div>
-            )}
+                </button>
 
-            <ShrinkingBorderPreview
-              playArea={publicState.playArea}
-              gameMode={publicState.gameMode}
-              radarSchedule={publicState.radarSchedule}
-            />
-          </div>
+                {hostAdvancedExpanded && (
+                  <div className="space-y-3">
+                    <ShrinkingBorderPreview
+                      playArea={publicState.playArea}
+                      gameMode={publicState.gameMode}
+                      radarSchedule={publicState.radarSchedule}
+                    />
 
-          {/* Optionaler Testmodus-Schalter nur für den Host */}
-          {canEditSettings && (
-            <div className="flex items-center justify-between gap-3 border-t cmf-divider pt-3">
-              <div>
-                <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
-                  Indoor-Testmodus (Standort per Kartenklick setzen)
-                </span>
-                <span className="text-[11px] text-[var(--text-muted)]">
-                  Nur zum Testen im Haus aktivieren – draußen beim echten Spiel auslassen!
-                </span>
+                    <div className="cmf-well flex items-center justify-between gap-3 p-3">
+                      <div>
+                        <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
+                          Indoor-Testmodus (Standort per Klick)
+                        </span>
+                        <span className="text-[11px] text-[var(--text-muted)]">
+                          Nur zum Testen im Haus – draußen ausschalten!
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={publicState.allowTestClicks}
+                        onClick={() =>
+                          void adapter.savePublicStateByHost({
+                            ...publicState,
+                            allowTestClicks: !publicState.allowTestClicks,
+                          })
+                        }
+                        className={`font-tech min-h-[36px] shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-bold uppercase ${
+                          publicState.allowTestClicks
+                            ? 'cmf-btn-active'
+                            : 'cmf-btn-secondary'
+                        }`}
+                      >
+                        {publicState.allowTestClicks ? 'AN' : 'AUS'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={publicState.allowTestClicks}
-                onClick={() =>
-                  void adapter.savePublicStateByHost({
-                    ...publicState,
-                    allowTestClicks: !publicState.allowTestClicks,
-                  })
-                }
-                className={`font-tech min-h-[36px] shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-bold uppercase ${
-                  publicState.allowTestClicks
-                    ? 'cmf-btn-active'
-                    : 'cmf-btn-secondary'
-                }`}
-              >
-                {publicState.allowTestClicks ? 'AN' : 'AUS'}
-              </button>
             </div>
           )}
         </section>
 
-        {/* SCHRITT 3: BEREITMACHEN & SPIELSTART */}
+        {/* 3. STARTKLAR */}
         <section
           data-testid="lobby-start-section"
-          className="cmf-chassis space-y-3.5 p-4 sm:p-5"
+          className="cmf-chassis space-y-3 p-4 sm:p-5"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase">
-                SCHRITT 3 // STARTKLAR
-              </span>
-              <h2 className="font-industrial text-base font-bold text-[var(--text-main)]">
-                Bereitmachen &amp; Runde starten
-              </h2>
-            </div>
+            <h2 className="font-industrial text-base font-bold text-[var(--text-main)]">
+              3. Spiel starten
+            </h2>
 
             {totalRequiredReady > 0 && (
               <span className="cmf-oled rounded-lg px-2.5 py-1 font-dot text-xs text-[var(--cmf-teal)]">
-                SARDINEN BEREIT: {readyCount} / {totalRequiredReady}
+                BEREIT: {readyCount} / {totalRequiredReady}
               </span>
             )}
           </div>
 
-          {/* Checkliste für den Start */}
           {!canStartOrReady && (
-            <div className="cmf-badge-amber rounded-xl p-3 text-xs font-medium space-y-1">
+            <div className="cmf-badge-amber rounded-xl p-3 text-xs font-medium space-y-0.5">
               {requiredHiderMembers.length === 0 && (
-                <p>• Mindestens ein Spieler muss „Die Sardinen (Verstecker)“ wählen.</p>
+                <p>• Mindestens 1 Verstecker fehlt noch.</p>
               )}
               {seekerMembers.length === 0 && (
-                <p>• Mindestens ein Spieler muss einem Sucher-Team beitreten.</p>
+                <p>• Mindestens 1 Sucher-Team fehlt noch.</p>
               )}
             </div>
           )}
 
-          {/* Bereit-Button für Verstecker */}
           {!isOverviewAccount && isOwnHider && canStartOrReady && (
-            <button
-              type="button"
-              data-testid="toggle-ready-btn"
-              disabled={togglingReady}
-              onClick={async () => {
-                setTogglingReady(true);
-                try {
-                  await onToggleOwnReady(!isOwnReady);
-                } finally {
-                  setTogglingReady(false);
-                }
-              }}
-              className={`font-dot flex min-h-[50px] w-full items-center justify-center gap-2 px-4 py-3 text-sm font-bold ${
-                isOwnReady ? 'cmf-btn-active' : 'cmf-btn-primary'
-              }`}
-            >
-              <CheckCircle2
-                className={`h-4 w-4 ${
-                  isOwnReady ? 'text-[var(--cmf-teal)]' : 'text-white'
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                data-testid="toggle-ready-btn"
+                disabled={togglingReady}
+                onClick={async () => {
+                  setTogglingReady(true);
+                  try {
+                    await onToggleOwnReady(!isOwnReady);
+                  } finally {
+                    setTogglingReady(false);
+                  }
+                }}
+                className={`font-dot flex min-h-[50px] w-full items-center justify-center gap-2 px-4 py-3 text-sm font-bold ${
+                  isOwnReady ? 'cmf-btn-active' : 'cmf-btn-primary'
                 }`}
-              />
-              <span>
-                {isOwnReady
-                  ? `Bereit bestätigt (${readyCount}/${totalRequiredReady}) – Startet automatisch bei Alle-Bereit`
-                  : `Ich bin bereit! (${readyCount}/${totalRequiredReady})`}
-              </span>
-            </button>
+              >
+                <CheckCircle2
+                  className={`h-4 w-4 ${
+                    isOwnReady ? 'text-[var(--cmf-teal)]' : 'text-white'
+                  }`}
+                />
+                <span>
+                  {isOwnReady
+                    ? `✓ Bereit (${readyCount}/${totalRequiredReady})`
+                    : `Ich bin bereit! (${readyCount}/${totalRequiredReady})`}
+                </span>
+              </button>
+              {isOwnReady && (
+                <p className="text-center text-[11px] text-[var(--text-muted)]">
+                  Startet automatisch, sobald alle Verstecker bereit sind.
+                </p>
+              )}
+            </div>
           )}
 
-          {/* Status-Info für Sucher / unentschiedene Spieler */}
           {!isOverviewAccount && !isOwnHider && canStartOrReady && (
             <div className="cmf-well flex items-center gap-2.5 p-3 text-xs text-[var(--text-muted)]">
               <Users className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
               <span>
                 {ownSelection === 'UNASSIGNED'
-                  ? 'Bitte wähle oben zuerst dein Team für diese Runde!'
-                  : `Du spielst in „${
+                  ? 'Bitte wähle oben zuerst dein Team!'
+                  : `Bereit in „${
                       teamsPublic[ownSelection]?.name ?? ownSelection
-                    }“. Das Spiel startet automatisch, sobald alle Sardinen bereit sind (${readyCount}/${totalRequiredReady}) oder der Host startet.`}
+                    }“ – wartet auf Spielstart (${readyCount}/${totalRequiredReady} Verstecker bereit).`}
               </span>
             </div>
           )}
 
-          {/* Host-Direktstart-Button */}
           {isHost && publicState.status === 'LOBBY' && (
             <button
               type="button"
@@ -2021,11 +1899,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               className="cmf-btn-primary font-dot flex min-h-[50px] w-full items-center justify-center gap-2 px-4 py-3 text-sm font-bold disabled:opacity-50"
             >
               <Play className="h-4 w-4" />
-              <span>
-                {startingRound
-                  ? 'Starte Spiel ...'
-                  : 'Als Host Spiel jetzt starten'}
-              </span>
+              <span>{startingRound ? 'Starte ...' : 'Spiel starten'}</span>
             </button>
           )}
 
@@ -2080,10 +1954,52 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               className="cmf-btn-primary font-dot flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-3 text-sm font-bold"
             >
               <RotateCcw className="h-4 w-4" />
-              <span>Neue Runde in der Lobby freigeben</span>
+              <span>Neue Runde vorbereiten</span>
             </button>
           )}
         </section>
+
+        {/* Destruktive Host-Aktion sicher ganz unten platziert */}
+        {isHost && (
+          <div className="flex justify-center pt-1">
+            {confirmDeleteLobby ? (
+              <div className="cmf-module flex flex-wrap items-center justify-center gap-2 border-[#DC2626]/40 px-4 py-2.5">
+                <span className="font-tech text-xs font-bold text-[#DC2626]">
+                  Lobby {roomCode} endgültig löschen?
+                </span>
+                <button
+                  type="button"
+                  data-testid="lobby-confirm-delete-room-btn"
+                  disabled={deletingLobby}
+                  onClick={() => void handleDeleteCurrentLobby()}
+                  className="inline-flex min-h-[34px] items-center gap-1 rounded-lg bg-[#DC2626] px-3 py-1 font-tech text-xs font-bold text-white uppercase hover:opacity-90 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>{deletingLobby ? 'Lösche ...' : 'Ja, löschen'}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="lobby-cancel-delete-room-btn"
+                  disabled={deletingLobby}
+                  onClick={() => setConfirmDeleteLobby(false)}
+                  className="cmf-btn-secondary inline-flex min-h-[34px] items-center px-3 py-1 font-tech text-xs font-bold uppercase"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                data-testid="lobby-delete-room-btn"
+                onClick={() => setConfirmDeleteLobby(true)}
+                className="font-tech inline-flex min-h-[36px] items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-[#DC2626]/85 uppercase hover:bg-[#DC2626]/10 hover:text-[#DC2626]"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Diese Lobby löschen</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

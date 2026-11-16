@@ -276,7 +276,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
       window.location.hostname !== '127.0.0.1'
     ) {
       setCameraError(
-        'Live-Kamerazugriff wird vom Browser nur über HTTPS (oder localhost) erlaubt. Bitte öffne die HTTPS-Adresse oder nutze direkt rechts den Button „QR-Foto aufnehmen“.'
+        'Die Kamera benötigt eine HTTPS-Verbindung. Gib unten einfach den 6-stelligen Fang-Code ein.'
       );
       return;
     }
@@ -287,7 +287,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
       typeof navigator.mediaDevices.getUserMedia !== 'function'
     ) {
       setCameraError(
-        'Dein Browser stellt hier keine Live-Kamera-API bereit. Nutze bitte den Button „QR-Foto aufnehmen“ oder gib den Fang-Code unten ein.'
+        'Kamera in diesem Browser nicht verfügbar. Gib unten einfach den 6-stelligen Fang-Code ein.'
       );
       return;
     }
@@ -339,19 +339,19 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
         errName === 'PermissionDeniedError'
       ) {
         setCameraError(
-          'Kamera-Berechtigung wurde blockiert. Bitte erlaube den Kamerazugriff über das Schloss-Symbol in der Adressleiste oder nutze „QR-Foto aufnehmen“.'
+          'Kamerazugriff blockiert. Erlaube die Kamera im Browser oder gib unten den 6-stelligen Fang-Code ein.'
         );
       } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
         setCameraError(
-          'Es wurde keine Kamera auf diesem Gerät gefunden. Bitte gib unten den Fang-Code manuell ein.'
+          'Keine Kamera gefunden. Bitte gib unten den 6-stelligen Fang-Code ein.'
         );
       } else if (errName === 'NotReadableError' || errName === 'TrackStartError') {
         setCameraError(
-          'Die Kamera wird gerade von einer anderen App verwendet. Schließe andere Kamera-Apps oder nutze „QR-Foto aufnehmen“.'
+          'Die Kamera wird von einer anderen App verwendet. Schließe andere Apps oder gib unten den 6-stelligen Fang-Code ein.'
         );
       } else {
         setCameraError(
-          'Live-Kamera konnte nicht gestartet werden. Nutze alternativ „QR-Foto aufnehmen“ oder gib unten den Fang-Code ein.'
+          'Kamera konnte nicht gestartet werden. Gib unten einfach den 6-stelligen Fang-Code ein.'
         );
       }
     }
@@ -374,27 +374,24 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
 
       <div className="mx-auto max-w-md space-y-4 pb-10">
         <div className="cmf-chassis cmf-card-enter p-4 sm:p-5">
-          <span className="cmf-badge-orange inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
-            SARDINEN GEFUNDEN?
-          </span>
-          <h2 className="font-dot mt-1 text-lg sm:text-xl text-[var(--text-main)]">
-            QR-Code scannen oder Fang-Code eingeben
+          <h2 className="font-dot text-lg sm:text-xl text-[var(--text-main)]">
+            Verstecker gefunden?
           </h2>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
-            Sobald der Code bestätigt ist, stoppt eure Suchzeit sofort und euer gesamtes Team wechselt in das Sardinen-Versteck!
+            Scannt ihren QR-Code oder tippt den 6-stelligen Fang-Code ein – eure Suchzeit stoppt sofort!
           </p>
         </div>
 
         {!gameRunning && (
-          <div className="cmf-badge-amber rounded-2xl p-3.5 text-xs font-medium">
-            Hinweis: Du kannst die Kamera schon jetzt testen & freigeben. Ein offizieller Catch wird gewertet, sobald die offene Suche läuft.
+          <div className="cmf-badge-amber rounded-2xl p-3 text-xs font-medium">
+            Wird gewertet, sobald die Suche läuft (Kamera-Test schon möglich).
           </div>
         )}
 
         {/* Kamera-Scanner */}
         <div className="cmf-module p-4 space-y-3">
           <span className="font-industrial block text-sm text-[var(--text-main)]">
-            1. Per Smartphone-Kamera scannen
+            1. QR-Code scannen
           </span>
 
           <button
@@ -490,7 +487,7 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
               disabled={!gameRunning || manualCode.trim().length < 3}
               className="cmf-btn-primary font-dot min-h-[48px] px-5 text-xs font-bold"
             >
-              Prüfen
+              Bestätigen
             </button>
           </div>
         </form>
@@ -510,17 +507,17 @@ export const SeekerScannerView: React.FC<SeekerScannerViewProps> = ({
             {watchedCatch.status === 'PENDING' ||
             watchedCatch.status === 'PROCESSING' ? (
               <span className="font-tech uppercase">
-                Code wird vom Controller-Gerät geprüft ...
+                Code wird geprüft ...
               </span>
             ) : watchedCatch.status === 'ACCEPTED' ? (
               <span className="flex items-center gap-2 text-sm font-bold">
                 <CheckCircle2 className="h-5 w-5 text-[var(--cmf-teal)]" />
-                TREFFER! Euer gesamtes Team ist jetzt offiziell bei den Sardinen!
+                Gefunden! Euer Team versteckt sich jetzt mit!
               </span>
             ) : (
               <span className="flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
-                Ungültiger Code: {watchedCatch.errorMessage ?? 'Bitte erneut prüfen.'}
+                Ungültiger Code: {watchedCatch.errorMessage ?? 'Bitte erneut eingeben.'}
               </span>
             )}
           </div>

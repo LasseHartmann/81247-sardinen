@@ -155,6 +155,13 @@ export function getPhaseLabelDe(phase: GamePhase): string {
   }
 }
 
+export function formatCompassDirectionDe(bearingDeg: number): string {
+  const norm = ((Math.round(bearingDeg) % 360) + 360) % 360;
+  const dirs = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'] as const;
+  const idx = Math.round(norm / 45) % 8;
+  return `${norm}° (${dirs[idx]})`;
+}
+
 export function getQuestionLabelDe(type: QuestionType): string {
   switch (type) {
     case 'SPLIT_NS':
@@ -162,9 +169,9 @@ export function getQuestionLabelDe(type: QuestionType): string {
     case 'SPLIT_EW':
       return 'Ost / West';
     case 'THERMOMETER':
-      return 'Thermometer (250 m)';
+      return 'Warm / Kalt (Thermometer)';
     case 'CONE_45':
-      return '45°-Kegel';
+      return 'Richtungs-Kegel (45°)';
     case 'OSM_TRANSIT':
       return 'Haltestelle (150 m)';
     case 'OSM_RECYCLING':
@@ -172,9 +179,9 @@ export function getQuestionLabelDe(type: QuestionType): string {
     case 'OSM_GREEN':
       return 'Grünfläche';
     case 'RADIUS_RADAR':
-      return 'Radius-Radar';
+      return 'Umkreis-Check';
     case 'DONUT_RING':
-      return 'Donut-Ring';
+      return 'Entfernungs-Ring';
     case 'MEDIA_SKY':
       return 'Foto nach oben';
     case 'MEDIA_GROUND':

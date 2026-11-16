@@ -136,12 +136,10 @@ export const LateJoinTeamPicker: React.FC<LateJoinTeamPickerProps> = ({
 
           <div>
             <h1 className="font-industrial text-lg font-bold text-[#F8FAFC]">
-              Willkommen, {ownMember.name}! Wähle zuerst dein Team
+              Wähle dein Team, {ownMember.name}
             </h1>
-            <p className="mt-1 text-xs leading-relaxed text-[#9AA4AE]">
-              Du trittst einem bereits laufenden Spiel bei. Sieh dir hier alle
-              Teams und ihre aktuellen Mitglieder an und wähle dein Team aus, um
-              direkt einzusteigen.
+            <p className="mt-0.5 text-xs text-[#9AA4AE]">
+              Das Spiel läuft bereits – wähle ein Team, um direkt mitzuspielen.
             </p>
           </div>
         </div>
@@ -158,11 +156,10 @@ export const LateJoinTeamPicker: React.FC<LateJoinTeamPickerProps> = ({
               </span>
               <div>
                 <h2 className="font-industrial text-sm font-bold text-[var(--text-main)]">
-                  Die Sardinen (Verstecker)
+                  Verstecker (Die Sardinen)
                 </h2>
                 <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                  {hiderMembers.length}{' '}
-                  {hiderMembers.length === 1 ? 'Mitglied' : 'Mitglieder'}
+                  {hiderMembers.length} Spieler
                 </span>
               </div>
             </div>
@@ -178,7 +175,7 @@ export const LateJoinTeamPicker: React.FC<LateJoinTeamPickerProps> = ({
               <span>
                 {submittingChoice === 'HIDER'
                   ? 'Trete bei ...'
-                  : 'Den Sardinen beitreten'}
+                  : 'Verstecker werden'}
               </span>
             </button>
           </div>
@@ -343,7 +340,7 @@ export const LateJoinTeamPicker: React.FC<LateJoinTeamPickerProps> = ({
             className="cmf-btn-secondary font-tech inline-flex min-h-[40px] items-center gap-1.5 px-3.5 py-2 text-xs font-bold uppercase"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Anderen Spiel-Code wählen</span>
+            <span>Lobby wechseln</span>
           </button>
 
           <button

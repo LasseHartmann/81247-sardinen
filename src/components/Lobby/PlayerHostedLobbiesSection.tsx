@@ -18,6 +18,7 @@ export interface PlayerHostedLobbiesSectionProps {
   currentRoomCode?: string | null;
   hintRoomCodes?: string[];
   busy?: boolean;
+  hideWhenOnlyCurrentRoom?: boolean;
   onOpenLobby: (roomCode: string) => Promise<void> | void;
   onAfterDeleteCurrentLobby?: (deletedRoomCode: string) => Promise<void> | void;
 }
@@ -60,6 +61,7 @@ export const PlayerHostedLobbiesSection: React.FC<
   currentRoomCode = null,
   hintRoomCodes = [],
   busy = false,
+  hideWhenOnlyCurrentRoom = false,
   onOpenLobby,
   onAfterDeleteCurrentLobby,
 }) => {
@@ -96,6 +98,15 @@ export const PlayerHostedLobbiesSection: React.FC<
   }, [adapter, playerId, hintKey]);
 
   if (hostedLobbies.length === 0) {
+    return null;
+  }
+
+  if (
+    hideWhenOnlyCurrentRoom &&
+    currentRoomCode &&
+    hostedLobbies.length === 1 &&
+    hostedLobbies[0].roomCode.toUpperCase() === currentRoomCode.toUpperCase()
+  ) {
     return null;
   }
 
@@ -148,20 +159,11 @@ export const PlayerHostedLobbiesSection: React.FC<
       data-testid="player-hosted-lobbies-section"
       className="cmf-module space-y-3 p-4 sm:p-5"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-2.5">
-        <div className="flex items-center gap-2.5">
-          <div className="cmf-oled flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--cmf-orange)]">
-            <Layers className="h-4 w-4" />
-          </div>
-          <div>
-            <span className="font-tech block text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
-              DEINE GEHOSTETEN SPIELRÄUME
-            </span>
-            <h2 className="font-industrial text-sm font-bold text-[var(--text-main)] sm:text-base">
-              Aktuell von dir gehostete Lobbys ({hostedLobbies.length})
-            </h2>
-          </div>
-        </div>
+      <div className="flex items-center gap-2 border-b cmf-divider pb-2.5">
+        <Layers className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+        <h2 className="font-industrial text-sm font-bold text-[var(--text-main)]">
+          Deine offenen Lobbys ({hostedLobbies.length})
+        </h2>
       </div>
 
       <div className="space-y-2.5">

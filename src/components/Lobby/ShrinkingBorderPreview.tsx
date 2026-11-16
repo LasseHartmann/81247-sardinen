@@ -353,24 +353,21 @@ export const ShrinkingBorderPreview: React.FC<ShrinkingBorderPreviewProps> = ({
       {/* Kopfzeile mit Titel, Flächeninfo & Animations-Steuerung */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <div className="cmf-oled flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[var(--cmf-orange)]">
-            <Radar className="h-4 w-4" />
-          </div>
+          <Radar className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
           <div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
-                SCHRUMPF-GRENZEN // LIVE-VORSCHAU
+              <span className="font-industrial text-xs font-bold text-[var(--text-main)]">
+                Zonen-Schrumpfung
               </span>
               <span
                 data-testid="shrink-preview-area-badge"
                 className="cmf-oled rounded-full px-2 py-0.5 font-tech text-[9px] font-bold text-[#F8FAFC]"
               >
-                Fläche: {formatAreaHumanDe(mapAreaSqM)}
+                {formatAreaHumanDe(mapAreaSqM)}
               </span>
             </div>
             <p className="text-[11px] text-[var(--text-muted)]">
-              So zieht sich die Grenze von der Kartengröße ({stageRadii[1]} m)
-              bis auf {stageRadii[5]} m um das Versteck zusammen.
+              Schrumpft in 5 Stufen von {stageRadii[1]} m auf {stageRadii[5]} m.
             </p>
           </div>
         </div>
@@ -399,7 +396,7 @@ export const ShrinkingBorderPreview: React.FC<ShrinkingBorderPreviewProps> = ({
             ) : (
               <>
                 <Play className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                <span>Schrumpfen animieren</span>
+                <span>Abspielen</span>
               </>
             )}
           </button>
@@ -408,17 +405,17 @@ export const ShrinkingBorderPreview: React.FC<ShrinkingBorderPreviewProps> = ({
             type="button"
             data-testid="shrink-preview-reroll-btn"
             onClick={() => setSeedCounter((c) => c + 1)}
-            title="Zufällige Kreis-Verschiebung neu würfeln"
+            title="Anderes Beispiel-Versteck anzeigen"
             className="cmf-btn-secondary inline-flex min-h-[34px] items-center gap-1 rounded-xl px-2.5 py-1 font-tech text-[10px] font-bold uppercase"
           >
             <Shuffle className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Neu würfeln</span>
+            <span className="hidden sm:inline">Anderes Beispiel</span>
           </button>
         </div>
       </div>
 
-      {/* Stufen-Auswahlleiste (Alle, Offene Suche, Stufe 1..5) */}
-      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-7">
+      {/* Kompakte Stufen-Auswahlleiste */}
+      <div className="grid grid-cols-4 gap-1 sm:grid-cols-7">
         <button
           type="button"
           data-testid="shrink-preview-stage-all"
@@ -426,16 +423,14 @@ export const ShrinkingBorderPreview: React.FC<ShrinkingBorderPreviewProps> = ({
             setIsPlaying(false);
             setSelectedStage('ALL');
           }}
-          className={`flex flex-col items-center justify-center rounded-xl px-2 py-1.5 font-tech transition-all ${
+          className={`flex flex-col items-center justify-center rounded-xl px-1.5 py-1.5 font-tech transition-all ${
             selectedStage === 'ALL'
               ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
               : 'cmf-btn-secondary bg-white/80'
           }`}
         >
-          <span className="text-[9px] font-bold uppercase opacity-75">
-            Übersicht
-          </span>
-          <span className="font-dot text-xs font-bold">Alle 5 Ringe</span>
+          <span className="text-[9px] font-bold uppercase opacity-75">Alle</span>
+          <span className="font-dot text-[11px] font-bold">5 Ringe</span>
         </button>
 
         <button
@@ -445,16 +440,14 @@ export const ShrinkingBorderPreview: React.FC<ShrinkingBorderPreviewProps> = ({
             setIsPlaying(false);
             setSelectedStage(0);
           }}
-          className={`flex flex-col items-center justify-center rounded-xl px-2 py-1.5 font-tech transition-all ${
+          className={`flex flex-col items-center justify-center rounded-xl px-1.5 py-1.5 font-tech transition-all ${
             selectedStage === 0
               ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
               : 'cmf-btn-secondary bg-white/80'
           }`}
         >
-          <span className="text-[9px] font-bold uppercase opacity-75">
-            Start (+00:00)
-          </span>
-          <span className="font-dot text-xs font-bold">Volle Karte</span>
+          <span className="text-[9px] font-bold uppercase opacity-75">Start</span>
+          <span className="font-dot text-[11px] font-bold">100%</span>
         </button>
 
         {([1, 2, 3, 4, 5] as RadarStageId[]).map((stageId) => {
@@ -470,24 +463,22 @@ export const ShrinkingBorderPreview: React.FC<ShrinkingBorderPreviewProps> = ({
                 setIsPlaying(false);
                 setSelectedStage(stageId);
               }}
-              className={`flex flex-col items-center justify-center rounded-xl px-2 py-1.5 font-tech transition-all ${
+              className={`flex flex-col items-center justify-center rounded-xl px-1.5 py-1.5 font-tech transition-all ${
                 active
                   ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
                   : 'cmf-btn-secondary bg-white/80'
               }`}
             >
-              <span className="flex items-center gap-1 text-[9px] font-bold uppercase opacity-80">
+              <span className="flex items-center gap-1 text-[9px] font-bold opacity-80">
                 <span
                   className="inline-block h-2 w-2 rounded-full"
                   style={{ backgroundColor: STAGE_RING_COLORS[stageId] }}
                 />
-                <span>
-                  Stufe {stageId} (+{formatDurationClock(relMs)})
-                </span>
+                <span>+{formatDurationClock(relMs)}</span>
               </span>
               <span
                 data-testid={`shrink-preview-radius-${stageId}`}
-                className="font-dot text-xs font-bold"
+                className="font-dot text-[11px] font-bold"
               >
                 {radius} m
               </span>

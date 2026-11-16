@@ -67,6 +67,7 @@ import {
 } from '../../hooks/useControllerEngine';
 import { HardwareKnob } from '../Common/HardwareKnob';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
+import { AdminAccountManager } from './AdminAccountManager';
 import { AdminLobbiesOverview } from './AdminLobbiesOverview';
 import { isOverviewMember } from '../../config/players';
 import {
@@ -1068,6 +1069,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             }
           }}
         />
+
+        {isOverviewMember(ownMember) && (
+          <AdminAccountManager adapter={adapter} defaultCollapsed />
+        )}
 
         {/* 1. Offene Beitrittswünsche */}
         {openRequests.length > 0 && (

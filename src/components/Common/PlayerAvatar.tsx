@@ -31,8 +31,8 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
   );
 
   const { viewBox, innerHtml } = useMemo(
-    () => renderSardineSvgMarkup(resolvedConfig),
-    [resolvedConfig]
+    () => renderSardineSvgMarkup(resolvedConfig, playerId, avatar),
+    [resolvedConfig, playerId, avatar]
   );
 
   const sizeMap: Record<NonNullable<PlayerAvatarProps['size']>, string> = {

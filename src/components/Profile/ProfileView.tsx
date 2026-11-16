@@ -311,8 +311,43 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         </div>
 
-        {/* 2. Anpassbarer Sardinen-Avatar & Accessoires */}
-        {(() => {
+        {/* 2. Anpassbarer Sardinen-Avatar & Accessoires (für Admin: erzwungenes Matrix-Icon) */}
+        {isOverviewAccount ? (
+          <section
+            data-testid="profile-avatar-section"
+            className="cmf-module p-4 sm:p-5 space-y-3"
+          >
+            <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-emerald-500" />
+                <h3 className="font-industrial text-base text-[var(--text-main)]">
+                  Matrix-System-Avatar (Admin)
+                </h3>
+              </div>
+              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider text-emerald-700 uppercase">
+                ERZWUNGEN // MATRIX-ICON
+              </span>
+            </div>
+
+            <div className="cmf-oled flex items-center gap-4 rounded-2xl border border-emerald-500/40 p-4">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-black p-1">
+                <PlayerAvatar playerId={ownMember} size="xl" />
+              </div>
+              <div className="space-y-1">
+                <span className="font-tech block text-[10px] font-bold tracking-wider text-emerald-400 uppercase">
+                  ROOT // MATRIX-SARDINE
+                </span>
+                <p className="font-industrial text-sm font-bold text-[#F8FAFC]">
+                  Feste System-Identität für das Admin-Konto
+                </p>
+                <p className="text-xs text-slate-300">
+                  Das Admin-Konto trägt dauerhaft das exklusive Matrix-Cyber-Icon.
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : (
+          (() => {
           const currentSardine = parseSardineAvatar(ownMember.avatar, ownMember);
           const applySardineConfig = async (nextCfg: SardineAvatarConfig) => {
             const safeCfg = sanitizeSardineAvatarForPlayer(nextCfg, ownMember);
@@ -638,7 +673,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               )}
             </section>
           );
-        })()}
+        })()
+        )}
 
         {/* 3. All-Time Stats (Lebenszeit-Statistik) */}
         <section

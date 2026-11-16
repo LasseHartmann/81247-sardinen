@@ -346,6 +346,79 @@ export function sanitizeSardineAvatarForPlayer(
 }
 
 export const SARDINE_AVATAR_PREFIX = 'sardine:v1:';
+export const MATRIX_ADMIN_AVATAR_ID = 'sardine:matrix:admin';
+
+export function isMatrixAdminIdentity(
+  identity?: PlayerIdentityInput,
+  rawAvatar?: string | null
+): boolean {
+  if (rawAvatar && rawAvatar.trim() === MATRIX_ADMIN_AVATAR_ID) {
+    return true;
+  }
+  const candidateIds = extractCandidateAccountIds(identity);
+  return candidateIds.some((id) => id === 'admin' || id === 'overview');
+}
+
+export function renderMatrixAdminSardineSvgMarkup(): {
+  viewBox: string;
+  innerHtml: string;
+} {
+  const innerHtml = `
+    <!-- Matrix Terminal-Hintergrund mit abgerundetem Cyber-Rahmen -->
+    <rect x="2" y="2" width="60" height="60" rx="14" fill="#020804" stroke="#00FF41" stroke-width="2" />
+    <rect x="4.5" y="4.5" width="55" height="55" rx="11.5" fill="none" stroke="#15803D" stroke-width="0.9" stroke-dasharray="3 2" opacity="0.7" />
+
+    <!-- Fallender Matrix-Binärcode im Hintergrund -->
+    <g opacity="0.55" fill="#00FF41" font-family="'JetBrains Mono', monospace" font-size="6.5" font-weight="800">
+      <text x="8" y="13">1</text>
+      <text x="8" y="21" fill="#15803D">0</text>
+      <text x="8" y="29">1</text>
+      <text x="17" y="11" fill="#15803D">0</text>
+      <text x="17" y="19">1</text>
+      <text x="27" y="13">1</text>
+      <text x="27" y="21" fill="#86EFAC">0</text>
+      <text x="38" y="12" fill="#15803D">1</text>
+      <text x="49" y="14">0</text>
+      <text x="49" y="22" fill="#86EFAC">1</text>
+      <text x="12" y="54" fill="#15803D">0</text>
+      <text x="24" y="56">1</text>
+      <text x="37" y="54" fill="#86EFAC">1</text>
+      <text x="50" y="55" fill="#15803D">0</text>
+    </g>
+
+    <!-- Neo Trenchcoat-Kragen / Cyber-Cape im Hintergrund -->
+    <path d="M39 27 C28 25 16 29 8 41 C14 43 20 45 25 49 C31 43 36 37 41 34 Z" fill="#052E16" stroke="#00FF41" stroke-width="1.6" stroke-linejoin="round" />
+
+    <!-- Rücken-, Bauch- & Schwanzflosse im Matrix-Wireframe-Stil -->
+    <path d="M25 24 L31 16.5 L36 22.5 Z" fill="#052E16" stroke="#00FF41" stroke-width="1.5" stroke-linejoin="round" />
+    <path d="M28 41.5 L33 47 L36.5 41.5 Z" fill="#052E16" stroke="#00FF41" stroke-width="1.5" stroke-linejoin="round" />
+    <path d="M16 33 L5.5 22.5 L9.5 33 L5.5 43.5 Z" fill="#052E16" stroke="#00FF41" stroke-width="1.6" stroke-linejoin="round" />
+
+    <!-- Cyber-Sardinen-Körper -->
+    <path d="M14.5 33 C20 21.5 42 20 58.5 32.5 C43 45.5 20 44.5 14.5 33 Z" fill="#041E0C" stroke="#00FF41" stroke-width="1.9" stroke-linejoin="round" />
+    <path d="M16.5 34.2 C23 39.5 41 40.5 56.5 33.3 C42.5 43.5 22 42.8 16.5 34.2 Z" fill="#052E16" />
+
+    <!-- Leuchtende Matrix-Datenlinien & Schuppen-Circuit -->
+    <path d="M18 33 C28 31.2 41 31.2 53 32.8" fill="none" stroke="#00FF41" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2.5 1.5" />
+    <path d="M24 29.5 C25.8 31 25.8 33 24 34.5" fill="none" stroke="#4ADE80" stroke-width="1.2" stroke-linecap="round" />
+    <path d="M30 28.8 C31.8 30.5 31.8 32.8 30 34.5" fill="none" stroke="#4ADE80" stroke-width="1.2" stroke-linecap="round" />
+    <path d="M36 28.8 C37.8 30.5 37.8 32.8 36 34.5" fill="none" stroke="#4ADE80" stroke-width="1.2" stroke-linecap="round" />
+    <path d="M43 26.8 C41 30.8 41.2 35.2 43.5 38.5" fill="none" stroke="#00FF41" stroke-width="1.5" stroke-linecap="round" />
+
+    <!-- Ikonische randlose Matrix-Sonnenbrille (Neo / Agent Smith) mit grünem Code-Glanz -->
+    <path d="M35 29.2 L42.5 29.5" stroke="#00FF41" stroke-width="1.5" stroke-linecap="round" />
+    <ellipse cx="46.5" cy="30.5" rx="4.2" ry="2.7" transform="rotate(-8 46.5 30.5)" fill="#020617" stroke="#00FF41" stroke-width="1.4" />
+    <ellipse cx="54.2" cy="30.2" rx="3.8" ry="2.5" transform="rotate(6 54.2 30.2)" fill="#020617" stroke="#00FF41" stroke-width="1.4" />
+    <path d="M50.3 30.2 L51 30.2" stroke="#00FF41" stroke-width="1.4" />
+    <path d="M44.8 29.2 L47.2 31.5" stroke="#86EFAC" stroke-width="1.1" stroke-linecap="round" />
+    <path d="M52.8 29 L55 31.2" stroke="#86EFAC" stroke-width="1.1" stroke-linecap="round" />
+  `;
+
+  return {
+    viewBox: '0 0 64 64',
+    innerHtml,
+  };
+}
 
 export function serializeSardineAvatar(config: SardineAvatarConfig): string {
   return `${SARDINE_AVATAR_PREFIX}${config.color}:${config.hat}:${config.glasses}:${config.extra}`;
@@ -597,10 +670,17 @@ function renderExtraFrontSvg(extra: SardineExtraId): string {
   }
 }
 
-export function renderSardineSvgMarkup(config: SardineAvatarConfig): {
+export function renderSardineSvgMarkup(
+  config: SardineAvatarConfig,
+  identity?: PlayerIdentityInput,
+  rawAvatar?: string | null
+): {
   viewBox: string;
   innerHtml: string;
 } {
+  if (isMatrixAdminIdentity(identity, rawAvatar)) {
+    return renderMatrixAdminSardineSvgMarkup();
+  }
   const palette = COLOR_MAP.get(config.color) ?? SARDINE_COLOR_OPTIONS[0];
   const hideNaturalEye =
     config.glasses === 'shades' ||
@@ -664,8 +744,14 @@ export function renderSardineSvgMarkup(config: SardineAvatarConfig): {
 
 export function renderCompleteSardineSvgString(
   config: SardineAvatarConfig,
-  sizePx = 24
+  sizePx = 24,
+  identity?: PlayerIdentityInput,
+  rawAvatar?: string | null
 ): string {
-  const { viewBox, innerHtml } = renderSardineSvgMarkup(config);
+  const { viewBox, innerHtml } = renderSardineSvgMarkup(
+    config,
+    identity,
+    rawAvatar
+  );
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${sizePx}" height="${sizePx}" style="display:block;flex-shrink:0;overflow:visible;">${innerHtml}</svg>`;
 }

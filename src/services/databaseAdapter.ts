@@ -137,6 +137,15 @@ export interface DatabaseAdapter {
     playerId: string,
     patch: { avatar?: string; stats?: PlayerAllTimeStats }
   ): Promise<void>;
+  subscribeAllAccounts(
+    cb: (accounts: Record<string, AccountPublicRecord>) => void
+  ): UnsubscribeFn;
+  resetAccountPasswordByAdmin(
+    playerId: string,
+    newPassword: string
+  ): Promise<void>;
+  setAccountBlockedByAdmin(playerId: string, blocked: boolean): Promise<void>;
+  deleteAccountByAdmin(playerId: string): Promise<void>;
   registerSelfMemberIfMissing(member: MemberRecord): Promise<void>;
   fetchPlayerAssignment(playerId: string): Promise<{ side: MemberRecord['side']; teamId: string | null } | null>;
   savePlayerAssignment(playerId: string, side: MemberRecord['side'], teamId: string | null): Promise<void>;
@@ -1264,6 +1273,10 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       const acctRef = ref(db, `${ACCOUNTS_ROOT_PATH}/accounts/${playerId}`);
       const existingAcctSnap = await get(acctRef);
       if (existingAcctSnap.exists()) {
+        const existingVal = existingAcctSnap.val() as Partial<AccountPublicRecord> | null;
+        if (existingVal?.blocked) {
+          throw new Error('Dieses Konto wurde vom Administrator gesperrt.');
+        }
         throw new Error(
           'Dieser Benutzername ist bereits vergeben. Bitte melde dich mit deinem Passwort an.'
         );
@@ -1398,6 +1411,9 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       }
 
       const acctVal = acctSnap.val() as Partial<AccountPublicRecord> | null;
+      if (acctVal?.blocked && !isAdmin) {
+        throw new Error('Dieses Konto wurde vom Administrator gesperrt.');
+      }
       const canonicalName = isAdmin
         ? 'Admin'
         : acctVal?.name?.trim() || displayName;
@@ -1593,6 +1609,8 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           createdAt: existing?.createdAt ?? adapter.getServerNow(),
           ...(existing?.avatar ? { avatar: existing.avatar } : {}),
           ...(existing?.stats ? { stats: existing.stats } : {}),
+          ...(existing?.blocked ? { blocked: existing.blocked } : {}),
+          ...(existing?.blockedAt ? { blockedAt: existing.blockedAt } : {}),
         };
         if (patch.avatar !== undefined) {
           if (patch.avatar) {
@@ -1608,6 +1626,123 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
       } catch {
         // Offline oder ältere DB-Rules ignorieren
       }
+    },
+
+    subscribeAllAccounts(cb): UnsubscribeFn {
+      return onValue(
+        ref(db, `${ACCOUNTS_ROOT_PATH}/accounts`),
+        (snap) => {
+          const val = (snap.val() ?? {}) as Record<string, AccountPublicRecord>;
+          cb(val);
+        },
+        () => {
+          cb({});
+        }
+      );
+    },
+
+    async resetAccountPasswordByAdmin(playerId, newPassword): Promise<void> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) {
+        throw new Error('Ungültige Konto-ID.');
+      }
+      const pwCheck = validateAccountPassword(newPassword);
+      if (!pwCheck.valid) {
+        throw new Error(pwCheck.error);
+      }
+      const acctSnap = await get(
+        ref(db, `${ACCOUNTS_ROOT_PATH}/accounts/${normalizedId}`)
+      );
+      if (!acctSnap.exists()) {
+        throw new Error('Dieses Konto existiert nicht.');
+      }
+      const nextHash = computeAccountPasswordHash(
+        normalizedId,
+        pwCheck.password
+      );
+      await set(
+        ref(db, `${ACCOUNTS_ROOT_PATH}/accountSecrets/${normalizedId}`),
+        { passwordHash: nextHash }
+      );
+    },
+
+    async setAccountBlockedByAdmin(playerId, blocked): Promise<void> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) {
+        throw new Error('Ungültige Konto-ID.');
+      }
+      if (isAdminAccountId(normalizedId)) {
+        throw new Error('Das Admin-Konto kann nicht gesperrt werden.');
+      }
+      const acctRef = ref(db, `${ACCOUNTS_ROOT_PATH}/accounts/${normalizedId}`);
+      const snap = await get(acctRef);
+      if (!snap.exists()) {
+        throw new Error('Dieses Konto existiert nicht.');
+      }
+      const existing = snap.val() as AccountPublicRecord;
+      const nowMs = adapter.getServerNow();
+      const next: AccountPublicRecord = {
+        ...existing,
+        playerId: normalizedId,
+      };
+      if (blocked) {
+        next.blocked = true;
+        next.blockedAt = nowMs;
+      } else {
+        delete next.blocked;
+        delete next.blockedAt;
+      }
+      await set(acctRef, stripUndefinedDeep(next));
+
+      if (blocked) {
+        await remove(
+          ref(db, `${ACCOUNTS_ROOT_PATH}/playerClaims/${normalizedId}`)
+        ).catch(() => {});
+        const curMembersSnap = await get(
+          ref(db, `${getRoomRootPath()}/members`)
+        ).catch(() => null);
+        const curMembers =
+          (curMembersSnap?.val() as Record<string, MemberRecord> | null) ?? {};
+        const matchingUids = Object.values(curMembers)
+          .filter((m) => m.playerId === normalizedId)
+          .map((m) => m.uid);
+        if (matchingUids.length > 0) {
+          await adapter
+            .kickPlayerByHost(normalizedId, matchingUids)
+            .catch(() => {});
+        }
+      }
+    },
+
+    async deleteAccountByAdmin(playerId): Promise<void> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) {
+        throw new Error('Ungültige Konto-ID.');
+      }
+      if (isAdminAccountId(normalizedId)) {
+        throw new Error('Das Admin-Konto kann nicht gelöscht werden.');
+      }
+      const curMembersSnap = await get(
+        ref(db, `${getRoomRootPath()}/members`)
+      ).catch(() => null);
+      const curMembers =
+        (curMembersSnap?.val() as Record<string, MemberRecord> | null) ?? {};
+      const matchingUids = Object.values(curMembers)
+        .filter((m) => m.playerId === normalizedId)
+        .map((m) => m.uid);
+      if (matchingUids.length > 0) {
+        await adapter
+          .kickPlayerByHost(normalizedId, matchingUids)
+          .catch(() => {});
+      }
+
+      await Promise.all([
+        remove(ref(db, `${ACCOUNTS_ROOT_PATH}/accounts/${normalizedId}`)),
+        remove(ref(db, `${ACCOUNTS_ROOT_PATH}/accountSecrets/${normalizedId}`)),
+        remove(
+          ref(db, `${ACCOUNTS_ROOT_PATH}/playerClaims/${normalizedId}`)
+        ).catch(() => {}),
+      ]);
     },
 
     async registerSelfMemberIfMissing(member): Promise<void> {

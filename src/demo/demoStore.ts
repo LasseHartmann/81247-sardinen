@@ -529,6 +529,12 @@ export function createDemoStore(options?: {
         throw new Error('Ungültiges Spielerkonto für Spielleiter.');
       }
       const curTree = readTree();
+      if (
+        !isAdminAccountId(normalizedHostId) &&
+        curTree.accounts?.[normalizedHostId]?.blocked
+      ) {
+        throw new Error('Dieses Konto wurde vom Administrator gesperrt.');
+      }
       let roomCode = generateRoomCode(6);
       for (let i = 0; i < 12; i++) {
         const candidate = generateRoomCode(6);
@@ -599,6 +605,12 @@ export function createDemoStore(options?: {
       }
 
       const curTree = readTree();
+      if (
+        !isAdminAccountId(normalizedPlayerId) &&
+        curTree.accounts?.[normalizedPlayerId]?.blocked
+      ) {
+        throw new Error('Dieses Konto wurde vom Administrator gesperrt.');
+      }
       const slice = getRoomSlice(curTree, roomCode);
       if (!slice) {
         throw new Error(
@@ -741,6 +753,9 @@ export function createDemoStore(options?: {
       const { playerId, displayName, isAdmin } = nameCheck;
       const curTree = readTree();
       if (curTree.accounts?.[playerId]) {
+        if (curTree.accounts[playerId].blocked) {
+          throw new Error('Dieses Konto wurde vom Administrator gesperrt.');
+        }
         throw new Error(
           'Dieser Benutzername ist bereits vergeben. Bitte melde dich mit deinem Passwort an.'
         );
@@ -818,6 +833,9 @@ export function createDemoStore(options?: {
         throw new Error(
           'Dieses Konto existiert noch nicht. Wechsle auf „Konto erstellen“, um es neu anzulegen.'
         );
+      }
+      if (acct.blocked && !isAdmin) {
+        throw new Error('Dieses Konto wurde vom Administrator gesperrt.');
       }
       const expectedHash = curTree.accountSecrets?.[playerId]?.passwordHash;
       if (!verifyAccountPasswordHash(playerId, password, expectedHash)) {
@@ -948,6 +966,121 @@ export function createDemoStore(options?: {
           next.stats = structuredClone(patch.stats);
         }
         t.accounts[normalizedId] = next;
+      });
+    },
+
+    subscribeAllAccounts(cb): UnsubscribeFn {
+      return subscribeSlice((t) => t.accounts ?? {}, cb);
+    },
+
+    async resetAccountPasswordByAdmin(playerId, newPassword): Promise<void> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) {
+        throw new Error('Ungültige Konto-ID.');
+      }
+      const pwCheck = validateAccountPassword(newPassword);
+      if (!pwCheck.valid) {
+        throw new Error(pwCheck.error);
+      }
+      const curTree = readTree();
+      if (!curTree.accounts?.[normalizedId]) {
+        throw new Error('Dieses Konto existiert nicht.');
+      }
+      const nextHash = computeAccountPasswordHash(
+        normalizedId,
+        pwCheck.password
+      );
+      writeTree((t) => {
+        if (!t.accountSecrets) t.accountSecrets = {};
+        t.accountSecrets[normalizedId] = { passwordHash: nextHash };
+      });
+    },
+
+    async setAccountBlockedByAdmin(playerId, blocked): Promise<void> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) {
+        throw new Error('Ungültige Konto-ID.');
+      }
+      if (isAdminAccountId(normalizedId)) {
+        throw new Error('Das Admin-Konto kann nicht gesperrt werden.');
+      }
+      const curTree = readTree();
+      if (!curTree.accounts?.[normalizedId]) {
+        throw new Error('Dieses Konto existiert nicht.');
+      }
+      const nowMs = adapter.getServerNow();
+      writeTree((t) => {
+        if (!t.accounts || !t.accounts[normalizedId]) return;
+        const next: AccountPublicRecord = { ...t.accounts[normalizedId] };
+        if (blocked) {
+          next.blocked = true;
+          next.blockedAt = nowMs;
+        } else {
+          delete next.blocked;
+          delete next.blockedAt;
+        }
+        t.accounts[normalizedId] = next;
+
+        if (blocked) {
+          if (t.playerClaims) {
+            delete t.playerClaims[normalizedId];
+          }
+          for (const room of Object.values(t.rooms ?? {})) {
+            for (const [uid, m] of Object.entries(room.members ?? {})) {
+              if (m.playerId === normalizedId) {
+                delete room.members[uid];
+                if (room.presence) delete room.presence[uid];
+              }
+            }
+          }
+          for (const [uid, m] of Object.entries(t.members ?? {})) {
+            if (m.playerId === normalizedId) {
+              delete t.members[uid];
+              if (t.presence) delete t.presence[uid];
+            }
+          }
+        }
+      });
+    },
+
+    async deleteAccountByAdmin(playerId): Promise<void> {
+      const normalizedId = playerId.trim().toLowerCase();
+      if (!normalizedId) {
+        throw new Error('Ungültige Konto-ID.');
+      }
+      if (isAdminAccountId(normalizedId)) {
+        throw new Error('Das Admin-Konto kann nicht gelöscht werden.');
+      }
+      writeTree((t) => {
+        if (t.accounts) {
+          delete t.accounts[normalizedId];
+        }
+        if (t.accountSecrets) {
+          delete t.accountSecrets[normalizedId];
+        }
+        if (t.playerClaims) {
+          delete t.playerClaims[normalizedId];
+        }
+        for (const room of Object.values(t.rooms ?? {})) {
+          if (room.assignments) {
+            delete room.assignments[normalizedId];
+          }
+          for (const [uid, m] of Object.entries(room.members ?? {})) {
+            if (m.playerId === normalizedId) {
+              delete room.members[uid];
+              if (room.presence) delete room.presence[uid];
+            }
+          }
+        }
+        if (t.assignments) {
+          delete t.assignments[normalizedId];
+        }
+        for (const [uid, m] of Object.entries(t.members ?? {})) {
+          if (m.playerId === normalizedId) {
+            delete t.members[uid];
+            if (t.presence) delete t.presence[uid];
+          }
+        }
       });
     },
 

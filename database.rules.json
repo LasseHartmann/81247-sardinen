@@ -5,23 +5,24 @@
     "games": {
       "$gameId": {
         "accounts": {
+          ".read": "auth != null && ((root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === 'admin' && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === root.child('games/81247/accountSecrets/admin/passwordHash').val()) || (root.child('games/81247/members/' + auth.uid + '/enabled').val() === true && root.child('games/81247/members/' + auth.uid + '/playerId').val() === 'admin'))",
           "$playerId": {
             ".read": "auth != null",
-            ".write": "auth != null && ((!data.exists() && newData.exists()) || (root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === $playerId && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === root.child('games/81247/accountSecrets/' + $playerId + '/passwordHash').val()) || (root.child('games/' + $gameId + '/members/' + auth.uid + '/enabled').val() === true && (root.child('games/' + $gameId + '/members/' + auth.uid + '/isHost').val() === true || root.child('games/' + $gameId + '/members/' + auth.uid + '/playerId').val() === $playerId)))",
-            ".validate": "!newData.exists() || (newData.hasChildren(['playerId', 'name', 'createdAt']) && newData.child('playerId').val() === $playerId && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 24 && newData.child('createdAt').isNumber())"
+            ".write": "auth != null && ((root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === 'admin' && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === root.child('games/81247/accountSecrets/admin/passwordHash').val()) || (!data.exists() && newData.exists()) || (root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === $playerId && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === root.child('games/81247/accountSecrets/' + $playerId + '/passwordHash').val()) || (root.child('games/' + $gameId + '/members/' + auth.uid + '/enabled').val() === true && (root.child('games/' + $gameId + '/members/' + auth.uid + '/isHost').val() === true || root.child('games/' + $gameId + '/members/' + auth.uid + '/playerId').val() === $playerId)))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['playerId', 'name', 'createdAt']) && newData.child('playerId').val() === $playerId && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 24 && newData.child('createdAt').isNumber() && (!newData.child('blocked').exists() || newData.child('blocked').isBoolean()))"
           }
         },
         "accountSecrets": {
           "$playerId": {
             ".read": false,
-            ".write": "auth != null && ((!data.exists() && newData.exists()) || (root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === $playerId && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === data.child('passwordHash').val()) || (root.child('games/' + $gameId + '/members/' + auth.uid + '/enabled').val() === true && (root.child('games/' + $gameId + '/members/' + auth.uid + '/isHost').val() === true || (root.child('games/' + $gameId + '/members/' + auth.uid + '/playerId').val() === $playerId && root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === $playerId && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === data.child('passwordHash').val()))))",
+            ".write": "auth != null && ((root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === 'admin' && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === root.child('games/81247/accountSecrets/admin/passwordHash').val()) || (!data.exists() && newData.exists()) || (root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === $playerId && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === data.child('passwordHash').val()) || (root.child('games/' + $gameId + '/members/' + auth.uid + '/enabled').val() === true && (root.child('games/' + $gameId + '/members/' + auth.uid + '/isHost').val() === true || (root.child('games/' + $gameId + '/members/' + auth.uid + '/playerId').val() === $playerId && root.child('games/81247/memberAuth/' + auth.uid + '/playerId').val() === $playerId && root.child('games/81247/memberAuth/' + auth.uid + '/passwordHash').val() === data.child('passwordHash').val()))))",
             ".validate": "!newData.exists() || (newData.hasChildren(['passwordHash']) && newData.child('passwordHash').isString() && newData.child('passwordHash').val().length === 64)"
           }
         },
         "memberAuth": {
           "$uid": {
             ".read": "auth != null && auth.uid === $uid",
-            ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (newData.hasChildren(['playerId', 'passwordHash']) && newData.child('playerId').isString() && newData.child('passwordHash').isString() && root.child('games/81247/accountSecrets/' + newData.child('playerId').val() + '/passwordHash').val() === newData.child('passwordHash').val()))"
+            ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (newData.hasChildren(['playerId', 'passwordHash']) && newData.child('playerId').isString() && newData.child('passwordHash').isString() && root.child('games/81247/accounts/' + newData.child('playerId').val() + '/blocked').val() !== true && root.child('games/81247/accountSecrets/' + newData.child('playerId').val() + '/passwordHash').val() === newData.child('passwordHash').val()))"
           }
         },
         "roomDirectory": {

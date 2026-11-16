@@ -74,6 +74,8 @@ export interface AccountPublicRecord {
   createdAt: number;
   avatar?: string;
   stats?: PlayerAllTimeStats;
+  blocked?: boolean;
+  blockedAt?: number;
 }
 
 export interface MemberRecord {

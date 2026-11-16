@@ -173,6 +173,11 @@ export interface DatabaseAdapter {
   approveJoinRequest(req: JoinRequest, defaults?: Partial<MemberRecord>): Promise<void>;
   updateMember(uid: string, member: MemberRecord): Promise<void>;
   registerTabPresence(uid: string, browserSessionId: string, deviceInfo: string): UnsubscribeFn;
+  setSimulatedMemberPresence(
+    uid: string,
+    session: PresenceSession | null,
+    sessionKey?: string
+  ): Promise<void>;
   subscribePresence(
     cb: (presence: Record<string, Record<string, PresenceSession>>) => void
   ): UnsubscribeFn;
@@ -317,14 +322,15 @@ export function hasAnyOnlineTabInRoom(
   members: Record<string, MemberRecord>,
   presence: Record<string, Record<string, PresenceSession>>
 ): boolean {
-  if (
-    filterOnlineEnabledMembers(members, presence, undefined, {
-      includeOverview: true,
-    }).length > 0
-  ) {
+  if (filterOnlineEnabledMembers(members, presence).length > 0) {
     return true;
   }
-  return Object.values(presence).some((sessions) => isMemberTabOnline(sessions));
+  for (const [uid, sessions] of Object.entries(presence)) {
+    const member = members[uid];
+    if (member && isOverviewMember(member)) continue;
+    if (isMemberTabOnline(sessions)) return true;
+  }
+  return false;
 }
 
 export function extractLatestLobbyActivityMs(params: {
@@ -347,11 +353,13 @@ export function extractLatestLobbyActivityMs(params: {
     publicState?.searchStartTimestamp ?? 0
   );
   for (const m of Object.values(members)) {
+    if (isOverviewMember(m)) continue;
     if (typeof m?.updatedAt === 'number' && m.updatedAt > maxTs) {
       maxTs = m.updatedAt;
     }
   }
-  for (const userSessions of Object.values(presence)) {
+  for (const [uid, userSessions] of Object.entries(presence)) {
+    if (members[uid] && isOverviewMember(members[uid])) continue;
     for (const sess of Object.values(userSessions ?? {})) {
       if (typeof sess?.lastSeen === 'number' && sess.lastSeen > maxTs) {
         maxTs = sess.lastSeen;
@@ -1918,6 +1926,7 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
           const raw = (snap.val() ?? {}) as Record<string, MemberRecord>;
           const mapped: Record<string, MemberRecord> = {};
           for (const [uid, rec] of Object.entries(raw)) {
+            if (isOverviewMember(rec)) continue;
             mapped[uid] = {
               ...rec,
               uid,
@@ -2022,6 +2031,22 @@ export function createFirebaseDatabaseAdapter(): DatabaseAdapter {
         unsub();
         remove(sessionRef).catch(() => {});
       };
+    },
+
+    async setSimulatedMemberPresence(
+      uid,
+      session,
+      sessionKey = 'sim_tab'
+    ): Promise<void> {
+      const targetRef = ref(
+        db,
+        `${getRoomRootPath()}/presence/${uid}/${sessionKey}`
+      );
+      if (session) {
+        await set(targetRef, stripUndefinedDeep(session));
+      } else {
+        await remove(targetRef);
+      }
     },
 
     subscribePresence(cb): UnsubscribeFn {

@@ -11,7 +11,7 @@ import {
   Unlock,
   Users,
 } from 'lucide-react';
-import { isAdminAccountId } from '../../config/players';
+import { isAdminAccountId, isOverviewMember } from '../../config/players';
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
 import type { AccountPublicRecord } from '../../types/game';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
@@ -65,15 +65,14 @@ export const AdminAccountManager: React.FC<AdminAccountManagerProps> = ({
   }, [adapter]);
 
   const allAccounts = useMemo(() => {
-    return Object.values(accountsMap).sort((a, b) => {
-      const aAdmin = isAdminAccountId(a.playerId);
-      const bAdmin = isAdminAccountId(b.playerId);
-      if (aAdmin !== bAdmin) return aAdmin ? -1 : 1;
-      if (Boolean(a.blocked) !== Boolean(b.blocked)) {
-        return a.blocked ? -1 : 1;
-      }
-      return (a.name || a.playerId).localeCompare(b.name || b.playerId, 'de');
-    });
+    return Object.values(accountsMap)
+      .filter((acct) => !isOverviewMember(acct))
+      .sort((a, b) => {
+        if (Boolean(a.blocked) !== Boolean(b.blocked)) {
+          return a.blocked ? -1 : 1;
+        }
+        return (a.name || a.playerId).localeCompare(b.name || b.playerId, 'de');
+      });
   }, [accountsMap]);
 
   const blockedCount = useMemo(

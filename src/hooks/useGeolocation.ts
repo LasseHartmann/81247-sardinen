@@ -6,6 +6,7 @@ import {
   LEASH_RETURN_COUNTDOWN_MS,
   MAP_DEFAULT_CENTER,
 } from '../config/gameConfig';
+import { isOverviewMember } from '../config/players';
 import { isPointInPlayArea, snapPointIntoPlayArea } from '../geo/boundary';
 import { distanceMeters } from '../geo/distance';
 import type { DatabaseAdapter } from '../services/databaseAdapter';
@@ -120,8 +121,16 @@ export function useGeolocation(params: UseGeolocationParams): {
     }
   }, [canUseManualClicks, isManhuntSardineFallbackAllowed, hardwareFix, manualFix]);
 
-  // Hardware-Geolocation-Watcher inkl. Re-Sync bei visibilitychange
+  const isSpectatorOverview = isOverviewMember(ownMember);
+
+  // Hardware-Geolocation-Watcher inkl. Re-Sync bei visibilitychange (nicht für unsichtbare Admin/Overview-Zuschauer)
   useEffect(() => {
+    if (isSpectatorOverview) {
+      setHardwareFix(null);
+      setGpsStatus('IDLE');
+      setGpsError(null);
+      return;
+    }
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGpsStatus('UNSUPPORTED');
       setGpsError('GPS wird von diesem Browser nicht unterstützt.');
@@ -168,11 +177,12 @@ export function useGeolocation(params: UseGeolocationParams): {
       navigator.geolocation.clearWatch(watchId);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [watcherGeneration, powerSaveMode]);
+  }, [watcherGeneration, powerSaveMode, isSpectatorOverview]);
 
-  // Effektive Position bestimmen (Manueller Testklick > Hardware-GPS > Manhunt-GPS-Fallback > Demo-Default)
-  const currentFix: GeoFix | null =
-    (canUseManualClicks && manualFix) ||
+  // Effektive Position bestimmen (für Admin/Overview-Zuschauer immer null, damit kein eigener Spieler-Pin auf der Karte erscheint)
+  const currentFix: GeoFix | null = isSpectatorOverview
+    ? null
+    : (canUseManualClicks && manualFix) ||
     hardwareFix ||
     (isManhuntSardineFallbackAllowed && manualFix) ||
     (adapter.mode === 'demo'

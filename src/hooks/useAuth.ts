@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isFirebaseConfigured } from '../config/firebase';
-import { isAdminAccountId } from '../config/players';
+import { isAdminAccountId, isOverviewMember } from '../config/players';
 import {
   resolveDatabaseAdapter,
   type DatabaseAdapter,
@@ -388,16 +388,23 @@ export function useAuth(): {
   const activeMember =
     isSessionUnlocked && activeRoomCode ? firebaseMember : null;
 
-  // Präsenz nur registrieren, solange das Konto aktiv in einem Raum eingeloggt ist
+  // Präsenz nur registrieren, solange ein regulärer Spieler (kein unsichtbarer Admin/Overview-Zuschauer) in einem Raum eingeloggt ist
   useEffect(() => {
-    if (!authUser || !activeRoomCode || !activeMember?.enabled) return;
+    if (
+      !authUser ||
+      !activeRoomCode ||
+      !activeMember?.enabled ||
+      isOverviewMember(activeMember)
+    ) {
+      return;
+    }
     adapter.setRoomCode(activeRoomCode);
     const ua =
       typeof navigator !== 'undefined'
         ? navigator.userAgent.slice(0, 64)
         : 'Browser';
     return adapter.registerTabPresence(authUser.uid, tabId, ua);
-  }, [adapter, authUser, activeRoomCode, activeMember?.enabled, tabId]);
+  }, [adapter, authUser, activeRoomCode, activeMember, tabId]);
 
   const clearLoginError = useCallback(() => {
     setLoginError(null);

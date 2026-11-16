@@ -14,6 +14,7 @@ import {
   Trash2,
   Users,
 } from 'lucide-react';
+import { isOverviewMember } from '../../config/players';
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
 import type { AdminLobbyOverviewItem } from '../../types/game';
 
@@ -493,10 +494,21 @@ export const AdminLobbiesOverview: React.FC<AdminLobbiesOverviewProps> = ({
                     {/* Zeile 2: Host, Modus, Gebiet & Spielerzahl */}
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]">
                       <span>
-                        Host:{' '}
-                        <strong className="text-[var(--text-main)]">
-                          {item.hostName}
-                        </strong>
+                        {isOverviewMember({
+                          playerId: item.hostPlayerId,
+                          name: item.hostName,
+                        }) ? (
+                          <strong className="text-[var(--text-main)]">
+                            System / Sandbox
+                          </strong>
+                        ) : (
+                          <>
+                            Host:{' '}
+                            <strong className="text-[var(--text-main)]">
+                              {item.hostName}
+                            </strong>
+                          </>
+                        )}
                       </span>
                       <span>•</span>
                       <span className="font-tech text-[11px] font-bold text-[var(--text-main)] uppercase">

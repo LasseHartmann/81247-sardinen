@@ -9,6 +9,7 @@ import {
 import {
   computeAccountPasswordHash,
   isAdminAccountId,
+  isOverviewMember,
   validateAccountPassword,
   validateAndNormalizeAccountName,
   verifyAccountPasswordHash,
@@ -548,7 +549,10 @@ export function createDemoStore(options?: {
       const canonicalHostName = isAdminAccountId(normalizedHostId)
         ? 'Admin'
         : hostName.trim() || normalizedHostId;
-      const uid = activeCustomUid ?? `demo_uid_${normalizedHostId}`;
+      const uid =
+        activeCustomUid === `demo_uid_${normalizedHostId}`
+          ? activeCustomUid
+          : `demo_uid_${normalizedHostId}`;
 
       const freshSlice = buildEmptyRoomSlice(roomCode, nowMs);
       freshSlice.state.public.hostPlayerId = normalizedHostId;
@@ -659,8 +663,9 @@ export function createDemoStore(options?: {
       );
       const uid =
         existingMember?.uid ??
-        activeCustomUid ??
-        `demo_uid_${normalizedPlayerId}`;
+        (activeCustomUid === `demo_uid_${normalizedPlayerId}`
+          ? activeCustomUid
+          : `demo_uid_${normalizedPlayerId}`);
       const fromAssign = slice.assignments?.[normalizedPlayerId] ?? null;
 
       const inheritedSide: MemberRecord['side'] = isAdmin
@@ -1228,6 +1233,7 @@ export function createDemoStore(options?: {
         const raw = getRoomSlice(t)?.members ?? {};
         const out: Record<string, MemberRecord> = {};
         for (const [uid, rec] of Object.entries(raw)) {
+          if (isOverviewMember(rec)) continue;
           out[uid] = {
             ...rec,
             uid,
@@ -1334,6 +1340,25 @@ export function createDemoStore(options?: {
           }
         });
       };
+    },
+
+    async setSimulatedMemberPresence(
+      uid,
+      session,
+      sessionKey = 'sim_tab'
+    ): Promise<void> {
+      writeTree((t) => {
+        const r = requireRoomSlice(t);
+        if (session) {
+          if (!r.presence[uid]) r.presence[uid] = {};
+          r.presence[uid][sessionKey] = structuredClone(session);
+        } else if (r.presence[uid]) {
+          delete r.presence[uid][sessionKey];
+          if (Object.keys(r.presence[uid]).length === 0) {
+            delete r.presence[uid];
+          }
+        }
+      });
     },
 
     subscribePresence(cb): UnsubscribeFn {

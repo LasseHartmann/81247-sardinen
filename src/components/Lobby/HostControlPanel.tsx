@@ -26,6 +26,9 @@ import {
   buildOfficial81247PlayAreaState,
   buildRadarScheduleForHidingMinutes,
   buildRadarScheduleForHidingMs,
+  CLASSIC_SEARCH_DURATION_MAX_MINUTES,
+  CLASSIC_SEARCH_DURATION_MIN_MINUTES,
+  CLASSIC_SEARCH_DURATION_STEP_MINUTES,
   clampPlayAreaCircleRadius,
   createDefaultPublicState,
   createDefaultTeams,
@@ -53,7 +56,11 @@ import {
   isPointInMunichPlz,
   snapPointIntoMunichPlz,
 } from '../../geo/boundary';
-import { getDueRadarCircle, getPhaseForElapsedMs } from '../../geo/radar';
+import {
+  getClassicRadarRadiiForPlayArea,
+  getDueRadarCircle,
+  getPhaseForElapsedMs,
+} from '../../geo/radar';
 import {
   lockHiderAnchorAndGenerateRadar,
   resolveClassicHiderCandidateLocation,
@@ -85,6 +92,7 @@ import type {
 import {
   computeNetElapsedMs,
   formatDurationClock,
+  formatMinutesHumanDe,
   formatPenaltyMinutes,
 } from '../../utils/formatting';
 
@@ -417,8 +425,32 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       publicState.classicSearchDurationMs ??
       DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000;
     const mins = Math.round(rawSearchMs / 60_000);
-    return Math.min(90, Math.max(30, Math.round(mins / 15) * 15));
+    return Math.min(
+      CLASSIC_SEARCH_DURATION_MAX_MINUTES,
+      Math.max(
+        CLASSIC_SEARCH_DURATION_MIN_MINUTES,
+        Math.round(mins / CLASSIC_SEARCH_DURATION_STEP_MINUTES) *
+          CLASSIC_SEARCH_DURATION_STEP_MINUTES
+      )
+    );
   });
+
+  useEffect(() => {
+    const rawSearchMs =
+      publicState.classicSearchDurationMs ??
+      DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000;
+    const mins = Math.round(rawSearchMs / 60_000);
+    setClassicSearchMin(
+      Math.min(
+        CLASSIC_SEARCH_DURATION_MAX_MINUTES,
+        Math.max(
+          CLASSIC_SEARCH_DURATION_MIN_MINUTES,
+          Math.round(mins / CLASSIC_SEARCH_DURATION_STEP_MINUTES) *
+            CLASSIC_SEARCH_DURATION_STEP_MINUTES
+        )
+      )
+    );
+  }, [publicState.classicSearchDurationMs]);
 
   const [manhuntHeadStartMin, setManhuntHeadStartMin] = useState(() => {
     if (publicState.gameMode !== 'MANHUNT') return DEFAULT_MANHUNT_HIDING_MINUTES;
@@ -1143,6 +1175,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                 classicHidingMin,
                 classicSearchMin
               );
+              const classicRadii = getClassicRadarRadiiForPlayArea(
+                publicState.playArea
+              );
               const searchDurationMs = classicSearchMin * 60_000;
               const splitMin = Math.round(
                 getQuestionPenaltyMs('SPLIT_NS', searchDurationMs) / 60_000
@@ -1159,6 +1194,39 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               const envMin = Math.round(
                 getQuestionPenaltyMs('OSM_TRANSIT', searchDurationMs) / 60_000
               );
+
+              const applyClassicSearchMin = (nextSearchMin: number) => {
+                const clamped = Math.min(
+                  CLASSIC_SEARCH_DURATION_MAX_MINUTES,
+                  Math.max(
+                    CLASSIC_SEARCH_DURATION_MIN_MINUTES,
+                    Math.round(
+                      nextSearchMin / CLASSIC_SEARCH_DURATION_STEP_MINUTES
+                    ) * CLASSIC_SEARCH_DURATION_STEP_MINUTES
+                  )
+                );
+                setClassicSearchMin(clamped);
+                const effectiveHidingMs =
+                  publicState.status !== 'LOBBY' &&
+                  publicState.currentPhase !== 'HIDING'
+                    ? publicState.radarSchedule.hidingDurationMs
+                    : classicHidingMin * 60_000;
+                const nextSched = buildRadarScheduleForHidingMs(
+                  effectiveHidingMs,
+                  clamped * 60_000
+                );
+                if (!isManhunt && hiderPrivate?.anchorPoint) {
+                  void syncClassicPrivateRadarStages(nextSched, hiderPrivate);
+                }
+                void adapter
+                  .savePublicStateByHost({
+                    ...publicState,
+                    gameMode: 'CLASSIC',
+                    classicSearchDurationMs: clamped * 60_000,
+                    radarSchedule: nextSched,
+                  })
+                  .catch(() => {});
+              };
 
               return (
                 <div className="space-y-2.5">
@@ -1195,47 +1263,46 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                       }}
                     />
 
-                    <HardwareKnob
-                      label="SPIELZEIT / SUCHDAUER BIS 25M (30-90 MIN)"
-                      ariaLabel="Spielzeit und Suchdauer in Minuten"
-                      dataTestId="classic-search-time-knob"
-                      value={classicSearchMin}
-                      min={30}
-                      max={90}
-                      step={15}
-                      unit=" Min."
-                      onChange={(nextSearchMin) => {
-                        setClassicSearchMin(nextSearchMin);
-                        const effectiveHidingMs =
-                          publicState.status !== 'LOBBY' &&
-                          publicState.currentPhase !== 'HIDING'
-                            ? publicState.radarSchedule.hidingDurationMs
-                            : classicHidingMin * 60_000;
-                        const nextSched = buildRadarScheduleForHidingMs(
-                          effectiveHidingMs,
-                          nextSearchMin * 60_000
-                        );
-                        if (!isManhunt && hiderPrivate?.anchorPoint) {
-                          void syncClassicPrivateRadarStages(
-                            nextSched,
-                            hiderPrivate
-                          );
-                        }
-                        void adapter
-                          .savePublicStateByHost({
-                            ...publicState,
-                            gameMode: 'CLASSIC',
-                            classicSearchDurationMs: nextSearchMin * 60_000,
-                            radarSchedule: nextSched,
-                          })
-                          .catch(() => {});
-                      }}
-                    />
+                    <div className="space-y-2">
+                      <HardwareKnob
+                        label="SUCHDAUER BIS 25M (30 MIN – 10 STD)"
+                        ariaLabel="Spielzeit und Suchdauer in Minuten"
+                        dataTestId="classic-search-time-knob"
+                        value={classicSearchMin}
+                        min={CLASSIC_SEARCH_DURATION_MIN_MINUTES}
+                        max={CLASSIC_SEARCH_DURATION_MAX_MINUTES}
+                        step={CLASSIC_SEARCH_DURATION_STEP_MINUTES}
+                        formatValue={formatMinutesHumanDe}
+                        onChange={applyClassicSearchMin}
+                      />
+                      <div className="cmf-well px-3 py-2 space-y-1">
+                        <input
+                          type="range"
+                          data-testid="host-search-duration-slider"
+                          aria-label="Suchdauer als Schieberegler (30 Min. bis 10 Std.)"
+                          min={CLASSIC_SEARCH_DURATION_MIN_MINUTES}
+                          max={CLASSIC_SEARCH_DURATION_MAX_MINUTES}
+                          step={CLASSIC_SEARCH_DURATION_STEP_MINUTES}
+                          value={classicSearchMin}
+                          onChange={(e) =>
+                            applyClassicSearchMin(Number(e.target.value))
+                          }
+                          className="h-2.5 w-full cursor-pointer appearance-none rounded-lg bg-black/15 accent-[var(--cmf-teal)]"
+                        />
+                        <div className="flex justify-between font-tech text-[10px] font-bold text-[var(--text-muted)]">
+                          <span>30 Min.</span>
+                          <span>2,5 Std.</span>
+                          <span>5 Std.</span>
+                          <span>7,5 Std.</span>
+                          <span>10 Std.</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="cmf-well px-3.5 py-2 text-center font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase space-y-0.5">
                     <div>
-                      RADAR-STUFEN AB SUCHSTART (800M → 400M → 200M → 100M → 25M):{' '}
+                      RADAR-STUFEN AB SUCHSTART ({classicRadii[1]}M → {classicRadii[2]}M → {classicRadii[3]}M → {classicRadii[4]}M → {classicRadii[5]}M):{' '}
                       <span className="text-[var(--text-main)]">
                         +{formatDurationClock(classicPreviewSchedule.stage1Ms - classicPreviewSchedule.hidingDurationMs)} → +
                         {formatDurationClock(classicPreviewSchedule.stage2Ms - classicPreviewSchedule.hidingDurationMs)} → +

@@ -491,6 +491,9 @@ export const DEFAULT_SAFETY_POINT: SafetyPoint = {
 
 export const DEFAULT_CLASSIC_HIDING_MINUTES = 15;
 export const DEFAULT_CLASSIC_SEARCH_MINUTES = 45;
+export const CLASSIC_SEARCH_DURATION_MIN_MINUTES = 30;
+export const CLASSIC_SEARCH_DURATION_MAX_MINUTES = 600; // 10 Stunden
+export const CLASSIC_SEARCH_DURATION_STEP_MINUTES = 15;
 export const CLASSIC_SEARCH_DURATION_STEPS_MINUTES = [30, 45, 60, 75, 90] as const;
 
 export const DEFAULT_RADAR_SCHEDULE: RadarSchedule = {
@@ -670,9 +673,9 @@ export function getManhuntPingStatusAtElapsedMs(
 
 /**
  * Berechnet den Radar-Schrumpfplan für das klassische Sardinen-Spiel:
- * - Erstes Drittel (`2/6`) von `searchDurationMinutes` (30 / 45 / 60 / 75 / 90 Min., Standard 45 Min.) ist offene Suche.
+ * - Erstes Drittel (`2/6`) von `searchDurationMinutes` (30 Min. bis 10 Std. in 15-Min.-Schritten, Standard 45 Min.) ist offene Suche.
  * - Danach schrumpft das Radar in 4 gleichmäßigen Schritten (`2/6`, `3/6`, `4/6`, `5/6`, `6/6` der Suchdauer)
- *   von 800 m -> 400 m -> 200 m -> 100 m -> 25 m.
+ *   von der Kartengröße bis auf 25 m.
  */
 export function buildRadarScheduleForHidingMs(
   hidingDurationMs: number,
@@ -680,8 +683,11 @@ export function buildRadarScheduleForHidingMs(
 ): RadarSchedule {
   const safeHidingMs = Math.max(0, Math.round(hidingDurationMs));
   const safeSearchMs = Math.min(
-    90 * 60_000,
-    Math.max(30 * 60_000, Math.round(searchDurationMs))
+    CLASSIC_SEARCH_DURATION_MAX_MINUTES * 60_000,
+    Math.max(
+      CLASSIC_SEARCH_DURATION_MIN_MINUTES * 60_000,
+      Math.round(searchDurationMs)
+    )
   );
   return {
     hidingDurationMs: safeHidingMs,
@@ -698,7 +704,10 @@ export function buildRadarScheduleForHidingMinutes(
   searchDurationMinutes = DEFAULT_CLASSIC_SEARCH_MINUTES
 ): RadarSchedule {
   const clampedMin = Math.max(0, Math.round(hidingMinutes));
-  const clampedSearchMin = Math.min(90, Math.max(30, Math.round(searchDurationMinutes)));
+  const clampedSearchMin = Math.min(
+    CLASSIC_SEARCH_DURATION_MAX_MINUTES,
+    Math.max(CLASSIC_SEARCH_DURATION_MIN_MINUTES, Math.round(searchDurationMinutes))
+  );
   return buildRadarScheduleForHidingMs(
     clampedMin * 60_000,
     clampedSearchMin * 60_000

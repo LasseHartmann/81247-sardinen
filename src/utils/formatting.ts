@@ -109,6 +109,22 @@ export function formatDurationClock(ms: number): string {
 }
 
 /**
+ * Formatiert eine Minutenanzahl gut lesbar auf Deutsch (z. B. "45 Min.", "1 Std.", "1 Std. 15 Min.", "10 Std.").
+ */
+export function formatMinutesHumanDe(totalMinutes: number): string {
+  const safeMin = Math.max(0, Math.round(totalMinutes));
+  if (safeMin < 60) {
+    return `${safeMin} Min.`;
+  }
+  const hours = Math.floor(safeMin / 60);
+  const remMin = safeMin % 60;
+  if (remMin === 0) {
+    return `${hours} Std.`;
+  }
+  return `${hours} Std. ${remMin} Min.`;
+}
+
+/**
  * Formatiert Strafzeit bzw. Zeitgutschrift kompakt in Minuten (z. B. "+4 Min.", "-5 Min." oder "0 Min.").
  */
 export function formatPenaltyMinutes(penaltyMs: number): string {

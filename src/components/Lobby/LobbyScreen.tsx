@@ -29,7 +29,9 @@ import {
   buildMunichPlzPlayAreaState,
   buildOfficial81247PlayAreaState,
   buildRadarScheduleForHidingMinutes,
-  CLASSIC_SEARCH_DURATION_STEPS_MINUTES,
+  CLASSIC_SEARCH_DURATION_MAX_MINUTES,
+  CLASSIC_SEARCH_DURATION_MIN_MINUTES,
+  CLASSIC_SEARCH_DURATION_STEP_MINUTES,
   clampPlayAreaCircleRadius,
   createDefaultTeams,
   DEFAULT_CLASSIC_HIDING_MINUTES,
@@ -57,6 +59,7 @@ import {
   isPointInMunichPlz,
   snapPointIntoMunichPlz,
 } from '../../geo/boundary';
+import { getClassicRadarRadiiForPlayArea } from '../../geo/radar';
 import type { GpsPermissionState } from '../../hooks/useGeolocation';
 import {
   deduplicateEnabledMembers,
@@ -78,7 +81,10 @@ import type {
   PublicGameState,
   TeamPublic,
 } from '../../types/game';
-import { formatDurationClock } from '../../utils/formatting';
+import {
+  formatDurationClock,
+  formatMinutesHumanDe,
+} from '../../utils/formatting';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
 
 export interface LobbyScreenProps {
@@ -195,15 +201,15 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     )
   );
   const classicSearchMin = Math.min(
-    90,
+    CLASSIC_SEARCH_DURATION_MAX_MINUTES,
     Math.max(
-      30,
+      CLASSIC_SEARCH_DURATION_MIN_MINUTES,
       Math.round(
         (publicState.classicSearchDurationMs ??
           DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000) /
           60_000 /
-          15
-      ) * 15
+          CLASSIC_SEARCH_DURATION_STEP_MINUTES
+      ) * CLASSIC_SEARCH_DURATION_STEP_MINUTES
     )
   );
   const manhuntHeadStartMin = Math.min(
@@ -411,8 +417,12 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   const handleChangeClassicSearchMin = (nextSearchMin: number) => {
     if (!canEditSettings) return;
     const clamped = Math.min(
-      90,
-      Math.max(30, Math.round(nextSearchMin / 15) * 15)
+      CLASSIC_SEARCH_DURATION_MAX_MINUTES,
+      Math.max(
+        CLASSIC_SEARCH_DURATION_MIN_MINUTES,
+        Math.round(nextSearchMin / CLASSIC_SEARCH_DURATION_STEP_MINUTES) *
+          CLASSIC_SEARCH_DURATION_STEP_MINUTES
+      )
     );
     const nextSched = buildRadarScheduleForHidingMinutes(
       classicHidingMin,
@@ -648,6 +658,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
   // Hilfswerte für verständliche Einstellungs-Zusammenfassung
   const classicSearchDurationMs = classicSearchMin * 60_000;
+  const classicRadii = getClassicRadarRadiiForPlayArea(publicState.playArea);
   const radarStartAfterSearchMin = Math.round(
     (publicState.radarSchedule.stage1Ms -
       publicState.radarSchedule.hidingDurationMs) /
@@ -1585,48 +1596,100 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   <div className="cmf-well flex flex-col justify-between gap-2 p-3.5">
                     <div>
                       <span className="font-tech block text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                        SUCHDAUER (BIS 25M-RADAR)
+                        SUCHDAUER (30 MIN. – 10 STD. • BIS 25M-RADAR)
                       </span>
                       <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                        Reguläre Suchzeit bis zur kleinsten Radar-Stufe.
+                        Reguläre Suchzeit in 15-Minuten-Schritten bis zur kleinsten Radar-Stufe.
                       </p>
                     </div>
 
-                    {canEditSettings ? (
-                      <div className="grid grid-cols-5 gap-1 pt-1">
-                        {CLASSIC_SEARCH_DURATION_STEPS_MINUTES.map((stepMin) => (
-                          <button
-                            key={stepMin}
-                            type="button"
-                            data-testid={`lobby-search-step-${stepMin}`}
-                            onClick={() => handleChangeClassicSearchMin(stepMin)}
-                            className={`min-h-[36px] rounded-xl font-tech text-xs font-bold transition-all ${
-                              classicSearchMin === stepMin
-                                ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
-                                : 'cmf-btn-secondary bg-white/80'
-                            }`}
-                          >
-                            {stepMin}m
-                          </button>
-                        ))}
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          data-testid="lobby-classic-search-value"
+                          className="font-dot text-xl font-bold text-[var(--text-main)]"
+                        >
+                          {formatMinutesHumanDe(classicSearchMin)}
+                        </span>
+                        {canEditSettings && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              data-testid="lobby-search-minus-btn"
+                              disabled={
+                                classicSearchMin <=
+                                CLASSIC_SEARCH_DURATION_MIN_MINUTES
+                              }
+                              onClick={() =>
+                                handleChangeClassicSearchMin(
+                                  classicSearchMin -
+                                    CLASSIC_SEARCH_DURATION_STEP_MINUTES
+                                )
+                              }
+                              className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
+                            >
+                              <Minus className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="lobby-search-plus-btn"
+                              disabled={
+                                classicSearchMin >=
+                                CLASSIC_SEARCH_DURATION_MAX_MINUTES
+                              }
+                              onClick={() =>
+                                handleChangeClassicSearchMin(
+                                  classicSearchMin +
+                                    CLASSIC_SEARCH_DURATION_STEP_MINUTES
+                                )
+                              }
+                              className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <span
-                        data-testid="lobby-classic-search-value"
-                        className="font-dot pt-1 text-xl font-bold text-[var(--text-main)]"
-                      >
-                        {classicSearchMin} Min.
-                      </span>
-                    )}
+
+                      {canEditSettings && (
+                        <div className="space-y-1">
+                          <input
+                            type="range"
+                            data-testid="lobby-search-duration-slider"
+                            aria-label="Suchdauer in Minuten (30 Min. bis 10 Std.)"
+                            min={CLASSIC_SEARCH_DURATION_MIN_MINUTES}
+                            max={CLASSIC_SEARCH_DURATION_MAX_MINUTES}
+                            step={CLASSIC_SEARCH_DURATION_STEP_MINUTES}
+                            value={classicSearchMin}
+                            onChange={(e) =>
+                              handleChangeClassicSearchMin(
+                                Number(e.target.value)
+                              )
+                            }
+                            className="h-2.5 w-full cursor-pointer appearance-none rounded-lg bg-black/15 accent-[var(--cmf-teal)]"
+                          />
+                          <div className="flex justify-between font-tech text-[10px] font-bold text-[var(--text-muted)]">
+                            <span>30 Min.</span>
+                            <span>2,5 Std.</span>
+                            <span>5 Std.</span>
+                            <span>7,5 Std.</span>
+                            <span>10 Std.</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="cmf-well px-3.5 py-2.5 text-xs text-[var(--text-muted)]">
                   <strong>Ablauf:</strong> Nach{' '}
                   <strong>{classicHidingMin} Min.</strong> Versteckzeit beginnt
-                  die Suche. Ab Minute <strong>+{radarStartAfterSearchMin}</strong>{' '}
-                  der Suche schrumpft das Radar schrittweise (800 m → 400 m →
-                  200 m → 100 m → 25 m). Tipp-Preise: Richtung/Radar +{splitPenaltyMin}{' '}
+                  die Suche ({formatMinutesHumanDe(classicSearchMin)}). Ab{' '}
+                  <strong>+{formatMinutesHumanDe(radarStartAfterSearchMin)}</strong>{' '}
+                  der Suche schrumpft das Radar passend zur Kartengröße schrittweise (
+                  {classicRadii[1]} m → {classicRadii[2]} m →{' '}
+                  {classicRadii[3]} m → {classicRadii[4]} m →{' '}
+                  {classicRadii[5]} m). Tipp-Preise: Richtung/Radar +{splitPenaltyMin}{' '}
                   Min., Foto +{photoPenaltyMin} Min.
                 </div>
               </div>

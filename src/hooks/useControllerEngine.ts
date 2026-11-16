@@ -17,6 +17,7 @@ import {
 import {
   computeNextManhuntZoneCircle,
   generateInsideOutRadarStages,
+  getClassicRadarRadiiForPlayArea,
   getDueRadarCircle,
   getPhaseForElapsedMs,
 } from '../geo/radar';
@@ -377,10 +378,12 @@ export async function lockHiderAnchorAndGenerateRadar(params: {
     lockedByUid: uid,
   };
 
+  const classicRadii = getClassicRadarRadiiForPlayArea(publicState.playArea);
   const radarStages = generateInsideOutRadarStages(
     anchorPoint,
     publicState.radarSchedule,
-    rng
+    rng,
+    classicRadii
   );
 
   const updatedPrivate: HiderPrivateState = {

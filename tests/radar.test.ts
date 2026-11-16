@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALL_MUNICH_POSTAL_CODES,
+  buildCustomCirclePlayAreaState,
   buildManhuntRadarSchedule,
+  buildMunichMultiPlzPolygon,
+  buildRadarScheduleForHidingMinutes,
+  CLASSIC_SEARCH_DURATION_MAX_MINUTES,
+  CLASSIC_SEARCH_DURATION_MIN_MINUTES,
+  CLASSIC_SEARCH_DURATION_STEP_MINUTES,
   DEFAULT_PLAY_AREA_FEATURE,
   getManhuntPingScheduleMs,
   getManhuntPingStatusAtElapsedMs,
@@ -11,9 +18,12 @@ import {
   computeNextManhuntZoneCircle,
   DEFAULT_RADAR_RADII,
   generateInsideOutRadarStages,
+  getClassicRadarRadiiForPlayArea,
   getDueRadarCircle,
   getDueRadarStageId,
   getPhaseForElapsedMs,
+  getPlayAreaAreaSqMeters,
+  getPlayAreaEquivalentRadiusMeters,
   verifyRadarStageInvariants,
 } from '../src/geo/radar';
 import type { RadarSchedule, RadarStageId } from '../src/types/game';
@@ -225,5 +235,76 @@ describe('Inside-Out Schrumpf-Radar (500-Trial Monte-Carlo & Phasenlogik)', () =
     }
 
     expect(nonZeroOffsetStages).toBeGreaterThan(2000);
+  });
+
+  it('passt die 5 Radar-Schrumpfstufen dynamisch an die Kartengröße an (von Kartengröße bis 25 m) und unterstützt Suchdauern von 30 Min. bis 10 Std. (600 Min.)', () => {
+    const rng = createSeededRng(2026_1116);
+
+    // 1. Fläche & Äquivalent-Radius für 81247, Ganz München & Kreis-Zone
+    const area81247 = getPlayAreaAreaSqMeters(DEFAULT_PLAY_AREA_FEATURE);
+    const eqRadius81247 = getPlayAreaEquivalentRadiusMeters(
+      DEFAULT_PLAY_AREA_FEATURE
+    );
+    expect(area81247).toBeGreaterThan(5_000_000);
+    expect(eqRadius81247).toBeGreaterThan(1200);
+    expect(eqRadius81247).toBeLessThan(1600);
+
+    const radii81247 = getClassicRadarRadiiForPlayArea(DEFAULT_PLAY_AREA_FEATURE);
+    expect(radii81247[1]).toBeCloseTo(eqRadius81247, -2);
+    expect(radii81247[1]).toBeGreaterThan(radii81247[2]);
+    expect(radii81247[2]).toBeGreaterThan(radii81247[3]);
+    expect(radii81247[3]).toBeGreaterThan(radii81247[4]);
+    expect(radii81247[4]).toBeGreaterThan(radii81247[5]);
+    expect(radii81247[5]).toBe(25);
+
+    const munichPoly = buildMunichMultiPlzPolygon(ALL_MUNICH_POSTAL_CODES);
+    const radiiMunich = getClassicRadarRadiiForPlayArea(munichPoly);
+    expect(radiiMunich[1]).toBeGreaterThan(radii81247[1]);
+    expect(radiiMunich[1]).toBeGreaterThan(9000);
+    expect(radiiMunich[5]).toBe(25);
+
+    const circle500 = buildCustomCirclePlayAreaState({
+      center: { lat: 48.1632, lng: 11.4569 },
+      radiusMeters: 500,
+      postalCodes: ['81247'],
+      confirmedByUid: 'host',
+      nowMs: 1000,
+    });
+    const radiiCircle500 = getClassicRadarRadiiForPlayArea(circle500);
+    expect(radiiCircle500[1]).toBe(500);
+    expect(radiiCircle500[5]).toBe(25);
+
+    // Alle dynamischen Radien erfüllen die Inside-Out-Verschachtelungs-Invarianten
+    for (const customRadii of [radii81247, radiiMunich, radiiCircle500]) {
+      const stages = generateInsideOutRadarStages(
+        { lat: 48.1632, lng: 11.4569 },
+        STANDARD_SCHEDULE,
+        rng,
+        customRadii
+      );
+      expect(stages.map((s) => s.radiusMeters)).toEqual([
+        customRadii[1],
+        customRadii[2],
+        customRadii[3],
+        customRadii[4],
+        25,
+      ]);
+      const check = verifyRadarStageInvariants(
+        { lat: 48.1632, lng: 11.4569 },
+        stages,
+        1e-4
+      );
+      expect(check.valid, check.violations.join('; ')).toBe(true);
+    }
+
+    // 2. Suchdauer-Skala von 30 Min. bis 10 Std. (600 Min.) in 15-Min.-Schritten
+    expect(CLASSIC_SEARCH_DURATION_MIN_MINUTES).toBe(30);
+    expect(CLASSIC_SEARCH_DURATION_MAX_MINUTES).toBe(600);
+    expect(CLASSIC_SEARCH_DURATION_STEP_MINUTES).toBe(15);
+
+    const sched10h = buildRadarScheduleForHidingMinutes(15, 600);
+    expect(sched10h.hidingDurationMs).toBe(15 * 60_000);
+    expect(sched10h.stage1Ms).toBe((15 + 200) * 60_000);
+    expect(sched10h.stage5Ms).toBe((15 + 600) * 60_000);
   });
 });

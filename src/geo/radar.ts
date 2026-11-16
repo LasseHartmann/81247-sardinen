@@ -1,7 +1,9 @@
+import * as turf from '@turf/turf';
 import type { Feature, MultiPolygon, Polygon } from 'geojson';
 import type {
   GamePhase,
   LatLng,
+  PlayAreaState,
   PublishedRadarCircle,
   RadarSchedule,
   RadarStageId,
@@ -17,6 +19,118 @@ export const DEFAULT_RADAR_RADII: Record<RadarStageId, number> = {
   4: 100,
   5: 25,
 };
+
+export const FINAL_RADAR_RADIUS_METERS = 25;
+
+function isPlayAreaStateObj(
+  input: PlayAreaState | Feature<Polygon | MultiPolygon>
+): input is PlayAreaState {
+  return Boolean(
+    input &&
+      typeof input === 'object' &&
+      'polygon' in input &&
+      input.polygon &&
+      typeof input.polygon === 'object'
+  );
+}
+
+/**
+ * Berechnet die exakte geodätische Fläche des aktuellen Spielgebiets in m².
+ */
+export function getPlayAreaAreaSqMeters(
+  playArea?: PlayAreaState | Feature<Polygon | MultiPolygon> | null
+): number {
+  if (!playArea) {
+    return Math.PI * DEFAULT_RADAR_RADII[1] * DEFAULT_RADAR_RADII[1];
+  }
+  if (
+    isPlayAreaStateObj(playArea) &&
+    playArea.shapeType === 'CUSTOM_CIRCLE' &&
+    playArea.circle &&
+    Number.isFinite(playArea.circle.radiusMeters) &&
+    playArea.circle.radiusMeters > 0
+  ) {
+    const r = playArea.circle.radiusMeters;
+    return Math.PI * r * r;
+  }
+  const poly = isPlayAreaStateObj(playArea) ? playArea.polygon : playArea;
+  try {
+    const area = turf.area(poly);
+    if (Number.isFinite(area) && area > 0) {
+      return area;
+    }
+  } catch {
+    // Fallback unten
+  }
+  return Math.PI * DEFAULT_RADAR_RADII[1] * DEFAULT_RADAR_RADII[1];
+}
+
+/**
+ * Berechnet den flächengleichen Äquivalent-Radius R_map = sqrt(A / pi) des Spielgebiets in Metern.
+ */
+export function getPlayAreaEquivalentRadiusMeters(
+  playArea?: PlayAreaState | Feature<Polygon | MultiPolygon> | null
+): number {
+  if (
+    playArea &&
+    isPlayAreaStateObj(playArea) &&
+    playArea.shapeType === 'CUSTOM_CIRCLE' &&
+    playArea.circle &&
+    Number.isFinite(playArea.circle.radiusMeters) &&
+    playArea.circle.radiusMeters > 0
+  ) {
+    return playArea.circle.radiusMeters;
+  }
+  const areaSqM = getPlayAreaAreaSqMeters(playArea);
+  return Math.sqrt(areaSqM / Math.PI);
+}
+
+function roundRadarRadiusStep(rawMeters: number): number {
+  if (!Number.isFinite(rawMeters) || rawMeters <= FINAL_RADAR_RADIUS_METERS) {
+    return FINAL_RADAR_RADIUS_METERS;
+  }
+  if (rawMeters >= 1000) {
+    return Math.round(rawMeters / 10) * 10;
+  }
+  if (rawMeters >= 100) {
+    return Math.round(rawMeters / 5) * 5;
+  }
+  return Math.round(rawMeters);
+}
+
+/**
+ * Berechnet die 5 Radar-Schrumpfstufen (Stufe 1 -> 5) dynamisch passend zur Kartengröße,
+ * sodass das Radar von der Größe der Karte (Stufe 1 = R_map = sqrt(Fläche / pi))
+ * geometrisch bis auf 25 m (Stufe 5) schrumpft.
+ */
+export function getClassicRadarRadiiForPlayArea(
+  playArea?: PlayAreaState | Feature<Polygon | MultiPolygon> | null
+): Record<RadarStageId, number> {
+  if (!playArea) {
+    return { ...DEFAULT_RADAR_RADII };
+  }
+  const rawMapRadius = getPlayAreaEquivalentRadiusMeters(playArea);
+  const r5 = FINAL_RADAR_RADIUS_METERS;
+  const r1 = Math.max(65, roundRadarRadiusStep(rawMapRadius));
+
+  const rawStages: Record<RadarStageId, number> = {
+    1: r1,
+    2: roundRadarRadiusStep(r1 * Math.pow(r5 / r1, 1 / 4)),
+    3: roundRadarRadiusStep(r1 * Math.pow(r5 / r1, 2 / 4)),
+    4: roundRadarRadiusStep(r1 * Math.pow(r5 / r1, 3 / 4)),
+    5: r5,
+  };
+
+  // Garantiere strikt absteigende Radien R1 > R2 > R3 > R4 > R5 = 25 m
+  const stages: Record<RadarStageId, number> = { ...rawStages };
+  stages[5] = r5;
+  stages[4] = Math.max(stages[5] + 5, stages[4]);
+  stages[3] = Math.max(stages[4] + 5, stages[3]);
+  stages[2] = Math.max(stages[3] + 5, stages[2]);
+  stages[1] = Math.max(stages[2] + 5, stages[1]);
+
+  return stages;
+}
 
 export const INNERMOST_SHIFT_FACTOR = 0.75;
 export const NESTED_SAFETY_ALPHA = 0.85;
@@ -47,9 +161,11 @@ export function defaultSecureRandom(): number {
 export function generateInsideOutRadarStages(
   anchorPoint: LatLng,
   schedule: RadarSchedule,
-  rng: () => number = defaultSecureRandom
+  rng: () => number = defaultSecureRandom,
+  customRadii?: Record<RadarStageId, number>
 ): RadarStageSecret[] {
-  const r5 = DEFAULT_RADAR_RADII[5];
+  const radii = customRadii ?? DEFAULT_RADAR_RADII;
+  const r5 = radii[5];
   const u5 = clampUnit(rng());
   const theta5Deg = clampUnit(rng()) * 360;
   const d5 = Math.sqrt(u5) * (INNERMOST_SHIFT_FACTOR * r5);
@@ -66,8 +182,8 @@ export function generateInsideOutRadarStages(
   const descendingStages: RadarStageId[] = [5, 4, 3, 2];
   for (const k of descendingStages) {
     const outerStage = (k - 1) as RadarStageId;
-    const rInner = DEFAULT_RADAR_RADII[k];
-    const rOuter = DEFAULT_RADAR_RADII[outerStage];
+    const rInner = radii[k];
+    const rOuter = radii[outerStage];
     const u = clampUnit(rng());
     const thetaDeg = clampUnit(rng()) * 360;
     const displacement =
@@ -85,7 +201,7 @@ export function generateInsideOutRadarStages(
 
   return ([1, 2, 3, 4, 5] as RadarStageId[]).map((stage) => ({
     stage,
-    radiusMeters: DEFAULT_RADAR_RADII[stage],
+    radiusMeters: radii[stage],
     center: centers[stage],
     triggerElapsedMs: triggerMap[stage],
   }));

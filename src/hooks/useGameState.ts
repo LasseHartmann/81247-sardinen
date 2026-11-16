@@ -25,7 +25,6 @@ import type {
   ControllerLease,
   EmergencyMessage,
   HiderPrivateState,
-  JoinRequest,
   LeaderboardEntry,
   MemberRecord,
   PresenceSession,
@@ -40,7 +39,6 @@ export interface SynchronizedGameState {
   controllerLease: ControllerLease | null;
   hiderPrivate: HiderPrivateState | null;
   members: Record<string, MemberRecord>;
-  joinRequests: Record<string, JoinRequest>;
   presence: Record<string, Record<string, PresenceSession>>;
   teamsPublic: Record<string, TeamPublic>;
   teamLocations: Record<string, TeamLocation | null>;
@@ -72,9 +70,6 @@ export function useGameState(
     null
   );
   const [members, setMembers] = useState<Record<string, MemberRecord>>({});
-  const [joinRequests, setJoinRequests] = useState<Record<string, JoinRequest>>(
-    {}
-  );
   const [presence, setPresence] = useState<
     Record<string, Record<string, PresenceSession>>
   >({});
@@ -108,7 +103,6 @@ export function useGameState(
       setRawPublicState(null);
       setControllerLease(null);
       setMembers({});
-      setJoinRequests({});
       setPresence({});
       setTeamsPublic({});
       setLeaderboard({});
@@ -147,12 +141,6 @@ export function useGameState(
       adapter.subscribePresence(setPresence),
       adapter.subscribeLeaderboard(setLeaderboard),
     ];
-
-    if (isOwnHost) {
-      unsubs.push(adapter.subscribeAllJoinRequests(setJoinRequests));
-    } else {
-      setJoinRequests({});
-    }
 
     const teamIds = TEAM_PALETTE.map((t) => t.id);
     for (const teamId of teamIds) {
@@ -429,7 +417,6 @@ export function useGameState(
     controllerLease,
     hiderPrivate,
     members,
-    joinRequests,
     presence,
     teamsPublic,
     teamLocations,

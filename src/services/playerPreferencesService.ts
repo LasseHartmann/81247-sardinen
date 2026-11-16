@@ -2,32 +2,6 @@ import type { PlayerAllTimeStats } from '../types/game';
 
 export const AVATAR_LOGO_ID = 'LOGO';
 
-export const PLAYER_AVATAR_OPTIONS: ReadonlyArray<{
-  id: string;
-  label: string;
-}> = [
-  { id: '', label: 'Kein Icon' },
-  { id: AVATAR_LOGO_ID, label: '81247 Sardinen Logo' },
-  { id: '🐟', label: 'Sardine' },
-  { id: '🦈', label: 'Hai' },
-  { id: '🐙', label: 'Krake' },
-  { id: '🦊', label: 'Fuchs' },
-  { id: '🐺', label: 'Wolf' },
-  { id: '🦅', label: 'Adler' },
-  { id: '🕵️', label: 'Detektiv' },
-  { id: '🥷', label: 'Ninja' },
-  { id: '⚡', label: 'Blitz' },
-  { id: '🔥', label: 'Feuer' },
-  { id: '🧭', label: 'Kompass' },
-  { id: '🎯', label: 'Volltreffer' },
-  { id: '👑', label: 'Krone' },
-  { id: '👻', label: 'Geist' },
-  { id: '🚀', label: 'Rakete' },
-  { id: '🥨', label: 'Brezn' },
-  { id: '🌲', label: 'Wald' },
-  { id: '💎', label: 'Diamant' },
-];
-
 export interface PlayerDevicePreferences {
   soundEnabled: boolean;
   soundVolume: number; // 0.1 .. 1.0

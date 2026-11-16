@@ -8,7 +8,11 @@ import {
   MEDIA_REFUND_MS,
   MEDIA_RESPONSE_TIMEOUT_NET_MS,
 } from '../config/gameConfig';
-import { isPointInPlayArea, snapPointIntoPlayArea } from '../geo/boundary';
+import {
+  getPlayAreaCenter,
+  isPointInPlayArea,
+  snapPointIntoPlayArea,
+} from '../geo/boundary';
 import {
   evaluateDeterministicQuestion,
   evaluateDonutRing,
@@ -208,7 +212,7 @@ export function resolveManhuntHiderPingLocation(params: {
     };
   }
 
-  // 3. ZONE_FALLBACK: Noch nie ein GPS-Signal empfangen -> nutze aktuellen Zonenmittelpunkt bzw. SafetyPoint
+  // 3. ZONE_FALLBACK: Noch nie ein GPS-Signal empfangen -> nutze aktuellen Zonenmittelpunkt bzw. Schwerpunkt des Spielgebiets
   if (publicState.radarCircle) {
     return {
       lat: publicState.radarCircle.center.lat,
@@ -221,16 +225,17 @@ export function resolveManhuntHiderPingLocation(params: {
     };
   }
 
-  const snappedSafety = snapPointIntoPlayArea(
-    {
-      lat: publicState.safetyPoint.lat,
-      lng: publicState.safetyPoint.lng,
-    },
-    publicState.playArea.polygon
-  );
+  const areaFallbackCenter =
+    publicState.playArea.shapeType === 'CUSTOM_CIRCLE' &&
+    publicState.playArea.circle?.center
+      ? snapPointIntoPlayArea(
+          publicState.playArea.circle.center,
+          publicState.playArea.polygon
+        )
+      : getPlayAreaCenter(publicState.playArea.polygon);
   return {
-    lat: snappedSafety.lat,
-    lng: snappedSafety.lng,
+    lat: areaFallbackCenter.lat,
+    lng: areaFallbackCenter.lng,
     accuracy: 100,
     source: 'ZONE_FALLBACK',
   };

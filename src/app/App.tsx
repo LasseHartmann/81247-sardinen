@@ -107,10 +107,7 @@ import { HostControlPanel } from '../components/Lobby/HostControlPanel';
 import { GameHubScreen } from '../components/Lobby/GameHubScreen';
 import { LateJoinTeamPicker } from '../components/Lobby/LateJoinTeamPicker';
 import { LobbyScreen } from '../components/Lobby/LobbyScreen';
-import {
-  LoginScreen,
-  PendingApprovalScreen,
-} from '../components/Lobby/LobbyView';
+import { LoginScreen } from '../components/Lobby/LobbyView';
 import { GameMap, type MapClickInteractionMode } from '../components/Map/GameMap';
 import { BottomNav } from '../components/Navigation/BottomNav';
 import { ProfileView } from '../components/Profile/ProfileView';
@@ -782,11 +779,38 @@ export const App: React.FC = () => {
 
   if (!ownMember || !ownMember.enabled) {
     return (
-      <PendingApprovalScreen
-        authUser={authUser}
-        loginError={loginError}
-        onLogout={exitOrLogout}
-      />
+      <div className="cmf-drafting-bg flex h-[100dvh] w-full flex-col items-center justify-center overflow-y-auto p-4 text-[var(--text-main)]">
+        <div className="cmf-chassis w-full max-w-lg space-y-4 p-6">
+          <div className="flex items-center gap-3">
+            <div className="cmf-oled flex h-12 w-12 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
+              <Layers className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="font-industrial text-lg text-[var(--text-main)]">
+                Verbinde Spielerkonto ...
+              </h1>
+              <p className="text-xs text-[var(--text-muted)]">
+                Bitte melde dich erneut mit deinem Kontonamen und Passwort an.
+              </p>
+            </div>
+          </div>
+
+          {loginError && (
+            <div className="cmf-badge-orange rounded-xl p-3 text-xs font-semibold">
+              {loginError}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void exitOrLogout()}
+            className="cmf-btn-secondary font-tech inline-flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold uppercase"
+          >
+            <LogOut className="h-4 w-4" />
+            Zurück zur Anmeldung
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -2691,7 +2715,6 @@ export const App: React.FC = () => {
             publicState={publicState}
             members={gameState.members}
             presence={gameState.presence}
-            teamsPublic={gameState.teamsPublic}
             connected={gameState.connected}
             ownFix={geo.currentFix}
             gpsStatus={geo.gpsStatus}
@@ -2701,7 +2724,6 @@ export const App: React.FC = () => {
             onChangeDevicePrefs={handleChangeDevicePrefs}
             onSelectAvatar={handleSelectAvatar}
             onRetryGps={geo.retryGpsPermission}
-            onSelectOwnRole={handleSelectOwnRole}
             onReturnToLobbyByHost={
               isRoomHost && publicState.status !== 'LOBBY'
                 ? handleReturnToLobbyByHost
@@ -2724,12 +2746,12 @@ export const App: React.FC = () => {
             hiderPrivate={hiderPrivate}
             readyPlayerIds={gameState.readyPlayerIds}
             members={gameState.members}
-            joinRequests={gameState.joinRequests}
             presence={gameState.presence}
             teamsPublic={gameState.teamsPublic}
             cluesByTeam={gameState.cluesByTeam}
             requestsByTeam={gameState.requestsByTeam}
             onNavigateToMap={() => setActiveTab('MAP')}
+            onOpenLobbySettings={() => setActiveTab('LOBBY')}
             recentRoomCodes={recentRooms.map((r) => r.roomCode)}
             onSwitchRoom={async (targetCode) => {
               const ok = await joinGameByCode(targetCode);
@@ -2738,7 +2760,6 @@ export const App: React.FC = () => {
               }
             }}
             onLeaveRoom={handleLeaveRoom}
-            onOpenCircleMapEditor={handleOpenCircleMapEditor}
             onLogoutAdmin={() => {
               setActiveTab('LOBBY');
               void exitOrLogout();
@@ -2774,7 +2795,6 @@ export const App: React.FC = () => {
         hideQuestionsTab={isManhunt}
         hasActiveEmergency={hasActiveEmergency}
         pendingQuestionsBadgeCount={isManhunt ? 0 : openHiderMediaRequests.length}
-        joinRequestsBadgeCount={Object.keys(gameState.joinRequests).length}
       />
     </div>
   );

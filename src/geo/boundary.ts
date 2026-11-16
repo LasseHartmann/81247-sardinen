@@ -253,6 +253,28 @@ export function snapPointIntoPlayArea(
 }
 
 /**
+ * Berechnet einen garantiert innerhalb des aktuellen Spielpolygons liegenden Schwerpunkt.
+ */
+export function getPlayAreaCenter(
+  playArea: Feature<Polygon | MultiPolygon>
+): LatLng {
+  try {
+    const com = turf.centerOfMass(playArea);
+    const candidate: LatLng = {
+      lat: com.geometry.coordinates[1],
+      lng: com.geometry.coordinates[0],
+    };
+    return snapPointIntoPlayArea(candidate, playArea);
+  } catch {
+    const fallback = turf.pointOnFeature(playArea);
+    return {
+      lat: fallback.geometry.coordinates[1],
+      lng: fallback.geometry.coordinates[0],
+    };
+  }
+}
+
+/**
  * Validiert eine manuell gewählte Versteck-Position der Verstecker:
  * 1. Muss innerhalb des 81247-Spielgebiets liegen.
  * 2. Ein aktuelles GPS-Signal der Person muss vorliegen.

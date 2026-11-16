@@ -12,7 +12,6 @@ import {
 } from '../services/qrService';
 import type {
   AuthUserSummary,
-  JoinRequest,
   MemberRecord,
 } from '../types/game';
 
@@ -218,7 +217,6 @@ export function useAuth(): {
   leaveCurrentRoom: () => Promise<void>;
   ownMember: MemberRecord | null;
   memberLoading: boolean;
-  ownJoinRequest: JoinRequest | null;
   seatConflictError: string | null;
   loginError: string | null;
   clearLoginError: () => void;
@@ -256,9 +254,6 @@ export function useAuth(): {
     null
   );
   const [memberLoading, setMemberLoading] = useState<boolean>(false);
-  const [ownJoinRequest, setOwnJoinRequest] = useState<JoinRequest | null>(
-    null
-  );
   const [isSessionUnlocked, setIsSessionUnlocked] = useState<boolean>(() =>
     Boolean(loadStoredSession()?.playerId)
   );
@@ -296,7 +291,6 @@ export function useAuth(): {
   useEffect(() => {
     if (!authUser || !isSessionUnlocked || !activeRoomCode) {
       setFirebaseMember(null);
-      setOwnJoinRequest(null);
       setMemberLoading(false);
       return;
     }
@@ -375,13 +369,8 @@ export function useAuth(): {
       }
     );
 
-    const unsubReq = adapter.subscribeOwnJoinRequest(authUser.uid, (req) => {
-      setOwnJoinRequest(req);
-    });
-
     return () => {
       unsubMember();
-      unsubReq();
     };
   }, [adapter, authUser, isSessionUnlocked, activeRoomCode]);
 
@@ -534,7 +523,6 @@ export function useAuth(): {
     setPendingInviteRoomCode(null);
     setActiveRoomCode(null);
     setFirebaseMember(null);
-    setOwnJoinRequest(null);
   }, [activeRoomCode, adapter, authUser, firebaseMember, tabId]);
 
   const finalizePostAuthRoomIfInvited = useCallback(
@@ -689,7 +677,6 @@ export function useAuth(): {
     setAccountSession(null);
     setActiveRoomCode(null);
     setFirebaseMember(null);
-    setOwnJoinRequest(null);
     setIsSessionUnlocked(false);
   }, [activeRoomCode, adapter, authUser, firebaseMember, tabId]);
 
@@ -731,7 +718,6 @@ export function useAuth(): {
     leaveCurrentRoom,
     ownMember: activeMember,
     memberLoading,
-    ownJoinRequest,
     seatConflictError,
     loginError,
     clearLoginError,

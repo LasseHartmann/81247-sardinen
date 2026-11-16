@@ -12,7 +12,6 @@ export interface BottomNavProps {
   hideQuestionsTab?: boolean;
   hasActiveEmergency?: boolean;
   pendingQuestionsBadgeCount?: number;
-  joinRequestsBadgeCount?: number;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
@@ -25,7 +24,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   hideQuestionsTab = false,
   hasActiveEmergency = false,
   pendingQuestionsBadgeCount = 0,
-  joinRequestsBadgeCount = 0,
 }) => {
   const items: Array<{
     id: BottomNavTab;
@@ -83,7 +81,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       id: 'HOST',
       label: hostTabLabel,
       icon: <Shield className="h-5 w-5" />,
-      badge: joinRequestsBadgeCount,
     });
   }
 

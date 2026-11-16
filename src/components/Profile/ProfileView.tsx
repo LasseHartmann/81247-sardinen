@@ -7,8 +7,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Compass,
-  Copy,
   Footprints,
   KeyRound,
   Lock,
@@ -24,15 +22,11 @@ import {
   Users,
   Vibrate,
   Volume2,
-  Wifi,
 } from 'lucide-react';
 import {
   DEFAULT_CLASSIC_SEARCH_MINUTES,
-  formatPostalCodesLabel,
   GAME_ID,
-  getActivePostalCodes,
   getQuestionPenaltyMs,
-  TEAM_PALETTE,
 } from '../../config/gameConfig';
 import { getPlayerGreeting, isOverviewMember } from '../../config/players';
 import {
@@ -84,7 +78,6 @@ export interface ProfileViewProps {
   publicState: PublicGameState;
   members: Record<string, MemberRecord>;
   presence: Record<string, Record<string, PresenceSession>>;
-  teamsPublic: Record<string, TeamPublic>;
   connected: boolean;
   ownFix: GeoFix | null;
   gpsStatus: GpsPermissionState;
@@ -94,7 +87,6 @@ export interface ProfileViewProps {
   onChangeDevicePrefs: (next: PlayerDevicePreferences) => void;
   onSelectAvatar: (nextAvatar: string) => Promise<void>;
   onRetryGps: () => void;
-  onSelectOwnRole?: (nextSelection: string) => Promise<void>;
   onReturnToLobbyByHost?: () => Promise<void>;
   onLeaveRoom?: () => Promise<void>;
   onLogout: () => Promise<void>;
@@ -114,7 +106,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   publicState,
   members,
   presence,
-  teamsPublic,
   connected,
   ownFix,
   gpsStatus,
@@ -124,13 +115,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onChangeDevicePrefs,
   onSelectAvatar,
   onRetryGps,
-  onSelectOwnRole,
   onReturnToLobbyByHost,
   onLeaveRoom,
   onLogout,
 }) => {
   const roomCode = publicState.roomCode ?? GAME_ID;
-  const [copiedRoomCode, setCopiedRoomCode] = useState(false);
   const [returningToLobby, setReturningToLobby] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -139,7 +128,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSuccess, setPwSuccess] = useState<string | null>(null);
 
-  const [roleBusy, setRoleBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarTab, setAvatarTab] = useState<
     'COLOR' | 'HAT' | 'GLASSES' | 'EXTRA'
@@ -153,16 +141,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   );
 
   const isOverviewAccount = isOverviewMember(ownMember);
-  const isManhunt = (publicState.gameMode ?? 'CLASSIC') === 'MANHUNT';
-  const activePostalCodes = getActivePostalCodes(publicState.playArea);
-  const activePostalCodesLabel = formatPostalCodesLabel(activePostalCodes);
-
-  const ownSelectionValue =
-    ownMember.side === 'HIDER'
-      ? 'HIDER'
-      : ownMember.side === 'SEEKER' && ownMember.teamId
-        ? ownMember.teamId
-        : 'UNASSIGNED';
 
   const enabledMembers = deduplicateEnabledMembers(members, presence);
   const teammates = enabledMembers.filter((m) => {
@@ -782,76 +760,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </span>
             </div>
 
-            {onSelectOwnRole && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <label
-                    htmlFor="profile-role-select"
-                    className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
-                  >
-                    Eigenes Team wählen / wechseln
-                  </label>
-                  {ownSelectionValue !== 'UNASSIGNED' && (
-                    <button
-                      type="button"
-                      data-testid="profile-leave-team-btn"
-                      disabled={roleBusy}
-                      onClick={async () => {
-                        setRoleBusy(true);
-                        try {
-                          await onSelectOwnRole('UNASSIGNED');
-                        } finally {
-                          setRoleBusy(false);
-                        }
-                      }}
-                      className="cmf-btn-secondary font-tech min-h-[30px] px-2.5 py-1 text-[10px] font-bold text-[var(--cmf-orange)] uppercase disabled:opacity-50"
-                    >
-                      Kein Team (Verlassen)
-                    </button>
-                  )}
-                </div>
-
-                <select
-                  id="profile-role-select"
-                  data-testid="profile-role-select"
-                  disabled={roleBusy}
-                  value={ownSelectionValue}
-                  onChange={async (e) => {
-                    const nextVal = e.target.value;
-                    setRoleBusy(true);
-                    try {
-                      await onSelectOwnRole(nextVal);
-                    } finally {
-                      setRoleBusy(false);
-                    }
-                  }}
-                  className="cmf-input min-h-[44px] w-full px-3 py-2 text-sm font-bold"
-                >
-                  <option value="UNASSIGNED">
-                    Kein Team (Noch nicht eingeteilt)
-                  </option>
-                  <option value="HIDER">Verstecker (Die Sardinen)</option>
-                  {TEAM_PALETTE.map((t) => {
-                    const count =
-                      teamsPublic[t.id]?.memberPlayerIds.length ?? 0;
-                    const teamName = teamsPublic[t.id]?.name ?? t.name;
-                    return (
-                      <option key={t.id} value={t.id}>
-                        Sucher: {teamName} ({count} Spieler)
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            )}
-
             <div className="cmf-well p-3 space-y-2 text-xs">
-              <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                Aktuelle Mitglieder in deinem Team
-              </span>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                  Aktuelle Mitglieder in deinem Team
+                </span>
+                <span className="font-tech text-[10px] text-[var(--text-muted)]">
+                  Teamwechsel in der Lobby
+                </span>
+              </div>
               {teammates.length === 0 ? (
                 <p className="text-[var(--text-muted)]">
-                  Du bist aktuell in keinem Team eingeteilt.
+                  Du bist aktuell in keinem Team eingeteilt. Wähle dein Team in der Lobby.
                 </p>
               ) : (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1392,7 +1312,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="flex items-center gap-2">
               <Smartphone className="h-4 w-4 text-[var(--cmf-teal)]" />
               <h3 className="font-industrial text-base text-[var(--text-main)]">
-                Gerät, GPS &amp; Runden-Info
+                Gerät &amp; GPS-Diagnose
               </h3>
             </div>
             <span
@@ -1404,73 +1324,37 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </span>
           </div>
 
-          <div className="grid gap-2.5 sm:grid-cols-2 text-xs">
-            <div className="cmf-well p-3 space-y-1">
-              <div className="flex items-center justify-between font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
-                <span className="flex items-center gap-1">
-                  <Navigation className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                  GPS-ORTUNG
-                </span>
-                <span>
-                  {gpsStatus === 'TRACKING'
-                    ? `AKTIV (±${Math.round(ownFix?.accuracy ?? 0)}M)`
-                    : gpsStatus === 'MANUAL_TEST'
-                      ? 'TEST-KLICK'
-                      : gpsStatus === 'DENIED'
-                        ? 'BLOCKIERT'
-                        : 'SUCHE ...'}
-                </span>
-              </div>
-              <p className="font-tech text-[11px] font-bold text-[var(--text-main)]">
-                {ownFix
-                  ? `${ownFix.lat.toFixed(5)}, ${ownFix.lng.toFixed(5)}`
-                  : (gpsError ?? 'Noch keine GPS-Koordinaten empfangen')}
-              </p>
+          <div className="cmf-well p-3 space-y-1 text-xs">
+            <div className="flex items-center justify-between font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
+              <span className="flex items-center gap-1">
+                <Navigation className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                GPS-ORTUNG
+              </span>
+              <span>
+                {gpsStatus === 'TRACKING'
+                  ? `AKTIV (±${Math.round(ownFix?.accuracy ?? 0)}M)`
+                  : gpsStatus === 'MANUAL_TEST'
+                    ? 'TEST-KLICK'
+                    : gpsStatus === 'DENIED'
+                      ? 'BLOCKIERT'
+                      : 'SUCHE ...'}
+              </span>
+            </div>
+            <p className="font-tech text-[11px] font-bold text-[var(--text-main)]">
+              {ownFix
+                ? `${ownFix.lat.toFixed(5)}, ${ownFix.lng.toFixed(5)}`
+                : (gpsError ?? 'Noch keine GPS-Koordinaten empfangen')}
+            </p>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={onRetryGps}
-                className="cmf-btn-secondary font-tech mt-1 inline-flex min-h-[34px] items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase"
+                className="cmf-btn-secondary font-tech inline-flex min-h-[34px] items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase"
               >
                 <Radio className="h-3 w-3 text-[var(--cmf-orange)]" />
                 GPS neu synchronisieren
               </button>
-            </div>
 
-            <div className="cmf-well p-3 space-y-1.5">
-              <div className="flex items-center justify-between font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
-                <span className="flex items-center gap-1">
-                  <Compass className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                  SPIELRAUM ({roomCode})
-                </span>
-                <span>{isManhunt ? 'MANHUNT' : 'KLASSISCH'}</span>
-              </div>
-              <p className="font-tech text-[11px] font-bold text-[var(--text-main)]">
-                {publicState.playArea.shapeType === 'CUSTOM_CIRCLE'
-                  ? `Kreis in ${activePostalCodesLabel} (R = ${publicState.playArea.circle?.radiusMeters ?? 500} m)`
-                  : `Versteck-Zone: ${activePostalCodesLabel}`}
-              </p>
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                <span className="flex items-center gap-1.5 font-tech text-[10px] text-[var(--text-muted)] uppercase">
-                  <Wifi className="h-3 w-3 text-[var(--cmf-teal)]" />
-                  <span>Code: {roomCode}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(roomCode);
-                      setCopiedRoomCode(true);
-                      setTimeout(() => setCopiedRoomCode(false), 1800);
-                    } catch {
-                      // Ignorieren
-                    }
-                  }}
-                  className="cmf-btn-secondary font-tech inline-flex min-h-[28px] items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase"
-                >
-                  <Copy className="h-3 w-3" />
-                  <span>{copiedRoomCode ? 'Kopiert!' : 'Code kopieren'}</span>
-                </button>
-              </div>
               {onReturnToLobbyByHost && (
                 <button
                   type="button"
@@ -1484,7 +1368,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       setReturningToLobby(false);
                     }
                   }}
-                  className="cmf-btn-secondary font-tech mt-1.5 inline-flex min-h-[36px] w-full items-center justify-center gap-1.5 border-[var(--cmf-orange)]/35 px-3 py-1.5 text-[10px] font-bold text-[var(--cmf-orange)] uppercase disabled:opacity-50"
+                  className="cmf-btn-secondary font-tech inline-flex min-h-[34px] items-center justify-center gap-1.5 border-[var(--cmf-orange)]/35 px-3 py-1 text-[10px] font-bold text-[var(--cmf-orange)] uppercase disabled:opacity-50"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   <span>

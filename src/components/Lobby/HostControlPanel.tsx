@@ -3,7 +3,6 @@ import {
   Play,
   Pause,
   RotateCcw,
-  UserPlus,
   Radio,
   MousePointerClick,
   Trash2,
@@ -12,52 +11,24 @@ import {
   CheckCircle2,
   Clock,
   Copy,
-  Crosshair,
   ArrowLeft,
   Link2,
   Pencil,
+  SlidersHorizontal,
 } from 'lucide-react';
 import {
-  ALL_MUNICH_POSTAL_CODES,
-  buildCustomCirclePlayAreaState,
-  buildManhuntRadarSchedule,
   buildManhuntRadarScheduleForHidingMs,
-  buildMunichPlzPlayAreaState,
-  buildOfficial81247PlayAreaState,
-  buildRadarScheduleForHidingMinutes,
   buildRadarScheduleForHidingMs,
-  CLASSIC_SEARCH_DURATION_MAX_MINUTES,
-  CLASSIC_SEARCH_DURATION_MIN_MINUTES,
-  CLASSIC_SEARCH_DURATION_STEP_MINUTES,
-  clampPlayAreaCircleRadius,
   createDefaultPublicState,
   createDefaultTeams,
-  DEFAULT_CLASSIC_HIDING_MINUTES,
   DEFAULT_CLASSIC_SEARCH_MINUTES,
-  DEFAULT_MANHUNT_HIDING_MINUTES,
   DEFAULT_MANHUNT_SHRINK_MINUTES,
-  DEFAULT_PLAY_AREA_CIRCLE_CENTER,
-  DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS,
-  DEFAULT_POSTAL_CODE,
   formatPostalCodesLabel,
   getActivePostalCodes,
   getManhuntPingStatusAtElapsedMs,
-  getMunichPlzEntry,
-  getQuestionPenaltyMs,
-  isAllMunichPostalCodes,
-  parseAndValidateMunichPostalCodes,
-  PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
-  PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
-  PLAY_AREA_CIRCLE_STEP_METERS,
   TEAM_PALETTE,
 } from '../../config/gameConfig';
-import { preloadGreenPolygonsForPostalCode } from '../../config/fallbackOsm81247';
 import {
-  isPointInMunichPlz,
-  snapPointIntoMunichPlz,
-} from '../../geo/boundary';
-import {
-  getClassicRadarRadiiForPlayArea,
   getDueRadarCircle,
   getPhaseForElapsedMs,
 } from '../../geo/radar';
@@ -65,11 +36,9 @@ import {
   lockHiderAnchorAndGenerateRadar,
   resolveClassicHiderCandidateLocation,
 } from '../../hooks/useControllerEngine';
-import { HardwareKnob } from '../Common/HardwareKnob';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
 import { AdminAccountManager } from './AdminAccountManager';
 import { AdminLobbiesOverview } from './AdminLobbiesOverview';
-import { ShrinkingBorderPreview } from './ShrinkingBorderPreview';
 import { isOverviewMember } from '../../config/players';
 import {
   deduplicateEnabledMembers,
@@ -81,10 +50,8 @@ import { generateRandomId, generateSessionSecrets } from '../../services/qrServi
 import type {
   ClueRecord,
   ClueRequest,
-  GameMode,
   GamePhase,
   HiderPrivateState,
-  JoinRequest,
   MemberRecord,
   PresenceSession,
   PublicGameState,
@@ -105,13 +72,12 @@ export interface HostControlPanelProps {
   hiderPrivate: HiderPrivateState | null;
   readyPlayerIds: string[];
   members: Record<string, MemberRecord>;
-  joinRequests: Record<string, JoinRequest>;
   presence: Record<string, Record<string, PresenceSession>>;
   teamsPublic: Record<string, TeamPublic>;
   cluesByTeam?: Record<string, Record<string, ClueRecord>>;
   requestsByTeam?: Record<string, Record<string, ClueRequest>>;
   onNavigateToMap: () => void;
-  onOpenCircleMapEditor?: () => void;
+  onOpenLobbySettings?: () => void;
   recentRoomCodes?: string[];
   onSwitchRoom?: (roomCode: string) => Promise<void>;
   onLeaveRoom?: () => Promise<void>;
@@ -125,13 +91,12 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
   hiderPrivate,
   readyPlayerIds,
   members,
-  joinRequests,
   presence,
   teamsPublic,
   cluesByTeam = {},
   requestsByTeam = {},
   onNavigateToMap,
-  onOpenCircleMapEditor,
+  onOpenLobbySettings,
   recentRoomCodes = [],
   onSwitchRoom,
   onLeaveRoom,
@@ -250,244 +215,16 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     }
   };
   const isCirclePlayArea = publicState.playArea.shapeType === 'CUSTOM_CIRCLE';
-  const activePostalCodes = getActivePostalCodes(publicState.playArea);
-  const isFullMunich = isAllMunichPostalCodes(activePostalCodes);
-  const activePostalCode = activePostalCodes[0];
-  const activePostalCodesLabel = formatPostalCodesLabel(activePostalCodes);
-  const activePlzEntries = activePostalCodes.map((c) => getMunichPlzEntry(c));
-  const activePlzEntry = activePlzEntries[0];
-  const activeDistrictsSummary = isFullMunich
-    ? 'Alle 75 Münchner PLZ-Gebiete'
-    : Array.from(new Set(activePlzEntries.map((e) => e.district))).join(' / ');
-
-  const [plzInputText, setPlzInputText] = useState(activePostalCodesLabel);
-  const [isPlzInputFocused, setIsPlzInputFocused] = useState(false);
-  const [plzValidationError, setPlzValidationError] = useState<string | null>(
-    null
+  const activePostalCodesLabel = formatPostalCodesLabel(
+    getActivePostalCodes(publicState.playArea)
   );
-
-  useEffect(() => {
-    if (!isPlzInputFocused) {
-      setPlzInputText(activePostalCodesLabel);
-    }
-  }, [activePostalCodesLabel, isPlzInputFocused]);
-
-  const circleCenter =
-    publicState.playArea.circle?.center ??
-    activePlzEntry.center ??
-    DEFAULT_PLAY_AREA_CIRCLE_CENTER;
-  const circleRadiusMeters = clampPlayAreaCircleRadius(
-    publicState.playArea.circle?.radiusMeters ??
-      DEFAULT_PLAY_AREA_CIRCLE_RADIUS_METERS
-  );
-
-  const formatNotFoundPlzMessage = (notFoundCodes: string[]): string => {
-    if (notFoundCodes.length === 1) {
-      return `PLZ nicht in München gefunden: "${notFoundCodes[0]}".`;
-    }
-    return `Folgende PLZ wurden nicht in München gefunden: ${notFoundCodes
-      .map((c) => `"${c}"`)
-      .join(', ')}.`;
-  };
-
-  const applyPostalCodes = (nextCodes: string[]) => {
-    if (nextCodes.length === 0) return;
-    if (nextCodes.length <= 8) {
-      for (const code of nextCodes) {
-        void preloadGreenPolygonsForPostalCode(code);
-      }
-    }
-    const primaryEntry = getMunichPlzEntry(nextCodes[0]);
-    if (isCirclePlayArea) {
-      const nextCenter = isPointInMunichPlz(circleCenter, nextCodes)
-        ? circleCenter
-        : primaryEntry.center;
-      void adapter
-        .savePublicStateByHost({
-          ...publicState,
-          playArea: buildCustomCirclePlayAreaState({
-            center: nextCenter,
-            radiusMeters: circleRadiusMeters,
-            confirmedByUid: ownMember.uid,
-            nowMs: adapter.getServerNow(),
-            postalCode: nextCodes[0],
-            postalCodes: nextCodes,
-          }),
-        })
-        .catch(() => {});
-      return;
-    }
-
-    void adapter
-      .savePublicStateByHost({
-        ...publicState,
-        playArea: buildMunichPlzPlayAreaState(
-          nextCodes,
-          ownMember.uid,
-          adapter.getServerNow()
-        ),
-      })
-      .catch(() => {});
-  };
-
-  const handleSelectFullMunichArea = () => {
-    setPlzValidationError(null);
-    setPlzInputText('Ganz München');
-    void adapter
-      .savePublicStateByHost({
-        ...publicState,
-        playArea: buildMunichPlzPlayAreaState(
-          ALL_MUNICH_POSTAL_CODES,
-          ownMember.uid,
-          adapter.getServerNow()
-        ),
-      })
-      .catch(() => {});
-  };
-
-  const handleApplyPlzTextInput = (rawText: string, syncInputText: boolean) => {
-    const { validCodes, notFoundCodes } =
-      parseAndValidateMunichPostalCodes(rawText);
-
-    if (notFoundCodes.length > 0) {
-      setPlzValidationError(formatNotFoundPlzMessage(notFoundCodes));
-    } else if (validCodes.length === 0) {
-      setPlzValidationError(
-        'Bitte mindestens eine gültige Münchner PLZ eingeben (z. B. 81247, 81247, 81245 oder "Ganz München").'
-      );
-    } else {
-      setPlzValidationError(null);
-    }
-
-    if (validCodes.length > 0) {
-      applyPostalCodes(validCodes);
-      if (syncInputText && notFoundCodes.length === 0) {
-        setPlzInputText(formatPostalCodesLabel(validCodes));
-      }
-    }
-  };
-
-  const handleSelectOfficial81247Area = () => {
-    if (activePostalCodes.length <= 8) {
-      for (const code of activePostalCodes) {
-        void preloadGreenPolygonsForPostalCode(code);
-      }
-    }
-    void adapter
-      .savePublicStateByHost({
-        ...publicState,
-        playArea: buildOfficial81247PlayAreaState(
-          ownMember.uid,
-          adapter.getServerNow(),
-          activePostalCodes
-        ),
-      })
-      .catch(() => {});
-  };
-
-  const handleSelectOrResizeCircleArea = (nextRadiusMeters: number) => {
-    const snappedCenter = isPointInMunichPlz(circleCenter, activePostalCodes)
-      ? circleCenter
-      : snapPointIntoMunichPlz(activePlzEntry.center, activePostalCodes);
-    if (activePostalCodes.length <= 8) {
-      for (const code of activePostalCodes) {
-        void preloadGreenPolygonsForPostalCode(code);
-      }
-    }
-    void adapter
-      .savePublicStateByHost({
-        ...publicState,
-        playArea: buildCustomCirclePlayAreaState({
-          center: snappedCenter,
-          radiusMeters: nextRadiusMeters,
-          confirmedByUid: ownMember.uid,
-          nowMs: adapter.getServerNow(),
-          postalCode: activePostalCode,
-          postalCodes: activePostalCodes,
-        }),
-      })
-      .catch(() => {});
-  };
-  const [selectedMode, setSelectedMode] = useState<GameMode>(() =>
-    publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC'
-  );
-  useEffect(() => {
-    setSelectedMode(publicState.gameMode === 'MANHUNT' ? 'MANHUNT' : 'CLASSIC');
-  }, [publicState.gameMode]);
-  const isManhunt = selectedMode === 'MANHUNT';
-
-  const [classicHidingMin, setClassicHidingMin] = useState(() => {
-    if (publicState.gameMode === 'MANHUNT') return DEFAULT_CLASSIC_HIDING_MINUTES;
-    const mins = Math.round(publicState.radarSchedule.hidingDurationMs / 60_000);
-    return Math.min(55, Math.max(5, Math.round(mins / 5) * 5));
-  });
-
-  const [classicSearchMin, setClassicSearchMin] = useState(() => {
-    const rawSearchMs =
-      publicState.classicSearchDurationMs ??
-      DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000;
-    const mins = Math.round(rawSearchMs / 60_000);
-    return Math.min(
-      CLASSIC_SEARCH_DURATION_MAX_MINUTES,
-      Math.max(
-        CLASSIC_SEARCH_DURATION_MIN_MINUTES,
-        Math.round(mins / CLASSIC_SEARCH_DURATION_STEP_MINUTES) *
-          CLASSIC_SEARCH_DURATION_STEP_MINUTES
-      )
-    );
-  });
-
-  useEffect(() => {
-    const rawSearchMs =
-      publicState.classicSearchDurationMs ??
-      DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000;
-    const mins = Math.round(rawSearchMs / 60_000);
-    setClassicSearchMin(
-      Math.min(
-        CLASSIC_SEARCH_DURATION_MAX_MINUTES,
-        Math.max(
-          CLASSIC_SEARCH_DURATION_MIN_MINUTES,
-          Math.round(mins / CLASSIC_SEARCH_DURATION_STEP_MINUTES) *
-            CLASSIC_SEARCH_DURATION_STEP_MINUTES
-        )
-      )
-    );
-  }, [publicState.classicSearchDurationMs]);
-
-  const [manhuntHeadStartMin, setManhuntHeadStartMin] = useState(() => {
-    if (publicState.gameMode !== 'MANHUNT') return DEFAULT_MANHUNT_HIDING_MINUTES;
-    const mins = Math.round(publicState.radarSchedule.hidingDurationMs / 60_000);
-    return Math.min(30, Math.max(0, mins));
-  });
-
-  const [manhuntShrinkMin, setManhuntShrinkMin] = useState(() => {
-    const rawShrinkMs =
-      publicState.manhuntShrinkDurationMs ??
-      DEFAULT_MANHUNT_SHRINK_MINUTES * 60_000;
-    const mins = Math.round(rawShrinkMs / 60_000);
-    return Math.min(80, Math.max(10, Math.round(mins / 5) * 5));
-  });
-
-  const handleSelectGameMode = (nextMode: GameMode) => {
-    setSelectedMode(nextMode);
-    const nextSchedule =
-      nextMode === 'MANHUNT'
-        ? buildManhuntRadarSchedule(manhuntHeadStartMin, manhuntShrinkMin)
-        : buildRadarScheduleForHidingMinutes(classicHidingMin, classicSearchMin);
-    void adapter
-      .savePublicStateByHost({
-        ...publicState,
-        gameMode: nextMode,
-        classicSearchDurationMs: classicSearchMin * 60_000,
-        manhuntShrinkDurationMs: manhuntShrinkMin * 60_000,
-        radarSchedule: nextSchedule,
-      })
-      .catch(() => {});
-  };
-
-  const openRequests = Object.values(joinRequests).sort(
-    (a, b) => a.requestedAt - b.requestedAt
-  );
+  const isManhunt = publicState.gameMode === 'MANHUNT';
+  const classicSearchDurationMs =
+    publicState.classicSearchDurationMs ??
+    DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000;
+  const manhuntShrinkDurationMs =
+    publicState.manhuntShrinkDurationMs ??
+    DEFAULT_MANHUNT_SHRINK_MINUTES * 60_000;
 
   const [hostNowMs, setHostNowMs] = useState(() => adapter.getServerNow());
   const [customTimeMinutesInput, setCustomTimeMinutesInput] = useState('');
@@ -558,16 +295,14 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       .filter((t) => t.memberPlayerIds.length > 0)
       .map((t) => t.id);
 
-    const activeSchedule = isManhunt
-      ? buildManhuntRadarSchedule(manhuntHeadStartMin, manhuntShrinkMin)
-      : buildRadarScheduleForHidingMinutes(classicHidingMin, classicSearchMin);
+    const activeSchedule = publicState.radarSchedule;
     const immediateOpenSearch = activeSchedule.hidingDurationMs <= 0;
 
     const nextPublicState: PublicGameState = {
       ...publicState,
-      gameMode: selectedMode,
-      classicSearchDurationMs: classicSearchMin * 60_000,
-      manhuntShrinkDurationMs: manhuntShrinkMin * 60_000,
+      gameMode: isManhunt ? 'MANHUNT' : 'CLASSIC',
+      classicSearchDurationMs,
+      manhuntShrinkDurationMs,
       status: 'RUNNING',
       currentPhase: immediateOpenSearch ? 'OPEN_SEARCH' : 'HIDING',
       gameStartTimestamp: now,
@@ -657,11 +392,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     const currentNetMs = computeNetElapsedMs(unpausedState, now);
 
     if (isManhunt) {
-      const shrinkDurationMs =
-        publicState.manhuntShrinkDurationMs ?? manhuntShrinkMin * 60_000;
       const nextSched = buildManhuntRadarScheduleForHidingMs(
         currentNetMs,
-        shrinkDurationMs
+        manhuntShrinkDurationMs
       );
       await adapter.savePublicStateByHost({
         ...unpausedState,
@@ -675,11 +408,9 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
       return;
     }
 
-    const searchDurationMs =
-      publicState.classicSearchDurationMs ?? classicSearchMin * 60_000;
     const nextSched = buildRadarScheduleForHidingMs(
       currentNetMs,
-      searchDurationMs
+      classicSearchDurationMs
     );
 
     const nextPublicBase: PublicGameState = {
@@ -737,11 +468,11 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     const nextSched = isManhunt
       ? buildManhuntRadarScheduleForHidingMs(
           nextHidingDurationMs,
-          publicState.manhuntShrinkDurationMs ?? manhuntShrinkMin * 60_000
+          manhuntShrinkDurationMs
         )
       : buildRadarScheduleForHidingMs(
           nextHidingDurationMs,
-          publicState.classicSearchDurationMs ?? classicSearchMin * 60_000
+          classicSearchDurationMs
         );
 
     if (!isManhunt && hiderPrivate?.anchorPoint) {
@@ -771,12 +502,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     let nextRadar = publicState.radarCircle;
 
     if (isManhunt) {
-      const huntDurationMs =
-        publicState.manhuntShrinkDurationMs ?? manhuntShrinkMin * 60_000;
       const pingStatus = getManhuntPingStatusAtElapsedMs(
         nextNetMs,
         hidingMs,
-        huntDurationMs
+        manhuntShrinkDurationMs
       );
       nextPhase =
         pingStatus.dueStageId === null
@@ -871,12 +600,10 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
     resetPublic.hostName = publicState.hostName;
     resetPublic.createdAt = publicState.createdAt;
     resetPublic.allowTestClicks = publicState.allowTestClicks;
-    resetPublic.gameMode = selectedMode;
-    resetPublic.classicSearchDurationMs = classicSearchMin * 60_000;
-    resetPublic.manhuntShrinkDurationMs = manhuntShrinkMin * 60_000;
-    resetPublic.radarSchedule = isManhunt
-      ? buildManhuntRadarSchedule(manhuntHeadStartMin, manhuntShrinkMin)
-      : buildRadarScheduleForHidingMinutes(classicHidingMin, classicSearchMin);
+    resetPublic.gameMode = isManhunt ? 'MANHUNT' : 'CLASSIC';
+    resetPublic.classicSearchDurationMs = classicSearchDurationMs;
+    resetPublic.manhuntShrinkDurationMs = manhuntShrinkDurationMs;
+    resetPublic.radarSchedule = publicState.radarSchedule;
 
     const resetTeams = createDefaultTeams();
     for (const [id, team] of Object.entries(resetTeams)) {
@@ -1075,44 +802,11 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
           <AdminAccountManager adapter={adapter} defaultCollapsed />
         )}
 
-        {/* 1. Offene Beitrittswünsche */}
-        {openRequests.length > 0 && (
-          <section className="cmf-module p-4 sm:p-5 space-y-3">
-            <h3 className="font-industrial flex items-center gap-2 text-sm text-[var(--text-main)]">
-              <UserPlus className="h-4 w-4 text-[var(--cmf-orange)]" />
-              Offene Beitrittswünsche ({openRequests.length})
-            </h3>
-            <div className="space-y-2">
-              {openRequests.map((req) => (
-                <div
-                  key={req.uid}
-                  className="cmf-well flex flex-wrap items-center justify-between gap-2 p-3"
-                >
-                  <div>
-                    <p className="text-sm font-bold text-[var(--text-main)]">{req.name}</p>
-                    <p className="font-tech text-[10px] text-[var(--text-muted)]">
-                      UID // {req.uid}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    data-testid={`approve-player-${req.playerId}`}
-                    onClick={() => void adapter.approveJoinRequest(req)}
-                    className="cmf-btn-primary font-dot min-h-[40px] px-3.5 py-2 text-xs font-bold"
-                  >
-                    Spieler freischalten
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 2. Rundenstart, Spielmodus, Bereitschafts-Status, Pause & Reset */}
+        {/* 2. Live-Rundensteuerung, Status, Zeitbearbeitung, Pause & Reset */}
         <section className="cmf-module p-4 sm:p-5 space-y-3.5">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
             <h3 className="font-industrial text-base text-[var(--text-main)]">
-              Systemsteuerung
+              Rundensteuerung &amp; Live-Status
             </h3>
             <span
               className={`rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase ${
@@ -1123,282 +817,41 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
             </span>
           </div>
 
-          {/* Spielmodus-Umschalter (Klassisch vs. Manhunt) */}
-          <div className="space-y-2">
-            <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              Spielmodus wählen
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                data-testid="mode-select-classic"
-                disabled={
-                  publicState.status !== 'LOBBY' &&
-                  publicState.status !== 'FINISHED'
-                }
-                onClick={() => handleSelectGameMode('CLASSIC')}
-                className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
-                  !isManhunt
-                    ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
-                    : 'cmf-well opacity-80 hover:opacity-100'
-                } disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                <span className="font-dot text-xs font-bold uppercase">
-                  Klassisch (Sardinen)
-                </span>
-                <span className="text-[11px] leading-snug opacity-80">
-                  Festes Versteck (50 m) • Hinweis-Fragen • Endspiel-Radar
-                </span>
-              </button>
-
-              <button
-                type="button"
-                data-testid="mode-select-manhunt"
-                disabled={
-                  publicState.status !== 'LOBBY' &&
-                  publicState.status !== 'FINISHED'
-                }
-                onClick={() => handleSelectGameMode('MANHUNT')}
-                className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
-                  isManhunt
-                    ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
-                    : 'cmf-well opacity-80 hover:opacity-100'
-                } disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                <span className="font-dot text-xs font-bold uppercase">
-                  Manhunt
-                </span>
-                <span className="text-[11px] leading-snug opacity-80">
-                  Dauerhaft in Bewegung (kein festes Versteck) • Ping alle 10/5 Min. • Schrumpf-Zone
-                </span>
-              </button>
+          {/* Kompakte Übersicht der aktuellen Spieleinstellungen + Direkt-Link zur Lobby */}
+          <div className="cmf-well flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 text-xs">
+            <div className="space-y-0.5">
+              <div className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                AKTUELLE KONFIGURATION
+              </div>
+              <div className="font-tech text-xs font-bold text-[var(--text-main)]">
+                {isCirclePlayArea
+                  ? `Kreis in ${activePostalCodesLabel} (R = ${publicState.playArea.circle?.radiusMeters ?? 500} m)`
+                  : `Gebiet: ${activePostalCodesLabel}`}{' '}
+                • Versteckzeit:{' '}
+                {formatMinutesHumanDe(
+                  Math.round(publicState.radarSchedule.hidingDurationMs / 60_000)
+                )}{' '}
+                •{' '}
+                {isManhunt
+                  ? `Jagd: ${formatMinutesHumanDe(Math.round(manhuntShrinkDurationMs / 60_000))}`
+                  : `Suchdauer: ${formatMinutesHumanDe(Math.round(classicSearchDurationMs / 60_000))}`}
+              </div>
             </div>
+
+            {(publicState.status === 'LOBBY' ||
+              publicState.status === 'FINISHED') &&
+              onOpenLobbySettings && (
+                <button
+                  type="button"
+                  data-testid="host-open-lobby-settings-btn"
+                  onClick={onOpenLobbySettings}
+                  className="cmf-btn-secondary font-tech inline-flex min-h-[36px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                  <span>Spieleinstellungen &amp; Gebiet in der Lobby ändern</span>
+                </button>
+              )}
           </div>
-
-          {!isManhunt ? (
-            (() => {
-              const classicPreviewSchedule = buildRadarScheduleForHidingMinutes(
-                classicHidingMin,
-                classicSearchMin
-              );
-              const classicRadii = getClassicRadarRadiiForPlayArea(
-                publicState.playArea
-              );
-              const searchDurationMs = classicSearchMin * 60_000;
-              const splitMin = Math.round(
-                getQuestionPenaltyMs('SPLIT_NS', searchDurationMs) / 60_000
-              );
-              const thermoMin = Math.round(
-                getQuestionPenaltyMs('THERMOMETER', searchDurationMs) / 60_000
-              );
-              const photoMin = Math.round(
-                getQuestionPenaltyMs('MEDIA_SKY', searchDurationMs) / 60_000
-              );
-              const donutMin = Math.round(
-                getQuestionPenaltyMs('DONUT_RING', searchDurationMs) / 60_000
-              );
-              const envMin = Math.round(
-                getQuestionPenaltyMs('OSM_TRANSIT', searchDurationMs) / 60_000
-              );
-
-              const applyClassicSearchMin = (nextSearchMin: number) => {
-                const clamped = Math.min(
-                  CLASSIC_SEARCH_DURATION_MAX_MINUTES,
-                  Math.max(
-                    CLASSIC_SEARCH_DURATION_MIN_MINUTES,
-                    Math.round(
-                      nextSearchMin / CLASSIC_SEARCH_DURATION_STEP_MINUTES
-                    ) * CLASSIC_SEARCH_DURATION_STEP_MINUTES
-                  )
-                );
-                setClassicSearchMin(clamped);
-                const effectiveHidingMs =
-                  publicState.status !== 'LOBBY' &&
-                  publicState.currentPhase !== 'HIDING'
-                    ? publicState.radarSchedule.hidingDurationMs
-                    : classicHidingMin * 60_000;
-                const nextSched = buildRadarScheduleForHidingMs(
-                  effectiveHidingMs,
-                  clamped * 60_000
-                );
-                if (!isManhunt && hiderPrivate?.anchorPoint) {
-                  void syncClassicPrivateRadarStages(nextSched, hiderPrivate);
-                }
-                void adapter
-                  .savePublicStateByHost({
-                    ...publicState,
-                    gameMode: 'CLASSIC',
-                    classicSearchDurationMs: clamped * 60_000,
-                    radarSchedule: nextSched,
-                  })
-                  .catch(() => {});
-              };
-
-              return (
-                <div className="space-y-2.5">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <HardwareKnob
-                      label="VERSTECKZEIT (STANDARD 15 MIN)"
-                      ariaLabel="Versteckzeit in Minuten"
-                      dataTestId="hiding-time-knob"
-                      value={classicHidingMin}
-                      min={5}
-                      max={55}
-                      step={5}
-                      unit=" Min."
-                      onChange={(nextMin) => {
-                        setClassicHidingMin(nextMin);
-                        const nextSched = buildRadarScheduleForHidingMinutes(
-                          nextMin,
-                          classicSearchMin
-                        );
-                        if (!isManhunt && hiderPrivate?.anchorPoint) {
-                          void syncClassicPrivateRadarStages(
-                            nextSched,
-                            hiderPrivate
-                          );
-                        }
-                        void adapter
-                          .savePublicStateByHost({
-                            ...publicState,
-                            gameMode: 'CLASSIC',
-                            classicSearchDurationMs: classicSearchMin * 60_000,
-                            radarSchedule: nextSched,
-                          })
-                          .catch(() => {});
-                      }}
-                    />
-
-                    <div className="space-y-2">
-                      <HardwareKnob
-                        label="SUCHDAUER BIS 25M (30 MIN – 10 STD)"
-                        ariaLabel="Spielzeit und Suchdauer in Minuten"
-                        dataTestId="classic-search-time-knob"
-                        value={classicSearchMin}
-                        min={CLASSIC_SEARCH_DURATION_MIN_MINUTES}
-                        max={CLASSIC_SEARCH_DURATION_MAX_MINUTES}
-                        step={CLASSIC_SEARCH_DURATION_STEP_MINUTES}
-                        formatValue={formatMinutesHumanDe}
-                        onChange={applyClassicSearchMin}
-                      />
-                      <div className="cmf-well px-3 py-2 space-y-1">
-                        <input
-                          type="range"
-                          data-testid="host-search-duration-slider"
-                          aria-label="Suchdauer als Schieberegler (30 Min. bis 10 Std.)"
-                          min={CLASSIC_SEARCH_DURATION_MIN_MINUTES}
-                          max={CLASSIC_SEARCH_DURATION_MAX_MINUTES}
-                          step={CLASSIC_SEARCH_DURATION_STEP_MINUTES}
-                          value={classicSearchMin}
-                          onChange={(e) =>
-                            applyClassicSearchMin(Number(e.target.value))
-                          }
-                          className="h-2.5 w-full cursor-pointer appearance-none rounded-lg bg-black/15 accent-[var(--cmf-teal)]"
-                        />
-                        <div className="flex justify-between font-tech text-[10px] font-bold text-[var(--text-muted)]">
-                          <span>30 Min.</span>
-                          <span>2,5 Std.</span>
-                          <span>5 Std.</span>
-                          <span>7,5 Std.</span>
-                          <span>10 Std.</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="cmf-well px-3.5 py-2 text-center font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase space-y-0.5">
-                    <div>
-                      RADAR-STUFEN AB SUCHSTART ({classicRadii[1]}M → {classicRadii[2]}M → {classicRadii[3]}M → {classicRadii[4]}M → {classicRadii[5]}M):{' '}
-                      <span className="text-[var(--text-main)]">
-                        +{formatDurationClock(classicPreviewSchedule.stage1Ms - classicPreviewSchedule.hidingDurationMs)} → +
-                        {formatDurationClock(classicPreviewSchedule.stage2Ms - classicPreviewSchedule.hidingDurationMs)} → +
-                        {formatDurationClock(classicPreviewSchedule.stage3Ms - classicPreviewSchedule.hidingDurationMs)} → +
-                        {formatDurationClock(classicPreviewSchedule.stage4Ms - classicPreviewSchedule.hidingDurationMs)} → +
-                        {formatDurationClock(classicPreviewSchedule.stage5Ms - classicPreviewSchedule.hidingDurationMs)}
-                      </span>
-                    </div>
-                    <div>
-                      ANGEPASSTE TIPP-PREISE:{' '}
-                      <span className="text-[var(--cmf-teal)]">
-                        RICHTUNG/RADAR +{splitMin} MIN. • THERMO +{thermoMin} MIN. • FOTO +{photoMin} MIN. • DONUT +{donutMin} MIN. • UMGEBUNG +{envMin} MIN.
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()
-          ) : (
-            <div className="space-y-2.5">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <HardwareKnob
-                  label="VORSPRUNG VERSTECKER (STD. 5 MIN)"
-                  ariaLabel="Vorsprung der Verstecker in Minuten"
-                  dataTestId="hiding-time-knob"
-                  value={manhuntHeadStartMin}
-                  min={0}
-                  max={30}
-                  step={1}
-                  unit=" Min."
-                  onChange={(nextHeadStart) => {
-                    setManhuntHeadStartMin(nextHeadStart);
-                    void adapter
-                      .savePublicStateByHost({
-                        ...publicState,
-                        gameMode: 'MANHUNT',
-                        manhuntShrinkDurationMs: manhuntShrinkMin * 60_000,
-                        radarSchedule: buildManhuntRadarSchedule(
-                          nextHeadStart,
-                          manhuntShrinkMin
-                        ),
-                      })
-                      .catch(() => {});
-                  }}
-                />
-
-                <HardwareKnob
-                  label="SPIELZEIT / SCHRUMPEN BIS 150M (10-80 MIN)"
-                  ariaLabel="Gesamtdauer bis zur kleinsten Zone in Minuten"
-                  dataTestId="manhunt-shrink-time-knob"
-                  value={manhuntShrinkMin}
-                  min={10}
-                  max={80}
-                  step={5}
-                  unit=" Min."
-                  onChange={(nextShrinkMin) => {
-                    setManhuntShrinkMin(nextShrinkMin);
-                    const effectiveHeadStartMs =
-                      publicState.status !== 'LOBBY' &&
-                      publicState.currentPhase !== 'HIDING'
-                        ? publicState.radarSchedule.hidingDurationMs
-                        : manhuntHeadStartMin * 60_000;
-                    void adapter
-                      .savePublicStateByHost({
-                        ...publicState,
-                        gameMode: 'MANHUNT',
-                        manhuntShrinkDurationMs: nextShrinkMin * 60_000,
-                        radarSchedule: buildManhuntRadarScheduleForHidingMs(
-                          effectiveHeadStartMs,
-                          nextShrinkMin * 60_000
-                        ),
-                      })
-                      .catch(() => {});
-                  }}
-                />
-              </div>
-
-              <div className="cmf-well px-3.5 py-2 text-center font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                KEIN FESTES VERSTECK • PING ALLE 10 MIN. & IM LETZTEN VIERTEL (AB{' '}
-                {formatDurationClock(Math.round(manhuntShrinkMin * 60_000 * 0.75))}
-                ) ALLE 5 MIN. • ZONE: 1200M → 800M → 500M → 300M → 150M
-              </div>
-            </div>
-          )}
-
-          <ShrinkingBorderPreview
-            playArea={publicState.playArea}
-            gameMode={selectedMode}
-            radarSchedule={publicState.radarSchedule}
-          />
 
           {/* OLED Status- & Bereitschafts-Anzeige */}
           <div className="cmf-oled flex flex-wrap items-center justify-between gap-3 p-3.5">
@@ -1495,7 +948,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                     <input
                       type="number"
                       min={0}
-                      max={300}
+                      max={600}
                       step="any"
                       inputMode="decimal"
                       data-testid="host-custom-time-input"
@@ -1581,297 +1034,7 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
               <RotateCcw className="h-4 w-4" />
               Runde zurücksetzen
             </button>
-          </div>
-        </section>
 
-        {/* 2b. Spielfeld / Kartengebiet (Alle 75 Münchner PLZ einzeln oder kombiniert per Textfeld oder frei platzierbarer Kreis mit 100m-Knob) */}
-        <section className="cmf-module p-4 sm:p-5 space-y-3.5">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-3">
-            <div>
-              <h3 className="font-industrial text-base text-[var(--text-main)]">
-                Spielfeld / Kartengebiet (München PLZ)
-              </h3>
-              <p className="text-xs text-[var(--text-muted)]">
-                Gib eine oder mehrere Münchner Postleitzahlen ein (z. B. <code className="font-tech">81247</code> oder <code className="font-tech">81247, 81245</code>) oder platziere einen Kreis in 100m-Schritten.
-              </p>
-            </div>
-            <span
-              className={`rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider uppercase ${
-                isCirclePlayArea ? 'cmf-badge-orange' : 'cmf-badge-teal'
-              }`}
-            >
-              {isCirclePlayArea
-                ? `${activePostalCodesLabel} KREIS // R=${circleRadiusMeters}M`
-                : `GANZES ${activePostalCodesLabel}`}
-            </span>
-          </div>
-
-          <div className="cmf-well p-3 space-y-2.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                Schnellauswahl Versteck-Zone
-              </span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  data-testid="playarea-shortcut-all-munich-btn"
-                  onClick={handleSelectFullMunichArea}
-                  className={`font-tech min-h-[34px] rounded-xl px-3 py-1.5 text-[11px] font-bold uppercase transition-all ${
-                    isFullMunich && !isCirclePlayArea
-                      ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
-                      : 'cmf-btn-secondary'
-                  }`}
-                >
-                  Ganz München als Versteck-Zone (Alle 75 PLZ)
-                </button>
-                <button
-                  type="button"
-                  data-testid="playarea-shortcut-81247-btn"
-                  onClick={() => {
-                    setPlzValidationError(null);
-                    setPlzInputText(DEFAULT_POSTAL_CODE);
-                    applyPostalCodes([DEFAULT_POSTAL_CODE]);
-                  }}
-                  className={`font-tech min-h-[34px] rounded-xl px-3 py-1.5 text-[11px] font-bold uppercase transition-all ${
-                    activePostalCodes.length === 1 &&
-                    activePostalCodes[0] === DEFAULT_POSTAL_CODE &&
-                    !isCirclePlayArea
-                      ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
-                      : 'cmf-btn-secondary'
-                  }`}
-                >
-                  Standard: 81247 (Obermenzing)
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t cmf-divider">
-              <label
-                htmlFor="playarea-plz-input"
-                className="font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase"
-              >
-                Postleitzahl(en) eingeben (mehrere mit Komma oder Leerzeichen trennen)
-              </label>
-              <span className="font-tech text-[11px] font-bold text-[var(--cmf-teal)]">
-                AKTIV ({activePostalCodes.length}): {activePostalCodesLabel} —{' '}
-                {activeDistrictsSummary}
-              </span>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleApplyPlzTextInput(plzInputText, true);
-              }}
-              className="flex flex-col sm:flex-row gap-2"
-            >
-              <input
-                id="playarea-plz-input"
-                type="text"
-                data-testid="playarea-plz-input"
-                value={plzInputText}
-                onFocus={() => setIsPlzInputFocused(true)}
-                onBlur={() => {
-                  setIsPlzInputFocused(false);
-                  handleApplyPlzTextInput(plzInputText, true);
-                }}
-                onChange={(e) => {
-                  const nextText = e.target.value;
-                  setPlzInputText(nextText);
-                  const { validCodes, notFoundCodes } =
-                    parseAndValidateMunichPostalCodes(nextText);
-                  const completedUnknowns = notFoundCodes.filter(
-                    (tok) =>
-                      tok.length >= 5 ||
-                      !/^\d+$/.test(tok) ||
-                      nextText.trimEnd().length >
-                        nextText.lastIndexOf(tok) + tok.length
-                  );
-                  if (completedUnknowns.length > 0) {
-                    setPlzValidationError(
-                      formatNotFoundPlzMessage(completedUnknowns)
-                    );
-                  } else {
-                    setPlzValidationError(null);
-                  }
-                  if (validCodes.length > 0 && notFoundCodes.length === 0) {
-                    applyPostalCodes(validCodes);
-                  }
-                }}
-                placeholder="z. B. 81247, 81245 oder Ganz München"
-                className="cmf-input min-h-[42px] flex-1 px-3 py-1.5 font-tech text-xs font-bold"
-              />
-              <button
-                type="submit"
-                data-testid="playarea-plz-apply-btn"
-                className="cmf-btn-active font-tech min-h-[42px] shrink-0 px-4 py-1.5 text-xs font-bold uppercase"
-              >
-                PLZ übernehmen
-              </button>
-            </form>
-
-            {plzValidationError && (
-              <div
-                data-testid="playarea-plz-error"
-                className="cmf-badge-orange cmf-shake rounded-xl px-3 py-2 font-tech text-xs font-bold"
-              >
-                {plzValidationError}
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-              {isFullMunich ? (
-                <span
-                  data-testid="playarea-active-plz-chip-all-munich"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-[var(--surface-raised)] px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--cmf-teal)]"
-                >
-                  <span>Ganz München (Alle 75 PLZ-Gebiete)</span>
-                </span>
-              ) : (
-                activePlzEntries.map((entry) => (
-                  <span
-                    key={entry.postalCode}
-                    data-testid={`playarea-active-plz-chip-${entry.postalCode}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-[var(--surface-raised)] px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--text-main)]"
-                  >
-                    <span>
-                      {entry.postalCode} ({entry.district})
-                    </span>
-                    {activePostalCodes.length > 1 && (
-                      <button
-                        type="button"
-                        aria-label={`PLZ ${entry.postalCode} entfernen`}
-                        onClick={() => {
-                          const remaining = activePostalCodes.filter(
-                            (c) => c !== entry.postalCode
-                          );
-                          setPlzValidationError(null);
-                          setPlzInputText(remaining.join(', '));
-                          applyPostalCodes(remaining);
-                        }}
-                        className="rounded px-1 text-xs font-bold text-[var(--cmf-orange)] hover:bg-black/10"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </span>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
-              type="button"
-              data-testid="playarea-mode-81247"
-              onClick={handleSelectOfficial81247Area}
-              className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
-                !isCirclePlayArea
-                  ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
-                  : 'cmf-well opacity-80 hover:opacity-100'
-              }`}
-            >
-              <span className="font-dot text-xs font-bold uppercase">
-                Ganzes {activePostalCodesLabel}-Gebiet
-              </span>
-              <span className="text-[11px] leading-snug opacity-80">
-                Offizielle PLZ-Grenze ({activeDistrictsSummary})
-              </span>
-            </button>
-
-            <button
-              type="button"
-              data-testid="playarea-mode-circle"
-              onClick={() => handleSelectOrResizeCircleArea(circleRadiusMeters)}
-              className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
-                isCirclePlayArea
-                  ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
-                  : 'cmf-well opacity-80 hover:opacity-100'
-              }`}
-            >
-              <span className="font-dot text-xs font-bold uppercase">
-                Kreis in {activePostalCodesLabel}
-              </span>
-              <span className="text-[11px] leading-snug opacity-80">
-                Überall in {activePostalCodesLabel} (oder ganz München) platzierbar • 100m-Schritte
-              </span>
-            </button>
-          </div>
-
-          {isCirclePlayArea && (
-            <div className="space-y-3 pt-1">
-              <div className="grid gap-3 sm:grid-cols-2 items-stretch">
-                <HardwareKnob
-                  label="KREIS-RADIUS (100M SCHRITTE)"
-                  ariaLabel="Kreis-Radius in Metern (100m Schritte)"
-                  dataTestId="playarea-circle-radius-knob"
-                  value={circleRadiusMeters}
-                  min={PLAY_AREA_CIRCLE_MIN_RADIUS_METERS}
-                  max={PLAY_AREA_CIRCLE_MAX_RADIUS_METERS}
-                  step={PLAY_AREA_CIRCLE_STEP_METERS}
-                  unit=" m"
-                  onChange={(nextRadius) =>
-                    handleSelectOrResizeCircleArea(nextRadius)
-                  }
-                />
-
-                <div className="cmf-well flex flex-col justify-between gap-3 p-3.5">
-                  <div className="space-y-1.5">
-                    <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-                      AKTIVER KREIS IN {activePostalCodesLabel} ({activeDistrictsSummary})
-                    </span>
-                    <div className="cmf-oled flex items-center justify-between gap-2 px-3 py-2">
-                      <span className="font-dot text-base text-[#F8FAFC]">
-                        R = {circleRadiusMeters} M
-                      </span>
-                      <span className="font-tech text-[11px] font-bold text-[var(--cmf-amber)] uppercase">
-                        Ø {circleRadiusMeters * 2} M
-                      </span>
-                    </div>
-                    <p className="font-tech text-[11px] text-[var(--text-muted)]">
-                      MITTE: [{circleCenter.lat.toFixed(5)},{' '}
-                      {circleCenter.lng.toFixed(5)}]
-                    </p>
-                    <p className="text-xs text-[var(--text-muted)]">
-                      Tippe auf den Button unten, um den Mittelpunkt direkt auf der Karte ({activePostalCodesLabel}) anzutippen oder per Pin [M] zu ziehen.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    data-testid="open-circle-map-picker-btn"
-                    onClick={() => {
-                      if (onOpenCircleMapEditor) {
-                        onOpenCircleMapEditor();
-                      } else {
-                        onNavigateToMap();
-                      }
-                    }}
-                    className="cmf-btn-primary font-dot inline-flex min-h-[46px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
-                  >
-                    <Crosshair className="h-4 w-4 shrink-0" />
-                    <span>Kreis auf Karte platzieren / verschieben</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* 3. Indoor-Testmodus Schalter */}
-        <section className="cmf-module p-4 sm:p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-start gap-2.5">
-              <MousePointerClick className="mt-0.5 h-5 w-5 shrink-0 text-[var(--cmf-teal)]" />
-              <div>
-                <h3 className="font-industrial text-sm text-[var(--text-main)]">
-                  Testmodus: Standort per Kartenklick setzen erlauben
-                </h3>
-                <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                  Ideal für Indoor-Generalproben vor dem Spieltag. Im echten Outdoor-Spiel in 81247 bitte deaktivieren!
-                </p>
-              </div>
-            </div>
             <button
               type="button"
               role="switch"
@@ -1882,13 +1045,16 @@ export const HostControlPanel: React.FC<HostControlPanelProps> = ({
                   allowTestClicks: !publicState.allowTestClicks,
                 })
               }
-              className={`font-tech min-h-[40px] shrink-0 px-4 py-2 text-xs font-bold tracking-wider uppercase ${
+              className={`font-tech inline-flex min-h-[48px] w-full sm:w-auto items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-bold uppercase ${
                 publicState.allowTestClicks
                   ? 'cmf-btn-active'
                   : 'cmf-btn-secondary'
               }`}
             >
-              {publicState.allowTestClicks ? 'AKTIV' : 'AUS'}
+              <MousePointerClick className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+              <span>
+                Test-Klicks: {publicState.allowTestClicks ? 'AKTIV' : 'AUS'}
+              </span>
             </button>
           </div>
         </section>

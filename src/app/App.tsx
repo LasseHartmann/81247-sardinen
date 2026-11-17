@@ -3,11 +3,11 @@ import {
   Anchor,
   CheckCircle2,
   Crosshair,
-  EyeOff,
   Sparkles,
-  QrCode,
   Layers,
+  LocateFixed,
   LogOut,
+  Maximize2,
   RotateCcw,
   Eye,
   X,
@@ -97,7 +97,6 @@ import type {
 } from '../types/game';
 import {
   formatCompassDirectionDe,
-  formatDurationClock,
   getQuestionLabelDe,
 } from '../utils/formatting';
 import { EmergencyMessageBanner } from '../components/Common/EmergencyMessageBanner';
@@ -112,7 +111,12 @@ import { GameHubScreen } from '../components/Lobby/GameHubScreen';
 import { LateJoinTeamPicker } from '../components/Lobby/LateJoinTeamPicker';
 import { LobbyScreen } from '../components/Lobby/LobbyScreen';
 import { LoginScreen } from '../components/Lobby/LobbyView';
-import { GameMap, type MapClickInteractionMode } from '../components/Map/GameMap';
+import {
+  GameMap,
+  type GameMapActions,
+  type MapClickInteractionMode,
+} from '../components/Map/GameMap';
+import { resolveActiveMapBottomSlotKind } from '../components/Map/mapHudMutex';
 import { BottomNav } from '../components/Navigation/BottomNav';
 import { ProfileView } from '../components/Profile/ProfileView';
 import { HiderQrView } from '../components/QR/HiderQrModal';
@@ -222,16 +226,13 @@ export const App: React.FC = () => {
   const [anchorFeedbackError, setAnchorFeedbackError] = useState<string | null>(
     null
   );
-  const [seekerHidingMinimized, setSeekerHidingMinimized] = useState(true);
   const [hiderAnchorCollapsed, setHiderAnchorCollapsed] = useState(false);
   const [hiderFilterTeamId, setHiderFilterTeamId] = useState<string>('NONE');
   const [circlePickError, setCirclePickError] = useState<string | null>(null);
   const [circleEditorCollapsed, setCircleEditorCollapsed] = useState(false);
   const [showMapLegend, setShowMapLegend] = useState(false);
-  const [dismissedBriefingSessionId, setDismissedBriefingSessionId] = useState<
-    string | null
-  >(null);
   const [buyingPreviewClue, setBuyingPreviewClue] = useState(false);
+  const mapActionsRef = useRef<GameMapActions | null>(null);
   const [memberMarkerClockMs, setMemberMarkerClockMs] = useState<number>(() =>
     adapter.getServerNow()
   );
@@ -1633,13 +1634,6 @@ export const App: React.FC = () => {
     }
   };
 
-  const showRoleBriefingCard = Boolean(
-    publicState.status === 'RUNNING' &&
-      !isOverviewAccount &&
-      dismissedBriefingSessionId !== publicState.sessionId &&
-      timer.netElapsedMs < 90_000
-  );
-
   const showHiderAnchorPanel =
     !isEditingCircleOnMap &&
     !isManhunt &&
@@ -1647,28 +1641,43 @@ export const App: React.FC = () => {
     ownMember.side === 'HIDER' &&
     (!hiderPrivate?.anchorPoint || (isRehidingAnchor && canRehideWhileTimerActive));
 
-  const showSeekerHidingCard =
-    !isEditingCircleOnMap &&
-    publicState.status !== 'LOBBY' &&
-    effectivePhase === 'HIDING' &&
-    ownMember.side === 'SEEKER' &&
-    !isJoinedSardines;
-
-  const showQuickSardineFab =
-    !isEditingCircleOnMap &&
-    publicState.status !== 'LOBBY' &&
-    isSardineDashboardView &&
-    (isManhunt || Boolean(hiderPrivate?.anchorPoint)) &&
-    !showHiderAnchorPanel;
-
-  const hasMapBottomDock = Boolean(
-    isEditingCircleOnMap ||
-      publicState.status === 'LOBBY' ||
-      activePreviewQuestion ||
-      showSeekerHidingCard ||
-      showHiderAnchorPanel ||
-      showQuickSardineFab
+  const hasOpenHiderPhotoModal = Boolean(
+    !isManhunt &&
+      isSardineDashboardView &&
+      openHiderMediaRequests.length > 0 &&
+      hiderPrivate?.anchorPoint
   );
+
+  const showHiderRehidePill = Boolean(
+    !isManhunt &&
+      publicState.status !== 'LOBBY' &&
+      isSardineDashboardView &&
+      hiderPrivate?.anchorPoint &&
+      canRehideWhileTimerActive &&
+      !showHiderAnchorPanel
+  );
+
+  const showManhuntGpsFallback = Boolean(
+    isManhunt &&
+      publicState.status !== 'LOBBY' &&
+      isSardineDashboardView &&
+      (!geo.currentFix ||
+        geo.gpsStatus === 'DENIED' ||
+        geo.gpsStatus === 'MANUAL_TEST')
+  );
+
+  const activeMapBottomSlot = resolveActiveMapBottomSlotKind({
+    hasOpenHiderPhotoModal,
+    isEditingCircleOnMap,
+    clickModeKind: mapClickMode.kind,
+    hasCluePreviewOrThermo: Boolean(
+      !isManhunt && (activePreviewQuestion || thermoPointA)
+    ),
+    showHiderAnchorPanel,
+    isLobbyStatus: publicState.status === 'LOBBY',
+    showHiderRehidePill,
+    showManhuntGpsFallback,
+  });
 
   const hasActiveEmergency = gameState.emergencyMessages.length > 0;
   const isOutsidePlayArea = Boolean(
@@ -1764,7 +1773,7 @@ export const App: React.FC = () => {
           )}
 
         <div
-          className={`h-full w-full ${
+          className={`relative h-full w-full ${
             activeTab === 'MAP' ? 'block' : 'hidden'
           }`}
         >
@@ -1829,838 +1838,808 @@ export const App: React.FC = () => {
             clickMode={mapClickMode}
             onMapCoordinateClick={handleMapCoordinateClick}
             onRequestGpsPermission={geo.retryGpsPermission}
+            actionsRef={mapActionsRef}
             layoutInvalidationKey={`${activeTab}_${publicState.status}`}
-            hasBottomDock={hasMapBottomDock}
             emergencyMessages={gameState.emergencyMessages}
             emergencyFocusTarget={emergencyFocusTarget}
           />
 
-          {/* Obere Karten-Leiste: Legende, Test-Standort, Rollen-Info & Teamfilter */}
-          <div className="pointer-events-none absolute top-2.5 right-2.5 left-2.5 z-[400] flex flex-col gap-1.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  data-testid="map-legend-toggle-btn"
-                  onClick={() => setShowMapLegend((v) => !v)}
-                  className="pointer-events-auto inline-flex min-h-[34px] items-center gap-1 rounded-xl border border-[var(--shell-border)] bg-white/92 px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--text-main)] shadow-md backdrop-blur-xs"
-                >
-                  <HelpCircle className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                  <span>Legende</span>
-                </button>
-
-                {canUseMapClicks && (
+          {/* EINZIGES UNIFIZIERTES ZERO-OVERLAP MAP-HUD-GRID (Top-Zeile + Freie Mitte + Exklusiver Bottom-Slot) */}
+          <div
+            data-testid="map-hud-layout"
+            className="pointer-events-none absolute inset-0 z-[400] flex flex-col justify-between gap-2 p-2 sm:p-3"
+          >
+            {/* OBERER HUD-SLOT: Links Steuerung/Status, Rechts dauerhaft Zentrieren & Gebiets-Übersicht */}
+            <div className="flex shrink-0 flex-col gap-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
                   <button
                     type="button"
-                    data-testid="map-set-test-pos-btn"
-                    onClick={() =>
-                      setMapClickMode((prev) =>
-                        prev.kind === 'TEST_LOCATION'
-                          ? { kind: 'NONE' }
-                          : {
-                              kind: 'TEST_LOCATION',
-                              label:
-                                'Tippe auf die Karte, um deine Test-Position zu setzen',
-                            }
-                      )
-                    }
-                    className={`pointer-events-auto inline-flex min-h-[34px] items-center gap-1.5 px-2.5 py-1 font-tech text-[11px] font-bold uppercase shadow-md ${
-                      mapClickMode.kind === 'TEST_LOCATION'
-                        ? 'cmf-btn-primary font-dot'
-                        : 'cmf-oled text-[#F8FAFC]'
+                    data-testid="map-legend-toggle-btn"
+                    onClick={() => setShowMapLegend((v) => !v)}
+                    className={`pointer-events-auto inline-flex min-h-[38px] items-center gap-1 rounded-xl border px-2.5 py-1 font-tech text-[11px] font-bold shadow-md backdrop-blur-xs ${
+                      showMapLegend
+                        ? 'border-[var(--cmf-teal)] bg-[#14171A] text-white'
+                        : 'border-[var(--shell-border)] bg-white/94 text-[var(--text-main)]'
                     }`}
                   >
-                    <Crosshair
-                      className={`h-3.5 w-3.5 ${
+                    <HelpCircle className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                    <span>Legende</span>
+                  </button>
+
+                  {canUseMapClicks && (
+                    <button
+                      type="button"
+                      data-testid="map-set-test-pos-btn"
+                      onClick={() =>
+                        setMapClickMode((prev) =>
+                          prev.kind === 'TEST_LOCATION'
+                            ? { kind: 'NONE' }
+                            : {
+                                kind: 'TEST_LOCATION',
+                                label:
+                                  'Tippe auf die Karte, um deine Test-Position zu setzen',
+                              }
+                        )
+                      }
+                      className={`pointer-events-auto inline-flex min-h-[38px] items-center gap-1.5 rounded-xl px-2.5 py-1 font-tech text-[11px] font-bold uppercase shadow-md ${
                         mapClickMode.kind === 'TEST_LOCATION'
-                          ? 'text-white'
-                          : 'text-[var(--cmf-orange)]'
+                          ? 'cmf-btn-primary font-dot'
+                          : 'cmf-oled text-[#F8FAFC]'
+                      }`}
+                    >
+                      <Crosshair
+                        className={`h-3.5 w-3.5 ${
+                          mapClickMode.kind === 'TEST_LOCATION'
+                            ? 'text-white'
+                            : 'text-[var(--cmf-orange)]'
+                        }`}
+                      />
+                      <span>
+                        {mapClickMode.kind === 'TEST_LOCATION'
+                          ? 'Aktiv'
+                          : 'Test-Pin'}
+                      </span>
+                    </button>
+                  )}
+
+                  {isOverviewAccount && (
+                    <div className="cmf-oled pointer-events-auto inline-flex min-h-[34px] items-center gap-1.5 px-2.5 py-1 font-tech text-[10px] font-bold text-[#F8FAFC] uppercase shadow-md">
+                      <Eye className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
+                      <span>Admin</span>
+                    </div>
+                  )}
+
+                  {isJoinedSardines && (
+                    <div className="cmf-oled pointer-events-auto inline-flex min-h-[34px] items-center gap-1.5 px-2.5 py-1 font-tech text-[10px] font-bold text-[#F8FAFC] uppercase shadow-md">
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
+                      <span>Verstecker</span>
+                    </div>
+                  )}
+
+                  {isManhunt &&
+                    isSardineDashboardView &&
+                    publicState.status !== 'LOBBY' && (
+                      <div className="cmf-oled pointer-events-auto inline-flex min-h-[34px] items-center gap-1.5 px-2.5 py-1 font-tech text-[10px] font-bold text-[#F8FAFC] uppercase shadow-md">
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--cmf-orange)]" />
+                        <span>
+                          {publicState.radarCircle
+                            ? `Zone ${publicState.radarCircle.radiusMeters}m${
+                                publicState.radarCircle.lastPing
+                                  ? ` · Ping #${publicState.radarCircle.lastPing.pingNumber}`
+                                  : ''
+                              }`
+                            : 'Manhunt aktiv'}
+                        </span>
+                      </div>
+                    )}
+                </div>
+
+                {/* Konfliktfrei oben rechts angedockte Karten-Aktionen */}
+                <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    data-testid="map-locate-me-btn"
+                    onClick={() => mapActionsRef.current?.centerOnOwnFix()}
+                    aria-label="Auf eigenen Standort zentrieren"
+                    title="Auf eigenen Standort zentrieren"
+                    className="cmf-chassis flex h-[38px] w-[38px] items-center justify-center rounded-xl text-[var(--text-main)] shadow-md active:scale-95"
+                  >
+                    <LocateFixed
+                      className={`h-4 w-4 ${
+                        geo.currentFix
+                          ? 'text-[var(--cmf-teal)]'
+                          : 'text-[var(--text-muted)]'
                       }`}
                     />
-                    {mapClickMode.kind === 'TEST_LOCATION'
-                      ? 'Abbrechen'
-                      : 'Test-Pin'}
                   </button>
-                )}
+
+                  <button
+                    type="button"
+                    data-testid="map-fit-zone-btn"
+                    onClick={() => mapActionsRef.current?.fitPlayArea()}
+                    aria-label="Gesamtes Spielgebiet anzeigen"
+                    title="Gesamtes Spielgebiet anzeigen"
+                    className="cmf-chassis flex h-[38px] w-[38px] items-center justify-center rounded-xl text-[var(--text-main)] shadow-md active:scale-95"
+                  >
+                    <Maximize2 className="h-4 w-4 text-[var(--cmf-orange)]" />
+                  </button>
+                </div>
               </div>
 
-              {isOverviewAccount && (
-                <div className="cmf-oled pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-1 font-tech text-[10px] font-bold text-[#F8FAFC] uppercase shadow-md">
-                  <Eye className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
-                  <span>Admin-Live-Sicht</span>
+              {/* Exklusive Sub-Zeile: Entweder geöffnete Legende ODER einzeilige Team-Tipp-Filterleiste */}
+              {showMapLegend ? (
+                <div
+                  data-testid="map-legend-card"
+                  className="cmf-module pointer-events-auto max-w-xs space-y-1.5 p-3 text-xs shadow-lg"
+                >
+                  <div className="flex items-center justify-between border-b cmf-divider pb-1.5">
+                    <span className="font-industrial font-bold text-[var(--text-main)]">
+                      Karten-Legende
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Legende schließen"
+                      onClick={() => setShowMapLegend(false)}
+                      className="rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="space-y-1 text-[11px]">
+                    <div className="flex items-center gap-2">
+                      <span className="h-0.5 w-4 shrink-0 bg-[#DC2626]" />
+                      <span>Rote Linie = Spielgrenze</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-4 shrink-0 rounded-xs bg-[#FF4D00]/45" />
+                      <span>Orange Fläche = Ausgeschlossen</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 shrink-0 rounded-full border-2 border-[#0D9488]" />
+                      <span>Türkiser Kreis = Versteck-Radius / Radar</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-4 shrink-0 rounded-full border border-amber-500 bg-amber-400/80" />
+                      <span>Fisch + Team = Letzte Position der Sucher</span>
+                    </div>
+                  </div>
+                  <div className="border-t cmf-divider pt-1 text-[10px] text-[var(--text-muted)]">
+                    Kartendaten ©{' '}
+                    <a
+                      href="https://www.openstreetmap.org/copyright"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline hover:text-[var(--text-main)]"
+                    >
+                      OpenStreetMap
+                    </a>
+                  </div>
                 </div>
-              )}
-
-              {isJoinedSardines && (
-                <div className="cmf-oled pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-1 font-tech text-[10px] font-bold text-[#F8FAFC] uppercase shadow-md">
-                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
-                  <span>Jetzt Verstecker</span>
-                </div>
+              ) : (
+                !isManhunt &&
+                isOverviewOrSardineDashboard &&
+                publicState.status !== 'LOBBY' &&
+                roundSeekerTeamsForFilter.length > 0 && (
+                  <div
+                    data-testid="map-hider-team-filter"
+                    className="cmf-no-scrollbar pointer-events-auto flex items-center gap-1 overflow-x-auto rounded-2xl border border-[var(--shell-border)] bg-[var(--shell-bg)]/95 p-1 shadow-md backdrop-blur-xs"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setHiderFilterTeamId('NONE')}
+                      className={`shrink-0 rounded-xl px-2.5 py-1 font-tech text-[10px] font-bold uppercase transition-colors ${
+                        hiderFilterTeamId === 'NONE'
+                          ? 'bg-[#14171A] text-white'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                      }`}
+                    >
+                      Tipps: Aus
+                    </button>
+                    {roundSeekerTeamsForFilter.map((t) => {
+                      const active = hiderFilterTeamId === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() =>
+                            setHiderFilterTeamId((prev) =>
+                              prev === t.id ? 'NONE' : t.id
+                            )
+                          }
+                          className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1 font-tech text-[10px] font-bold uppercase transition-colors ${
+                            active
+                              ? 'bg-[#14171A] text-white'
+                              : 'bg-white/75 text-[var(--text-main)]'
+                          }`}
+                        >
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: t.color }}
+                          />
+                          <span>{t.name}</span>
+                          <span className="opacity-75">({t.clues.length})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )
               )}
             </div>
 
-            {showMapLegend && (
-              <div
-                data-testid="map-legend-card"
-                className="cmf-module pointer-events-auto max-w-xs space-y-1.5 p-3 text-xs shadow-lg"
-              >
-                <div className="flex items-center justify-between border-b cmf-divider pb-1.5">
-                  <span className="font-industrial font-bold text-[var(--text-main)]">
-                    Karten-Legende
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Legende schließen"
-                    onClick={() => setShowMapLegend(false)}
-                    className="rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text-main)]"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <div className="space-y-1 text-[11px]">
-                  <div className="flex items-center gap-2">
-                    <span className="h-0.5 w-4 shrink-0 bg-[#DC2626]" />
-                    <span>Rote Linie = Spielgrenze</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="h-3 w-4 shrink-0 rounded-xs bg-[#FF4D00]/45" />
-                    <span>Orange Fläche = Ausgeschlossen</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="h-3 w-3 shrink-0 rounded-full border-2 border-[#0D9488]" />
-                    <span>Türkiser Kreis = Versteck-Radius / Radar</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-4 shrink-0 rounded-full border border-amber-500 bg-amber-400/80" />
-                    <span>Fisch + Team = Letzte Position der Sucher</span>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* GARANTIERT FREIE KARTENMITTE (flex-1 min-h-0) */}
+            <div className="min-h-0 flex-1" />
 
-            {showRoleBriefingCard && (
-              <div
-                data-testid="round-start-role-briefing"
-                className="cmf-chassis pointer-events-auto mx-auto flex w-full max-w-md items-center justify-between gap-3 px-3.5 py-2.5 text-xs shadow-lg"
-              >
-                <div className="space-y-0.5">
-                  <span className="font-industrial block font-bold text-[var(--text-main)]">
-                    {ownMember.side === 'HIDER'
-                      ? 'Deine Aufgabe als Verstecker:'
-                      : 'Deine Aufgabe als Sucher:'}
-                  </span>
-                  <p className="text-[11px] text-[var(--text-muted)]">
-                    {ownMember.side === 'HIDER'
-                      ? isManhunt
-                        ? '1. Bleibt in der aktiven Zone in Bewegung • 2. Zeigt euren QR-Code nur gefundenen Teams.'
-                        : '1. Versteck finden • 2. Unten „Hier verstecken“ tippen • 3. Im 50m-Kreis bleiben.'
-                      : isManhunt
-                        ? '1. Wartet den Vorsprung ab • 2. Folgt den Standort-Pings • 3. Scannt am Ziel den QR-Code.'
-                        : '1. Versteckzeit abwarten • 2. Unter „Tipps“ Gebiet eingrenzen • 3. Am Ziel QR-Code scannen.'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDismissedBriefingSessionId(publicState.sessionId)
-                  }
-                  className="cmf-btn-primary font-tech shrink-0 px-3 py-1.5 text-[11px] font-bold uppercase"
-                >
-                  OK
-                </button>
-              </div>
-            )}
-
-            {!isManhunt &&
-              isOverviewOrSardineDashboard &&
-              publicState.status !== 'LOBBY' &&
-              roundSeekerTeamsForFilter.length > 0 && (
+            {/* EXKLUSIVER BOTTOM-SLOT (STRIKTER SINGLE-OWNER-MUTEX: MAXIMAL 1 ELEMENT AKTIV) */}
+            {activeMapBottomSlot !== 'NONE' &&
+              activeMapBottomSlot !== 'PHOTO_REQUEST_MODAL' && (
                 <div
-                  data-testid="map-hider-team-filter"
-                  className="cmf-no-scrollbar pointer-events-auto flex items-center gap-1 overflow-x-auto rounded-2xl border border-[var(--shell-border)] bg-[var(--shell-bg)] p-1 shadow-lg"
+                  data-testid="map-bottom-slot"
+                  data-slot-kind={activeMapBottomSlot}
+                  className="flex shrink-0 flex-col justify-end"
                 >
-                  <button
-                    type="button"
-                    onClick={() => setHiderFilterTeamId('NONE')}
-                    className={`shrink-0 rounded-xl px-2.5 py-1.5 font-tech text-[10px] font-bold uppercase transition-colors ${
-                      hiderFilterTeamId === 'NONE'
-                        ? 'bg-[#14171A] text-white'
-                        : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
-                    }`}
-                  >
-                    Tipps: Aus
-                  </button>
-                  {roundSeekerTeamsForFilter.map((t) => {
-                    const active = hiderFilterTeamId === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() =>
-                          setHiderFilterTeamId((prev) =>
-                            prev === t.id ? 'NONE' : t.id
-                          )
-                        }
-                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 font-tech text-[10px] font-bold uppercase transition-colors ${
-                          active
-                            ? 'bg-[#14171A] text-white'
-                            : 'bg-white/70 text-[var(--text-main)]'
-                        }`}
-                      >
-                        <span
-                          className="h-2 w-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: t.color }}
-                        />
-                        <span>{t.name}</span>
-                        <span className="opacity-75">({t.clues.length})</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-          </div>
-
-          {/* Einheitliches Daumenzonen-Bottom-Dock am unteren Kartenrand (Smartphone-optimiert) */}
-          <div className="pointer-events-none absolute right-2.5 bottom-2.5 left-2.5 z-[420] flex flex-col gap-2">
-            {/* 1. Aktive Live-Tippvorschau oder laufendes Thermometer auf der Karte */}
-            {(activePreviewQuestion || thermoPointA) && (() => {
-              const effectiveQuestion = activePreviewQuestion ?? 'THERMOMETER';
-              const qConfig = resolveQuestionRulesConfig(
-                publicState.questionConfig
-              );
-              const targetThermoMeters = qConfig.thermometerDistanceMeters;
-              const radiusOptions = getRadiusRadarOptions(
-                publicState.questionConfig
-              );
-              const previewPenaltyMin = Math.round(
-                getQuestionPenaltyMs(
-                  effectiveQuestion,
-                  publicState.classicSearchDurationMs,
-                  publicState.questionConfig
-                ) / 60_000
-              );
-              const distAB =
-                thermoPointA && geo.currentFix
-                  ? Math.round(distanceMeters(thermoPointA, geo.currentFix))
-                  : 0;
-              const canBuyHere = Boolean(
-                isActiveSeeker &&
-                  ownTeam &&
-                  geo.currentFix &&
-                  publicState.status === 'RUNNING' &&
-                  effectivePhase !== 'HIDING' &&
-                  !buyingPreviewClue
-              );
-
-              return (
-                <div
-                  data-testid="map-active-preview-bar"
-                  className="cmf-oled cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg space-y-2.5 p-3 shadow-2xl"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Eye className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
-                      <span className="truncate font-tech text-xs font-bold text-[#F8FAFC] uppercase">
-                        {getQuestionLabelDe(effectiveQuestion)}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      data-testid="end-map-preview-btn"
-                      onClick={() => {
-                        setMapClickMode({ kind: 'NONE' });
-                        setActivePreviewQuestion(null);
-                      }}
-                      className="cmf-btn-secondary font-tech inline-flex min-h-[34px] items-center gap-1 px-2.5 py-1 text-[11px] font-bold uppercase"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                      <span>Schließen</span>
-                    </button>
-                  </div>
-
-                  {effectiveQuestion === 'CONE_45' && (
-                    <div className="flex items-center justify-between gap-1.5 border-t border-dashed border-[#27272A] pt-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setConeBearingDeg((d) => (d - 15 + 360) % 360)
-                        }
-                        className="cmf-btn-secondary min-h-[36px] flex-1 px-2 font-tech text-[11px] font-bold"
-                      >
-                        -15°
-                      </button>
-                      <span className="min-w-[84px] text-center font-dot text-xs text-[var(--cmf-amber)]">
-                        {formatCompassDirectionDe(coneBearingDeg)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setConeBearingDeg((d) => (d + 15) % 360)}
-                        className="cmf-btn-secondary min-h-[36px] flex-1 px-2 font-tech text-[11px] font-bold"
-                      >
-                        +15°
-                      </button>
-                    </div>
-                  )}
-
-                  {effectiveQuestion === 'RADIUS_RADAR' && (
-                    <div className="flex flex-wrap gap-1 border-t border-dashed border-[#27272A] pt-2">
-                      {radiusOptions.map((r) => (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => setSelectedRadius(r)}
-                          className={`min-h-[36px] flex-1 rounded-lg px-1.5 font-tech text-[10px] font-bold uppercase ${
-                            selectedRadius === r
-                              ? 'bg-[var(--cmf-orange)] text-white'
-                              : 'bg-[#181B20] text-[#CBD2D9]'
-                          }`}
+                  {activeMapBottomSlot === 'CIRCLE_EDITOR' && (
+                    <PhysicsBottomSheet
+                      collapsed={circleEditorCollapsed}
+                      onCollapsedChange={setCircleEditorCollapsed}
+                      allowBodyDrag={false}
+                      scrollableBody
+                      maxWidthClass="max-w-lg"
+                      bodyClassName="max-h-[36dvh] overflow-y-auto p-3.5 pt-2.5 sm:p-4 sm:pt-3 space-y-2.5"
+                      header={
+                        <div
+                          data-testid="map-circle-playarea-editor"
+                          className="flex w-full items-center justify-between gap-2"
                         >
-                          {r}m
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {(effectiveQuestion === 'SPLIT_NS' ||
-                    effectiveQuestion === 'SPLIT_EW') && (
-                    <div className="grid grid-cols-2 gap-1.5 border-t border-dashed border-[#27272A] pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setActivePreviewQuestion('SPLIT_NS')}
-                        className={`min-h-[36px] rounded-lg px-2 font-tech text-[11px] font-bold uppercase ${
-                          effectiveQuestion === 'SPLIT_NS'
-                            ? 'bg-[var(--cmf-orange)] text-white'
-                            : 'bg-[#181B20] text-[#CBD2D9]'
-                        }`}
-                      >
-                        Nord / Süd
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActivePreviewQuestion('SPLIT_EW')}
-                        className={`min-h-[36px] rounded-lg px-2 font-tech text-[11px] font-bold uppercase ${
-                          effectiveQuestion === 'SPLIT_EW'
-                            ? 'bg-[var(--cmf-orange)] text-white'
-                            : 'bg-[#181B20] text-[#CBD2D9]'
-                        }`}
-                      >
-                        Ost / West
-                      </button>
-                    </div>
-                  )}
-
-                  {effectiveQuestion === 'THERMOMETER' && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-[#27272A] pt-2 text-[11px]">
-                      <span className="font-tech text-[#CBD2D9]">
-                        {thermoPointA
-                          ? `Bewege dich ${targetThermoMeters} m vom Startpunkt A (stoppt automatisch)`
-                          : `Startet am aktuellen GPS und stoppt automatisch nach ${targetThermoMeters} m`}
-                      </span>
-                      {thermoPointA && (
-                        <span className="rounded-full bg-[#F59E0B]/25 px-2.5 py-0.5 font-tech text-[10px] font-bold text-[#FBBF24] uppercase">
-                          {distAB} / {targetThermoMeters} m
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {isActiveSeeker &&
-                    (effectiveQuestion === 'THERMOMETER' && thermoPointA ? (
-                      <button
-                        type="button"
-                        onClick={() => setThermoPointA(null)}
-                        className="cmf-btn-secondary font-tech flex min-h-[40px] w-full items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold text-[var(--cmf-orange)] uppercase"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        <span>Thermometer abbrechen ({distAB} / {targetThermoMeters} m)</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        data-testid="map-preview-buy-btn"
-                        disabled={!canBuyHere}
-                        onClick={() => void handleBuyActivePreviewClue()}
-                        className="cmf-btn-primary font-dot flex min-h-[42px] w-full items-center justify-center gap-2 px-4 py-2 text-xs font-bold disabled:opacity-45"
-                      >
-                        <span>
-                          {buyingPreviewClue
-                            ? 'Kaufe Tipp ...'
-                            : effectiveQuestion === 'THERMOMETER'
-                              ? `Thermometer starten (+${previewPenaltyMin} Min.)`
-                              : `Jetzt kaufen (+${previewPenaltyMin} Min.)`}
-                        </span>
-                      </button>
-                    ))}
-                </div>
-              );
-            })()}
-
-            {/* 1b. Admin Kreis-Spielfeld-Editor direkt auf der Karte (inkl. PLZ-Wahl & 100m-Knob) */}
-            {isEditingCircleOnMap && (
-              <PhysicsBottomSheet
-                collapsed={circleEditorCollapsed}
-                onCollapsedChange={setCircleEditorCollapsed}
-                allowBodyDrag={false}
-                maxWidthClass="max-w-lg"
-                bodyClassName="p-3.5 pt-2.5 sm:p-4 sm:pt-3 space-y-3"
-                header={
-                  <div
-                    data-testid="map-circle-playarea-editor"
-                    className="flex w-full items-center justify-between gap-2"
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Crosshair className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
-                      <div className="min-w-0 text-left">
-                        <span className="block truncate font-industrial text-sm text-[var(--text-main)]">
-                          Kreis-Spielfeld in {activePostalCodesLabel}
-                        </span>
-                        <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
-                          Tippe in {activePostalCodesLabel} ({activePlzEntry.district}) oder ziehe Pin M
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <span className="cmf-oled px-2.5 py-1 font-dot text-xs text-[var(--cmf-amber)]">
-                        {currentCircleRadius} M
-                      </span>
-                      <button
-                        type="button"
-                        data-testid="finish-circle-map-picker-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCirclePickError(null);
-                          setMapClickMode({ kind: 'NONE' });
-                        }}
-                        className="cmf-btn-primary font-dot min-h-[34px] px-3 py-1 text-[11px] font-bold"
-                      >
-                        Fertig
-                      </button>
-                      {circleEditorCollapsed ? (
-                        <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
-                      )}
-                    </div>
-                  </div>
-                }
-              >
-                {circlePickError && (
-                  <div className="cmf-badge-orange cmf-shake rounded-xl p-2.5 text-xs font-semibold">
-                    {circlePickError}
-                  </div>
-                )}
-
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const { validCodes, notFoundCodes } =
-                      parseAndValidateMunichPostalCodes(mapCirclePlzInput);
-                    if (notFoundCodes.length > 0) {
-                      setCirclePickError(
-                        notFoundCodes.length === 1
-                          ? `PLZ nicht in München gefunden: "${notFoundCodes[0]}".`
-                          : `Folgende PLZ wurden nicht in München gefunden: ${notFoundCodes
-                              .map((c) => `"${c}"`)
-                              .join(', ')}.`
-                      );
-                    } else if (validCodes.length === 0) {
-                      setCirclePickError(
-                        'Bitte mindestens eine gültige Münchner PLZ eingeben (z. B. 81247).'
-                      );
-                    } else {
-                      setCirclePickError(null);
-                    }
-                    if (validCodes.length > 0) {
-                      const nextEntry = getMunichPlzEntry(validCodes[0]);
-                      const nextCenter = isPointInMunichPlz(
-                        currentCircleCenter,
-                        validCodes
-                      )
-                        ? currentCircleCenter
-                        : nextEntry.center;
-                      void updateCirclePlayArea(
-                        nextCenter,
-                        currentCircleRadius,
-                        validCodes
-                      );
-                    }
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <span className="shrink-0 font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
-                    PLZ:
-                  </span>
-                  <input
-                    type="text"
-                    data-testid="map-circle-plz-input"
-                    value={mapCirclePlzInput}
-                    onChange={(e) => setMapCirclePlzInput(e.target.value)}
-                    placeholder="z. B. 81247, 81245"
-                    className="cmf-input min-h-[38px] flex-1 px-2.5 py-1 font-tech text-xs font-bold"
-                  />
-                  <button
-                    type="submit"
-                    data-testid="map-circle-plz-apply-btn"
-                    className="cmf-btn-active font-tech min-h-[38px] shrink-0 px-3 py-1 text-[11px] font-bold uppercase"
-                  >
-                    OK
-                  </button>
-                </form>
-
-                <HardwareKnob
-                  label="KREIS-RADIUS (100M SCHRITTE)"
-                  ariaLabel="Kreis-Radius auf der Karte in 100m Schritten"
-                  dataTestId="map-circle-radius-knob"
-                  value={currentCircleRadius}
-                  min={PLAY_AREA_CIRCLE_MIN_RADIUS_METERS}
-                  max={PLAY_AREA_CIRCLE_MAX_RADIUS_METERS}
-                  step={PLAY_AREA_CIRCLE_STEP_METERS}
-                  unit=" m"
-                  onChange={(nextRadius) => {
-                    const latestCenter =
-                      latestPublicStateRef.current?.playArea.circle?.center ??
-                      currentCircleCenter;
-                    void updateCirclePlayArea(
-                      latestCenter,
-                      nextRadius,
-                      activePostalCodes
-                    );
-                  }}
-                />
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    disabled={
-                      !geo.currentFix ||
-                      (!isPointInMunichPlz(geo.currentFix, activePostalCodes) &&
-                        !findMunichPlzAtPoint(geo.currentFix))
-                    }
-                    onClick={() => {
-                      if (!geo.currentFix) return;
-                      const gpsPlz = isPointInMunichPlz(
-                        geo.currentFix,
-                        activePostalCodes
-                      )
-                        ? activePostalCodes
-                        : findMunichPlzAtPoint(geo.currentFix);
-                      if (!gpsPlz) {
-                        setCirclePickError(
-                          `Dein GPS liegt aktuell außerhalb von ${activePostalCodesLabel} (München).`
-                        );
-                        return;
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Crosshair className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+                            <div className="min-w-0 text-left">
+                              <span className="block truncate font-industrial text-sm text-[var(--text-main)]">
+                                Kreis-Spielfeld in {activePostalCodesLabel}
+                              </span>
+                              <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
+                                Tippe in {activePostalCodesLabel} oder ziehe Pin M
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <span className="cmf-oled px-2.5 py-1 font-dot text-xs text-[var(--cmf-amber)]">
+                              {currentCircleRadius} M
+                            </span>
+                            <button
+                              type="button"
+                              data-testid="finish-circle-map-picker-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCirclePickError(null);
+                                setMapClickMode({ kind: 'NONE' });
+                              }}
+                              className="cmf-btn-primary font-dot min-h-[34px] px-3 py-1 text-[11px] font-bold"
+                            >
+                              Fertig
+                            </button>
+                            {circleEditorCollapsed ? (
+                              <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
+                            )}
+                          </div>
+                        </div>
                       }
-                      setCirclePickError(null);
-                      void updateCirclePlayArea(
-                        { lat: geo.currentFix.lat, lng: geo.currentFix.lng },
-                        currentCircleRadius,
-                        gpsPlz
-                      );
-                    }}
-                    className="cmf-btn-secondary font-tech min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase disabled:opacity-40"
-                  >
-                    Mitte = Mein GPS
-                  </button>
+                    >
+                      {circlePickError && (
+                        <div className="cmf-badge-orange cmf-shake rounded-xl p-2 text-xs font-semibold">
+                          {circlePickError}
+                        </div>
+                      )}
 
-                  <button
-                    type="button"
-                    data-testid="circle-editor-return-btn"
-                    onClick={() => {
-                      setCirclePickError(null);
-                      setMapClickMode({ kind: 'NONE' });
-                      setActiveTab(isOverviewAccount ? 'HOST' : 'LOBBY');
-                    }}
-                    className="cmf-btn-secondary font-tech min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase"
-                  >
-                    {isOverviewAccount
-                      ? 'Zurück zur Konsole'
-                      : 'Zurück zur Lobby'}
-                  </button>
-                </div>
-              </PhysicsBottomSheet>
-            )}
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const { validCodes, notFoundCodes } =
+                            parseAndValidateMunichPostalCodes(mapCirclePlzInput);
+                          if (notFoundCodes.length > 0) {
+                            setCirclePickError(
+                              notFoundCodes.length === 1
+                                ? `PLZ nicht in München gefunden: "${notFoundCodes[0]}".`
+                                : `Folgende PLZ wurden nicht in München gefunden: ${notFoundCodes
+                                    .map((c) => `"${c}"`)
+                                    .join(', ')}.`
+                            );
+                          } else if (validCodes.length === 0) {
+                            setCirclePickError(
+                              'Bitte mindestens eine gültige Münchner PLZ eingeben (z. B. 81247).'
+                            );
+                          } else {
+                            setCirclePickError(null);
+                          }
+                          if (validCodes.length > 0) {
+                            const nextEntry = getMunichPlzEntry(validCodes[0]);
+                            const nextCenter = isPointInMunichPlz(
+                              currentCircleCenter,
+                              validCodes
+                            )
+                              ? currentCircleCenter
+                              : nextEntry.center;
+                            void updateCirclePlayArea(
+                              nextCenter,
+                              currentCircleRadius,
+                              validCodes
+                            );
+                          }
+                        }}
+                        className="flex items-center gap-2"
+                      >
+                        <span className="shrink-0 font-tech text-[10px] font-bold text-[var(--text-muted)] uppercase">
+                          PLZ:
+                        </span>
+                        <input
+                          type="text"
+                          data-testid="map-circle-plz-input"
+                          value={mapCirclePlzInput}
+                          onChange={(e) => setMapCirclePlzInput(e.target.value)}
+                          placeholder="z. B. 81247, 81245"
+                          className="cmf-input min-h-[36px] flex-1 px-2.5 py-1 font-tech text-xs font-bold"
+                        />
+                        <button
+                          type="submit"
+                          data-testid="map-circle-plz-apply-btn"
+                          className="cmf-btn-active font-tech min-h-[36px] shrink-0 px-3 py-1 text-[11px] font-bold uppercase"
+                        >
+                          OK
+                        </button>
+                      </form>
 
-            {/* 2. Kompakte Gebiets-Leiste im Lobby-Modus */}
-            {publicState.status === 'LOBBY' && !isEditingCircleOnMap && (
-              <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg px-3.5 py-2.5 shadow-xl">
-                <div className="flex flex-wrap items-center justify-between gap-2.5">
-                  <div className="min-w-0 flex-1">
-                    <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase">
-                      SPIELGEBIET // LOBBY
-                    </span>
-                    <span className="block truncate font-industrial text-xs font-bold text-[var(--text-main)] sm:text-sm">
-                      {publicState.playArea.name}
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {isRoomHost &&
-                      publicState.playArea.shapeType === 'CUSTOM_CIRCLE' && (
+                      <HardwareKnob
+                        label="KREIS-RADIUS (100M SCHRITTE)"
+                        ariaLabel="Kreis-Radius auf der Karte in 100m Schritten"
+                        dataTestId="map-circle-radius-knob"
+                        value={currentCircleRadius}
+                        min={PLAY_AREA_CIRCLE_MIN_RADIUS_METERS}
+                        max={PLAY_AREA_CIRCLE_MAX_RADIUS_METERS}
+                        step={PLAY_AREA_CIRCLE_STEP_METERS}
+                        unit=" m"
+                        onChange={(nextRadius) => {
+                          const latestCenter =
+                            latestPublicStateRef.current?.playArea.circle?.center ??
+                            currentCircleCenter;
+                          void updateCirclePlayArea(
+                            latestCenter,
+                            nextRadius,
+                            activePostalCodes
+                          );
+                        }}
+                      />
+
+                      <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={handleOpenCircleMapEditor}
-                          className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+                          disabled={
+                            !geo.currentFix ||
+                            (!isPointInMunichPlz(
+                              geo.currentFix,
+                              activePostalCodes
+                            ) &&
+                              !findMunichPlzAtPoint(geo.currentFix))
+                          }
+                          onClick={() => {
+                            if (!geo.currentFix) return;
+                            const gpsPlz = isPointInMunichPlz(
+                              geo.currentFix,
+                              activePostalCodes
+                            )
+                              ? activePostalCodes
+                              : findMunichPlzAtPoint(geo.currentFix);
+                            if (!gpsPlz) {
+                              setCirclePickError(
+                                `Dein GPS liegt aktuell außerhalb von ${activePostalCodesLabel} (München).`
+                              );
+                              return;
+                            }
+                            setCirclePickError(null);
+                            void updateCirclePlayArea(
+                              {
+                                lat: geo.currentFix.lat,
+                                lng: geo.currentFix.lng,
+                              },
+                              currentCircleRadius,
+                              gpsPlz
+                            );
+                          }}
+                          className="cmf-btn-secondary font-tech min-h-[38px] px-3 py-1.5 text-[11px] font-bold uppercase disabled:opacity-40"
                         >
-                          <Crosshair className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                          <span>Kreis ändern</span>
+                          Mitte = Mein GPS
                         </button>
-                      )}
-                    <button
-                      type="button"
-                      data-testid="map-return-to-lobby-btn"
-                      onClick={() => setActiveTab('LOBBY')}
-                      className="cmf-btn-primary font-dot inline-flex min-h-[38px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold"
-                    >
-                      <Users className="h-3.5 w-3.5" />
-                      <span>Zurück zur Lobby</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {/* 3. Einklappbares Sucher-Bottom-Sheet während der Versteckphase (mit Zieh-Physik!) */}
-            {showSeekerHidingCard && !activePreviewQuestion && (
-              <PhysicsBottomSheet
-                collapsed={seekerHidingMinimized}
-                onCollapsedChange={setSeekerHidingMinimized}
-                allowBodyDrag
-                maxWidthClass="max-w-md"
-                bodyClassName="px-4 pt-2.5 pb-3.5 text-center"
-                header={
-                  <div className="flex w-full items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <div className="cmf-oled flex h-9 w-9 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
-                        <EyeOff className="h-4 w-4" />
+                        <button
+                          type="button"
+                          data-testid="circle-editor-return-btn"
+                          onClick={() => {
+                            setCirclePickError(null);
+                            setMapClickMode({ kind: 'NONE' });
+                            setActiveTab(isOverviewAccount ? 'HOST' : 'LOBBY');
+                          }}
+                          className="cmf-btn-secondary font-tech min-h-[38px] px-3 py-1.5 text-[11px] font-bold uppercase"
+                        >
+                          {isOverviewAccount
+                            ? 'Zurück zur Konsole'
+                            : 'Zurück zur Lobby'}
+                        </button>
                       </div>
-                      <div className="min-w-0 text-left">
-                        <span className="block truncate font-industrial text-sm text-[var(--text-main)]">
-                          {isManhunt
-                            ? 'Verstecker laufen sich frei ...'
-                            : 'Sardinen verstecken sich ...'}
-                        </span>
-                        <span className="font-tech text-[10px] text-[var(--text-muted)] uppercase">
-                          {isManhunt
-                            ? 'Macht euch bereit für die Jagd!'
-                            : 'Verteilt euch im Spielgebiet!'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="cmf-oled px-2.5 py-1 font-dot text-base text-[var(--cmf-amber)]">
-                        {formatDurationClock(timer.hidingRemainingMs)}
-                      </span>
-                      {seekerHidingMinimized ? (
-                        <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
-                      )}
-                    </div>
-                  </div>
-                }
-              >
-                <p className="text-xs text-[var(--text-muted)]">
-                  Suche &amp; Tipps starten automatisch nach Ablauf des Countdowns.
-                </p>
-              </PhysicsBottomSheet>
-            )}
+                    </PhysicsBottomSheet>
+                  )}
 
-            {/* 4. Verstecker-Panel zum Festlegen des Verstecks (standardmäßig offen & 2 klare Buttons) */}
-            {showHiderAnchorPanel && (
-              mapClickMode.kind === 'PICK_ANCHOR_POINT' ? (
-                <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg space-y-2 p-3.5 sm:p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-tech text-xs font-bold text-[var(--text-main)]">
-                      Tippe euer Versteck an (max. {ANCHOR_MANUAL_ADJUST_MAX_METERS} m um dein GPS)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAnchorFeedbackError(null);
-                        setMapClickMode({ kind: 'NONE' });
-                      }}
-                      className="cmf-btn-active font-tech min-h-[38px] shrink-0 px-3 py-1.5 text-[11px] font-bold uppercase"
+                  {activeMapBottomSlot === 'CLICK_PROMPT' && (
+                    <div
+                      data-testid="map-click-mode-bar"
+                      className="cmf-oled cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg space-y-2 px-3.5 py-2.5 shadow-xl"
                     >
-                      Abbrechen
-                    </button>
-                  </div>
-                  {anchorFeedbackError && (
-                    <div className="cmf-badge-orange cmf-shake rounded-xl p-2.5 text-xs font-semibold">
-                      {anchorFeedbackError}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--cmf-amber)]" />
+                          <span className="truncate font-tech text-xs font-bold text-[#F8FAFC]">
+                            {mapClickMode.kind === 'PICK_ANCHOR_POINT'
+                              ? `Tippe euer Versteck an (max. ${ANCHOR_MANUAL_ADJUST_MAX_METERS} m um dein GPS)`
+                              : (mapClickMode.label ??
+                                'Tippe auf die Karte, um den Punkt zu setzen')}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAnchorFeedbackError(null);
+                            setMapClickMode({ kind: 'NONE' });
+                          }}
+                          className="cmf-btn-active font-tech min-h-[34px] shrink-0 px-3 py-1 text-[11px] font-bold uppercase"
+                        >
+                          Abbrechen
+                        </button>
+                      </div>
+                      {mapClickMode.kind === 'PICK_ANCHOR_POINT' &&
+                        anchorFeedbackError && (
+                          <div className="cmf-badge-orange cmf-shake rounded-xl p-2 text-xs font-semibold">
+                            {anchorFeedbackError}
+                          </div>
+                        )}
                     </div>
                   )}
-                </div>
-              ) : (
-                <PhysicsBottomSheet
-                  collapsed={hiderAnchorCollapsed}
-                  onCollapsedChange={setHiderAnchorCollapsed}
-                  allowBodyDrag
-                  maxWidthClass="max-w-lg"
-                  bodyClassName="p-3.5 pt-2 sm:p-4 sm:pt-2.5 space-y-2.5"
-                  header={
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Anchor className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
-                        <h3 className="truncate font-industrial text-sm text-[var(--text-main)]">
-                          {hiderPrivate?.anchorPoint
-                            ? 'Neues Versteck wählen'
-                            : 'Versteck festlegen'}
-                        </h3>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {hiderPrivate?.anchorPoint && (
+
+                  {activeMapBottomSlot === 'CLUE_PREVIEW' &&
+                    (() => {
+                      const effectiveQuestion =
+                        activePreviewQuestion ?? 'THERMOMETER';
+                      const qConfig = resolveQuestionRulesConfig(
+                        publicState.questionConfig
+                      );
+                      const targetThermoMeters =
+                        qConfig.thermometerDistanceMeters;
+                      const radiusOptions = getRadiusRadarOptions(
+                        publicState.questionConfig
+                      );
+                      const previewPenaltyMin = Math.round(
+                        getQuestionPenaltyMs(
+                          effectiveQuestion,
+                          publicState.classicSearchDurationMs,
+                          publicState.questionConfig
+                        ) / 60_000
+                      );
+                      const distAB =
+                        thermoPointA && geo.currentFix
+                          ? Math.round(
+                              distanceMeters(thermoPointA, geo.currentFix)
+                            )
+                          : 0;
+                      const canBuyHere = Boolean(
+                        isActiveSeeker &&
+                          ownTeam &&
+                          geo.currentFix &&
+                          publicState.status === 'RUNNING' &&
+                          effectivePhase !== 'HIDING' &&
+                          !buyingPreviewClue
+                      );
+
+                      return (
+                        <div
+                          data-testid="map-active-preview-bar"
+                          className="cmf-oled cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg space-y-2 p-3 shadow-2xl"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <Eye className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+                              <span className="truncate font-tech text-xs font-bold text-[#F8FAFC] uppercase">
+                                {getQuestionLabelDe(effectiveQuestion)}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              data-testid="end-map-preview-btn"
+                              onClick={() => {
+                                setMapClickMode({ kind: 'NONE' });
+                                setActivePreviewQuestion(null);
+                              }}
+                              className="cmf-btn-secondary font-tech inline-flex min-h-[32px] items-center gap-1 px-2.5 py-1 text-[11px] font-bold uppercase"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              <span>Schließen</span>
+                            </button>
+                          </div>
+
+                          {effectiveQuestion === 'CONE_45' && (
+                            <div className="flex items-center justify-between gap-1.5 border-t border-dashed border-[#27272A] pt-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setConeBearingDeg((d) => (d - 15 + 360) % 360)
+                                }
+                                className="cmf-btn-secondary min-h-[34px] flex-1 px-2 font-tech text-[11px] font-bold"
+                              >
+                                -15°
+                              </button>
+                              <span className="min-w-[84px] text-center font-dot text-xs text-[var(--cmf-amber)]">
+                                {formatCompassDirectionDe(coneBearingDeg)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setConeBearingDeg((d) => (d + 15) % 360)
+                                }
+                                className="cmf-btn-secondary min-h-[34px] flex-1 px-2 font-tech text-[11px] font-bold"
+                              >
+                                +15°
+                              </button>
+                            </div>
+                          )}
+
+                          {effectiveQuestion === 'RADIUS_RADAR' && (
+                            <div className="flex flex-wrap gap-1 border-t border-dashed border-[#27272A] pt-2">
+                              {radiusOptions.map((r) => (
+                                <button
+                                  key={r}
+                                  type="button"
+                                  onClick={() => setSelectedRadius(r)}
+                                  className={`min-h-[34px] flex-1 rounded-lg px-1.5 font-tech text-[10px] font-bold uppercase ${
+                                    selectedRadius === r
+                                      ? 'bg-[var(--cmf-orange)] text-white'
+                                      : 'bg-[#181B20] text-[#CBD2D9]'
+                                  }`}
+                                >
+                                  {r}m
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {(effectiveQuestion === 'SPLIT_NS' ||
+                            effectiveQuestion === 'SPLIT_EW') && (
+                            <div className="grid grid-cols-2 gap-1.5 border-t border-dashed border-[#27272A] pt-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setActivePreviewQuestion('SPLIT_NS')
+                                }
+                                className={`min-h-[34px] rounded-lg px-2 font-tech text-[11px] font-bold uppercase ${
+                                  effectiveQuestion === 'SPLIT_NS'
+                                    ? 'bg-[var(--cmf-orange)] text-white'
+                                    : 'bg-[#181B20] text-[#CBD2D9]'
+                                }`}
+                              >
+                                Nord / Süd
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setActivePreviewQuestion('SPLIT_EW')
+                                }
+                                className={`min-h-[34px] rounded-lg px-2 font-tech text-[11px] font-bold uppercase ${
+                                  effectiveQuestion === 'SPLIT_EW'
+                                    ? 'bg-[var(--cmf-orange)] text-white'
+                                    : 'bg-[#181B20] text-[#CBD2D9]'
+                                }`}
+                              >
+                                Ost / West
+                              </button>
+                            </div>
+                          )}
+
+                          {effectiveQuestion === 'THERMOMETER' && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-[#27272A] pt-2 text-[11px]">
+                              <span className="font-tech text-[#CBD2D9]">
+                                {thermoPointA
+                                  ? `Bewege dich ${targetThermoMeters} m vom Startpunkt A (stoppt automatisch)`
+                                  : `Startet am GPS und stoppt automatisch nach ${targetThermoMeters} m`}
+                              </span>
+                              {thermoPointA && (
+                                <span className="rounded-full bg-[#F59E0B]/25 px-2.5 py-0.5 font-tech text-[10px] font-bold text-[#FBBF24] uppercase">
+                                  {distAB} / {targetThermoMeters} m
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {isActiveSeeker &&
+                            (effectiveQuestion === 'THERMOMETER' &&
+                            thermoPointA ? (
+                              <button
+                                type="button"
+                                onClick={() => setThermoPointA(null)}
+                                className="cmf-btn-secondary font-tech flex min-h-[38px] w-full items-center justify-center gap-1.5 px-4 py-1.5 text-xs font-bold text-[var(--cmf-orange)] uppercase"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                                <span>
+                                  Thermometer abbrechen ({distAB} /{' '}
+                                  {targetThermoMeters} m)
+                                </span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                data-testid="map-preview-buy-btn"
+                                disabled={!canBuyHere}
+                                onClick={() => void handleBuyActivePreviewClue()}
+                                className="cmf-btn-primary font-dot flex min-h-[40px] w-full items-center justify-center gap-2 px-4 py-2 text-xs font-bold disabled:opacity-45"
+                              >
+                                <span>
+                                  {buyingPreviewClue
+                                    ? 'Kaufe Tipp ...'
+                                    : effectiveQuestion === 'THERMOMETER'
+                                      ? `Thermometer starten (+${previewPenaltyMin} Min.)`
+                                      : `Jetzt kaufen (+${previewPenaltyMin} Min.)`}
+                                </span>
+                              </button>
+                            ))}
+                        </div>
+                      );
+                    })()}
+
+                  {activeMapBottomSlot === 'HIDER_LOCK_ANCHOR' && (
+                    <PhysicsBottomSheet
+                      collapsed={hiderAnchorCollapsed}
+                      onCollapsedChange={setHiderAnchorCollapsed}
+                      allowBodyDrag
+                      scrollableBody
+                      maxWidthClass="max-w-lg"
+                      bodyClassName="max-h-[34dvh] overflow-y-auto p-3.5 pt-2 sm:p-4 sm:pt-2.5 space-y-2.5"
+                      header={
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Anchor className="h-4 w-4 shrink-0 text-[var(--cmf-orange)]" />
+                            <h3 className="truncate font-industrial text-sm text-[var(--text-main)]">
+                              {hiderPrivate?.anchorPoint
+                                ? 'Neues Versteck wählen'
+                                : 'Versteck festlegen'}
+                            </h3>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            {hiderPrivate?.anchorPoint && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsRehidingAnchor(false);
+                                  setFineAdjustAnchorPt(null);
+                                  setMapClickMode({ kind: 'NONE' });
+                                }}
+                                className="cmf-btn-secondary min-h-[30px] px-2.5 py-1 font-tech text-[10px] font-bold uppercase"
+                              >
+                                Abbrechen
+                              </button>
+                            )}
+                            {hiderAnchorCollapsed ? (
+                              <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
+                            )}
+                          </div>
+                        </div>
+                      }
+                    >
+                      {anchorFeedbackError && (
+                        <div className="cmf-badge-orange cmf-shake rounded-xl p-2 text-xs font-semibold">
+                          {anchorFeedbackError}
+                        </div>
+                      )}
+
+                      {geo.currentFix &&
+                        geo.currentFix.accuracy >
+                          ANCHOR_ACCURACY_WARNING_METERS &&
+                        !fineAdjustAnchorPt && (
+                          <div className="cmf-badge-amber flex items-center justify-between gap-2 rounded-xl px-3 py-1.5 text-xs">
+                            <span>
+                              GPS noch ungenau (±
+                              {Math.round(geo.currentFix.accuracy)} m)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={geo.retryGpsPermission}
+                              className="cmf-btn-secondary font-tech px-2.5 py-1 text-[10px] font-bold uppercase"
+                            >
+                              Neu messen
+                            </button>
+                          </div>
+                        )}
+
+                      <button
+                        type="button"
+                        data-testid="lock-anchor-btn"
+                        onClick={() => void handleLockAnchorByHider()}
+                        className="cmf-btn-primary font-dot flex min-h-[44px] w-full items-center justify-center gap-2 px-4 py-2 text-xs font-bold"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {fineAdjustAnchorPt
+                          ? 'Gewählten Punkt als Versteck speichern'
+                          : 'Hier verstecken (GPS nutzen)'}
+                      </button>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          data-testid="pinpoint-anchor-on-map-btn"
+                          disabled={!geo.currentFix}
+                          onClick={() => {
+                            setAnchorFeedbackError(null);
+                            setMapClickMode({
+                              kind: 'PICK_ANCHOR_POINT',
+                              label: `Tippe innerhalb des ${ANCHOR_MANUAL_ADJUST_MAX_METERS}m-Kreises um dein GPS`,
+                            });
+                          }}
+                          className="cmf-btn-secondary font-tech inline-flex min-h-[38px] flex-1 items-center justify-center gap-1.5 bg-white/80 px-3 py-1.5 text-[11px] font-bold text-[var(--text-main)] uppercase disabled:opacity-45"
+                        >
+                          <Crosshair className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-orange)]" />
+                          <span>
+                            {geo.currentFix
+                              ? `Punkt auf Karte korrigieren (max. ${ANCHOR_MANUAL_ADJUST_MAX_METERS} m)`
+                              : 'Warte auf GPS ...'}
+                          </span>
+                        </button>
+
+                        {fineAdjustAnchorPt && (
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsRehidingAnchor(false);
+                            onClick={() => {
                               setFineAdjustAnchorPt(null);
                               setMapClickMode({ kind: 'NONE' });
                             }}
-                            className="cmf-btn-secondary min-h-[30px] px-2.5 py-1 font-tech text-[10px] font-bold uppercase"
+                            className="cmf-btn-secondary font-tech min-h-[38px] px-3 py-1.5 text-[11px] font-bold uppercase"
                           >
-                            Abbrechen
+                            GPS nutzen
                           </button>
                         )}
-                        {hiderAnchorCollapsed ? (
-                          <ChevronUp className="h-4 w-4 text-[var(--text-muted)]" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
-                        )}
                       </div>
-                    </div>
-                  }
-                >
-                  {anchorFeedbackError && (
-                    <div className="cmf-badge-orange cmf-shake rounded-xl p-2.5 text-xs font-semibold">
-                      {anchorFeedbackError}
-                    </div>
+                    </PhysicsBottomSheet>
                   )}
 
-                  {geo.currentFix &&
-                    geo.currentFix.accuracy > ANCHOR_ACCURACY_WARNING_METERS &&
-                    !fineAdjustAnchorPt && (
-                      <div className="cmf-badge-amber flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs">
-                        <span>GPS noch ungenau (±{Math.round(geo.currentFix.accuracy)} m)</span>
+                  {activeMapBottomSlot === 'LOBBY_RETURN' && (
+                    <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg items-center justify-between gap-2 px-3 py-2 shadow-xl">
+                      <span className="min-w-0 flex-1 truncate font-industrial text-xs font-bold text-[var(--text-main)]">
+                        {publicState.playArea.name}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {isRoomHost &&
+                          publicState.playArea.shapeType === 'CUSTOM_CIRCLE' && (
+                            <button
+                              type="button"
+                              onClick={handleOpenCircleMapEditor}
+                              className="cmf-btn-secondary font-tech inline-flex min-h-[36px] items-center gap-1 px-2.5 py-1 text-[11px] font-bold uppercase"
+                            >
+                              <Crosshair className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                              <span>Kreis</span>
+                            </button>
+                          )}
                         <button
                           type="button"
-                          onClick={geo.retryGpsPermission}
-                          className="cmf-btn-secondary font-tech px-2.5 py-1 text-[10px] font-bold uppercase"
+                          data-testid="map-return-to-lobby-btn"
+                          onClick={() => setActiveTab('LOBBY')}
+                          className="cmf-btn-primary font-dot inline-flex min-h-[36px] items-center gap-1.5 px-3 py-1 text-xs font-bold"
                         >
-                          Neu messen
+                          <Users className="h-3.5 w-3.5" />
+                          <span>Zurück zur Lobby</span>
                         </button>
                       </div>
-                    )}
-
-                  <button
-                    type="button"
-                    data-testid="lock-anchor-btn"
-                    onClick={() => void handleLockAnchorByHider()}
-                    className="cmf-btn-primary font-dot flex min-h-[48px] w-full items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold"
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    {fineAdjustAnchorPt
-                      ? 'Gewählten Punkt als Versteck speichern'
-                      : 'Hier verstecken (GPS nutzen)'}
-                  </button>
-
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      data-testid="pinpoint-anchor-on-map-btn"
-                      disabled={!geo.currentFix}
-                      onClick={() => {
-                        setAnchorFeedbackError(null);
-                        setMapClickMode({
-                          kind: 'PICK_ANCHOR_POINT',
-                          label: `Tippe innerhalb des ${ANCHOR_MANUAL_ADJUST_MAX_METERS}m-Kreises um dein GPS`,
-                        });
-                      }}
-                      className="cmf-btn-secondary font-tech inline-flex min-h-[40px] flex-1 items-center justify-center gap-1.5 bg-white/80 px-3 py-1.5 text-[11px] font-bold text-[var(--text-main)] uppercase disabled:opacity-45"
-                    >
-                      <Crosshair className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-orange)]" />
-                      <span>
-                        {geo.currentFix
-                          ? `Punkt auf Karte korrigieren (max. ${ANCHOR_MANUAL_ADJUST_MAX_METERS} m)`
-                          : 'Warte auf GPS ...'}
-                      </span>
-                    </button>
-
-                    {fineAdjustAnchorPt && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFineAdjustAnchorPt(null);
-                          setMapClickMode({ kind: 'NONE' });
-                        }}
-                        className="cmf-btn-secondary font-tech min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase"
-                      >
-                        GPS nutzen
-                      </button>
-                    )}
-                  </div>
-                </PhysicsBottomSheet>
-              )
-            )}
-
-            {/* 5. Schnellzugriff „Versteck neu wählen“ & „Sardinen-QR-Code zeigen“ */}
-            {showQuickSardineFab && (
-              <div className="cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg flex-col gap-1.5">
-                {isManhunt &&
-                  (!geo.currentFix ||
-                    geo.gpsStatus === 'DENIED' ||
-                    geo.gpsStatus === 'MANUAL_TEST') && (
-                    <div className="cmf-chassis flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs shadow-lg">
-                      <span className="font-tech text-[11px] font-bold text-[var(--cmf-orange)] uppercase">
-                        {geo.gpsStatus === 'MANUAL_TEST'
-                          ? 'Manueller GPS-Fallback aktiv'
-                          : 'Kein GPS-Signal? Standort auf Karte antippen:'}
-                      </span>
-                      <button
-                        type="button"
-                        data-testid="manhunt-manual-location-fallback-btn"
-                        onClick={() =>
-                          setMapClickMode((prev) =>
-                            prev.kind === 'TEST_LOCATION'
-                              ? { kind: 'NONE' }
-                              : {
-                                  kind: 'TEST_LOCATION',
-                                  label:
-                                    'Tippe euren aktuellen Standort auf der Karte an (GPS-Fallback)',
-                                }
-                          )
-                        }
-                        className="cmf-btn-secondary font-tech inline-flex min-h-[36px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
-                      >
-                        <Crosshair className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                        <span>
-                          {mapClickMode.kind === 'TEST_LOCATION'
-                            ? 'Abbrechen'
-                            : 'Standort antippen'}
-                        </span>
-                      </button>
                     </div>
                   )}
 
-                <div className="flex w-full items-center justify-between gap-2">
-                  {isManhunt ? (
-                    <div className="cmf-oled flex min-h-[48px] items-center gap-2 px-3.5 py-2 font-tech text-[10px] font-bold tracking-wider text-[#F8FAFC] uppercase shadow-lg sm:text-[11px]">
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--cmf-orange)]" />
-                      <span>
-                        {publicState.radarCircle
-                          ? `ZONE: ${publicState.radarCircle.radiusMeters} M${
-                              publicState.radarCircle.lastPing
-                                ? ` • PING #${publicState.radarCircle.lastPing.pingNumber}`
-                                : ''
-                            }`
-                          : 'MANHUNT // IN BEWEGUNG (KEIN FESTES VERSTECK)'}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="hidden sm:block" />
-                  )}
-
-                  <div className="flex flex-1 sm:flex-initial items-center justify-end gap-2">
-                    {canRehideWhileTimerActive && (
+                  {activeMapBottomSlot === 'HIDER_REHIDE' && (
+                    <div className="pointer-events-none flex justify-center">
                       <button
                         type="button"
                         data-testid="rehide-anchor-btn"
@@ -2669,26 +2648,40 @@ export const App: React.FC = () => {
                           setIsRehidingAnchor(true);
                           setHiderAnchorCollapsed(false);
                         }}
-                        className="cmf-btn-active font-tech inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-bold uppercase shadow-lg"
+                        className="cmf-btn-active pointer-events-auto inline-flex min-h-[40px] items-center gap-1.5 rounded-2xl px-4 py-2 font-tech text-xs font-bold uppercase shadow-lg"
                       >
-                        <RotateCcw className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
+                        <RotateCcw className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
                         <span>Neu verstecken</span>
                       </button>
-                    )}
+                    </div>
+                  )}
 
-                    <button
-                      type="button"
-                      data-testid="quick-show-sardinen-qr-btn"
-                      onClick={() => setActiveTab('QR')}
-                      className="cmf-btn-primary font-dot inline-flex min-h-[48px] flex-1 sm:flex-initial items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold shadow-lg"
-                    >
-                      <QrCode className="h-4 w-4 shrink-0" />
-                      <span>QR-Code zeigen</span>
-                    </button>
-                  </div>
+                  {activeMapBottomSlot === 'MANHUNT_GPS_FALLBACK' && (
+                    <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto flex w-full max-w-lg items-center justify-between gap-2 px-3 py-2 text-xs shadow-lg">
+                      <span className="truncate font-tech text-[11px] font-bold text-[var(--cmf-orange)] uppercase">
+                        {geo.gpsStatus === 'MANUAL_TEST'
+                          ? 'Manueller GPS-Fallback aktiv'
+                          : 'Kein GPS-Signal? Standort antippen:'}
+                      </span>
+                      <button
+                        type="button"
+                        data-testid="manhunt-manual-location-fallback-btn"
+                        onClick={() =>
+                          setMapClickMode({
+                            kind: 'TEST_LOCATION',
+                            label:
+                              'Tippe euren aktuellen Standort auf der Karte an (GPS-Fallback)',
+                          })
+                        }
+                        className="cmf-btn-secondary font-tech inline-flex min-h-[34px] shrink-0 items-center gap-1.5 px-3 py-1 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                      >
+                        <Crosshair className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                        <span>Standort antippen</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              )}
           </div>
         </div>
 

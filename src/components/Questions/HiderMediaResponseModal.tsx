@@ -40,6 +40,7 @@ export interface HiderMediaResponseModalProps {
   publicState: PublicGameState;
   netElapsedMs: number;
   sardineGroupMemberNames: string[];
+  inlineSlot?: boolean;
 }
 
 type TorchCapableTrack = MediaStreamTrack & {
@@ -76,6 +77,7 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
   publicState,
   netElapsedMs,
   sardineGroupMemberNames,
+  inlineSlot = false,
 }) => {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -329,14 +331,22 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
         />
       )}
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.15rem+env(safe-area-inset-bottom))] z-[600] mx-auto max-w-lg px-2.5 py-2 sm:p-3">
+      <div
+        data-testid="hider-media-response-slot"
+        className={
+          inlineSlot
+            ? 'pointer-events-none mx-auto w-full max-w-lg'
+            : 'pointer-events-none fixed inset-x-0 bottom-[calc(4.15rem+env(safe-area-inset-bottom))] z-[600] mx-auto max-w-lg px-2.5 py-2 sm:p-3'
+        }
+      >
         <PhysicsBottomSheet
           collapsed={collapsed}
           onCollapsedChange={setCollapsed}
           allowBodyDrag={!cameraOpen}
+          scrollableBody
           maxWidthClass="max-w-lg"
           sheetClassName="text-[var(--text-main)]"
-          bodyClassName="p-4 pt-3 sm:p-5 sm:pt-3.5"
+          bodyClassName="max-h-[40dvh] overflow-y-auto p-3.5 pt-2.5 sm:p-4 sm:pt-3"
           header={
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">

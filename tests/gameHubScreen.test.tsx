@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { GameHubScreen } from '../src/components/Lobby/GameHubScreen';
 import { HostQuestionRulesEditor } from '../src/components/Lobby/HostQuestionRulesEditor';
+import { resolveActiveMapBottomSlotKind } from '../src/components/Map/mapHudMutex';
 import { HiderMediaResponseModal } from '../src/components/Questions/HiderMediaResponseModal';
 import {
   DEFAULT_QUESTION_RULES_CONFIG,
@@ -214,5 +215,56 @@ describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
     expect(getQuestionPenaltyMs('MEDIA_SKY', 45 * 60_000, currentCfg)).toBe(
       6 * 60_000
     );
+  });
+
+  it('erzwingt im Karten-Bottom-Slot per Single-Owner-Mutex maximal 1 aktives Overlay ohne Überlappung', () => {
+    const base = {
+      hasOpenHiderPhotoModal: false,
+      isEditingCircleOnMap: false,
+      clickModeKind: 'NONE' as const,
+      hasCluePreviewOrThermo: false,
+      showHiderAnchorPanel: false,
+      isLobbyStatus: false,
+      showHiderRehidePill: false,
+      showManhuntGpsFallback: false,
+    };
+
+    expect(resolveActiveMapBottomSlotKind(base)).toBe('NONE');
+
+    // Offene Foto-Anfrage hat höchste Priorität und unterdrückt alle anderen Bottom-Leisten
+    expect(
+      resolveActiveMapBottomSlotKind({
+        ...base,
+        hasOpenHiderPhotoModal: true,
+        showHiderRehidePill: true,
+        hasCluePreviewOrThermo: true,
+      })
+    ).toBe('PHOTO_REQUEST_MODAL');
+
+    // Aktiver Kartenklick-Modus ersetzt das Anker-Panel durch eine einzelne Klick-Leiste
+    expect(
+      resolveActiveMapBottomSlotKind({
+        ...base,
+        clickModeKind: 'PICK_ANCHOR_POINT',
+        showHiderAnchorPanel: true,
+      })
+    ).toBe('CLICK_PROMPT');
+
+    // Tipp-Vorschau / laufendes Thermometer hat Vorrang vor Kontext-Pillen
+    expect(
+      resolveActiveMapBottomSlotKind({
+        ...base,
+        hasCluePreviewOrThermo: true,
+        showHiderRehidePill: true,
+      })
+    ).toBe('CLUE_PREVIEW');
+
+    // In der offenen Suche ohne aktive Vorschau bleibt der untere Kartenrand komplett frei
+    expect(
+      resolveActiveMapBottomSlotKind({
+        ...base,
+        isLobbyStatus: false,
+      })
+    ).toBe('NONE');
   });
 });

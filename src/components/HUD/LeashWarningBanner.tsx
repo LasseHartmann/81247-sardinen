@@ -64,30 +64,70 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
 
   return (
     <div className="z-20 flex w-full flex-col">
-      {isOutsidePlayArea && (
+      {showHiderLeashBanner ? (
+        <div
+          role="alert"
+          data-testid="hider-leash-warning-banner"
+          className="cmf-alert-slide w-full border-b-2 border-[#E04300] bg-[var(--cmf-orange)] px-3 py-1.5 text-white shadow-md"
+        >
+          <div className="mx-auto flex max-w-3xl items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <AlertOctagon className="h-4 w-4 shrink-0 animate-pulse" />
+              <div className="min-w-0">
+                <p className="truncate font-dot text-xs font-bold uppercase">
+                  {leashState.violationReason === 'OUTSIDE_81247'
+                    ? 'Zurück ins Spielgebiet!'
+                    : isManhunt
+                      ? 'Zurück in die aktive Zone!'
+                      : `Zurück in den ${LEASH_RADIUS_METERS}m-Kreis!`}
+                </p>
+                <p className="truncate text-[10px] text-white/95">
+                  ~{leashState.distanceFromAnchorMeters ?? LEASH_RADIUS_METERS} m •{' '}
+                  {isHiderLiveExposed
+                    ? 'Standort für alle sichtbar!'
+                    : leashState.publicAlertTriggered
+                      ? `Sichtbar in ${hiderRevealSecondsLeft ?? 60} s`
+                      : 'Warnung nach 60 s'}
+                </p>
+              </div>
+            </div>
+            <div
+              data-testid="hider-leash-countdown"
+              className="cmf-oled shrink-0 px-2.5 py-0.5 text-right font-dot text-sm text-[var(--cmf-amber)]"
+            >
+              {leashState.countdownSecondsLeft !== null &&
+              leashState.countdownSecondsLeft > 0
+                ? `${leashState.countdownSecondsLeft}s`
+                : hiderRevealSecondsLeft !== null && hiderRevealSecondsLeft > 0
+                  ? `${hiderRevealSecondsLeft}s`
+                  : 'LIVE!'}
+            </div>
+          </div>
+        </div>
+      ) : isOutsidePlayArea ? (
         <div
           role="alert"
           data-testid="outside-play-area-banner"
-          className="cmf-alert-slide w-full border-b border-[#B91C1C] bg-[#DC2626] px-4 py-2 text-white shadow-md"
+          className="cmf-alert-slide w-full border-b border-[#B91C1C] bg-[#DC2626] px-3 py-1.5 text-white shadow-md"
         >
-          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-            <div className="text-left">
-              <p className="font-dot text-xs font-bold uppercase sm:text-sm">
+          <div className="mx-auto flex max-w-3xl items-center justify-between gap-2">
+            <div className="min-w-0 text-left">
+              <p className="truncate font-dot text-xs font-bold uppercase">
                 Bitte zurück ins Spielgebiet!
               </p>
-              <p className="text-[11px] text-white/90">
+              <p className="truncate text-[10px] text-white/90">
                 {isOwnSideHider
                   ? isHiderLiveExposed
                     ? 'Euer Live-Standort ist jetzt für alle sichtbar!'
                     : leashState.publicAlertTriggered
-                      ? `Alle gewarnt – Standort sichtbar in ${hiderRevealSecondsLeft ?? 60} s.`
+                      ? `Alle gewarnt – sichtbar in ${hiderRevealSecondsLeft ?? 60} s.`
                       : 'Nach 60 s werden die Sucher gewarnt.'
-                  : 'Bitte bleib innerhalb der markierten Spielgrenze.'}
+                  : 'Bitte bleib innerhalb der Spielgrenze.'}
               </p>
             </div>
             <div
               data-testid="outside-play-area-countdown"
-              className="cmf-oled shrink-0 px-2.5 py-1 text-right font-dot text-base text-[var(--cmf-amber)]"
+              className="cmf-oled shrink-0 px-2.5 py-0.5 text-right font-dot text-sm text-[var(--cmf-amber)]"
             >
               {outsideCountdown > 0
                 ? `${outsideCountdown}s`
@@ -99,55 +139,11 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
             </div>
           </div>
         </div>
-      )}
-
-      {showHiderLeashBanner && (
-        <div
-          role="alert"
-          data-testid="hider-leash-warning-banner"
-          className="cmf-alert-slide w-full border-b-2 border-[#E04300] bg-[var(--cmf-orange)] px-4 py-2 text-white shadow-md"
-        >
-          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <AlertOctagon className="h-5 w-5 shrink-0 animate-pulse" />
-              <div>
-                <p className="font-dot text-xs font-bold uppercase sm:text-sm">
-                  {leashState.violationReason === 'OUTSIDE_81247'
-                    ? 'Zurück ins Spielgebiet!'
-                    : isManhunt
-                      ? 'Zurück in die aktive Zone!'
-                      : `Zurück in den ${LEASH_RADIUS_METERS}m-Kreis!`}
-                </p>
-                <p className="text-[11px] text-white/95">
-                  ~{leashState.distanceFromAnchorMeters ?? LEASH_RADIUS_METERS} m entfernt •{' '}
-                  {isHiderLiveExposed
-                    ? 'Standort für alle sichtbar!'
-                    : leashState.publicAlertTriggered
-                      ? `Standort sichtbar in ${hiderRevealSecondsLeft ?? 60} s`
-                      : 'Warnung an alle nach 60 s'}
-                </p>
-              </div>
-            </div>
-            <div
-              data-testid="hider-leash-countdown"
-              className="cmf-oled shrink-0 px-3 py-1 text-right font-dot text-base text-[var(--cmf-amber)]"
-            >
-              {leashState.countdownSecondsLeft !== null &&
-              leashState.countdownSecondsLeft > 0
-                ? `${leashState.countdownSecondsLeft}s`
-                : hiderRevealSecondsLeft !== null && hiderRevealSecondsLeft > 0
-                  ? `${hiderRevealSecondsLeft}s`
-                  : 'LIVE!'}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showPublicLeashBanner && (
+      ) : showPublicLeashBanner ? (
         <div
           role="status"
           data-testid="public-leash-warning-banner"
-          className="cmf-alert-slide w-full border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-4 py-2 text-center font-tech text-[11px] font-bold text-[var(--cmf-orange)] uppercase"
+          className="cmf-alert-slide w-full border-b border-[var(--shell-border)] bg-[var(--module-bg)] px-3 py-1 text-center font-tech text-[11px] font-bold text-[var(--cmf-orange)] uppercase"
         >
           {isManhunt
             ? 'Verstecker außerhalb der aktiven Zone!'
@@ -158,7 +154,7 @@ export const LeashWarningBanner: React.FC<LeashWarningBannerProps> = ({
               ? `• Live-Standort in ${publicRevealSecondsLeft} s`
               : ''}
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

@@ -243,67 +243,78 @@ export const TopHud: React.FC<TopHudProps> = ({
         </div>
       </div>
 
-      {/* Aufklappbares Notfall-Fenster */}
+      {/* Zentriertes Modal-Fenster statt Layout-verschiebendem Inline-Drawer */}
       {emergencyDrawerOpen && (
-        <div className="cmf-module cmf-drawer-down mx-auto mt-2 max-w-xl space-y-2.5 p-3">
-          <div className="flex items-center justify-between border-b cmf-divider pb-2">
-            <span className="font-tech text-[11px] font-bold text-[var(--cmf-orange)] uppercase">
-              Notfallnachricht an alle Spieler
-            </span>
-            <button
-              type="button"
-              aria-label="Schließen"
-              onClick={() => setEmergencyDrawerOpen(false)}
-              className="cmf-btn-secondary inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-main)]"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {ownEmergencyMessage && (
-            <div className="cmf-well flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs">
-              <span className="text-[var(--text-main)]">
-                Gesendet: <strong>{ownEmergencyMessage.text}</strong>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Notfallnachricht senden"
+          onClick={() => setEmergencyDrawerOpen(false)}
+          className="fixed inset-0 z-[850] flex items-center justify-center bg-black/55 p-3 backdrop-blur-xs"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="cmf-chassis w-full max-w-md space-y-3 p-4 text-[var(--text-main)] shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b cmf-divider pb-2">
+              <span className="font-tech text-xs font-bold text-[var(--cmf-orange)] uppercase">
+                Notfallnachricht an alle Spieler
               </span>
               <button
                 type="button"
-                onClick={async () => {
-                  await onClearOwnEmergencyMessage();
-                  setEmergencyDrawerOpen(false);
-                }}
-                className="cmf-btn-active font-tech inline-flex min-h-[36px] items-center gap-1 px-2.5 py-1 text-[11px] font-bold uppercase"
+                aria-label="Schließen"
+                onClick={() => setEmergencyDrawerOpen(false)}
+                className="cmf-btn-secondary inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-main)]"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-                Löschen
+                <X className="h-4 w-4" />
               </button>
             </div>
-          )}
 
-          <form
-            onSubmit={(e) => void handleEmergencySubmit(e)}
-            className="flex flex-col gap-2 sm:flex-row"
-          >
-            <input
-              type="text"
-              data-testid="emergency-message-input"
-              enterKeyHint="send"
-              maxLength={180}
-              autoFocus
-              value={emergencyDraft}
-              onChange={(e) => setEmergencyDraft(e.target.value)}
-              placeholder="Was ist passiert? (z. B. Hilfe benötigt ...)"
-              className="cmf-input cmf-input-orange min-h-[44px] flex-1 px-3 py-2 text-base font-medium sm:text-xs"
-            />
-            <button
-              type="submit"
-              data-testid="send-emergency-message-btn"
-              disabled={sendingEmergency || !emergencyDraft.trim()}
-              className="cmf-btn-primary font-dot inline-flex min-h-[44px] items-center justify-center gap-1.5 px-4 py-2 text-xs"
+            {ownEmergencyMessage && (
+              <div className="cmf-well flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs">
+                <span className="text-[var(--text-main)]">
+                  Gesendet: <strong>{ownEmergencyMessage.text}</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await onClearOwnEmergencyMessage();
+                    setEmergencyDrawerOpen(false);
+                  }}
+                  className="cmf-btn-active font-tech inline-flex min-h-[34px] items-center gap-1 px-2.5 py-1 text-[11px] font-bold uppercase"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Löschen
+                </button>
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => void handleEmergencySubmit(e)}
+              className="flex flex-col gap-2 sm:flex-row"
             >
-              <Send className="h-3.5 w-3.5" />
-              {sendingEmergency ? 'Sende ...' : 'An alle senden'}
-            </button>
-          </form>
+              <input
+                type="text"
+                data-testid="emergency-message-input"
+                enterKeyHint="send"
+                maxLength={180}
+                autoFocus
+                value={emergencyDraft}
+                onChange={(e) => setEmergencyDraft(e.target.value)}
+                placeholder="Was ist passiert? (z. B. Hilfe benötigt ...)"
+                className="cmf-input cmf-input-orange min-h-[44px] flex-1 px-3 py-2 text-base font-medium sm:text-xs"
+              />
+              <button
+                type="submit"
+                data-testid="send-emergency-message-btn"
+                disabled={sendingEmergency || !emergencyDraft.trim()}
+                className="cmf-btn-primary font-dot inline-flex min-h-[44px] items-center justify-center gap-1.5 px-4 py-2 text-xs"
+              >
+                <Send className="h-3.5 w-3.5" />
+                {sendingEmergency ? 'Sende ...' : 'An alle senden'}
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </header>

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
-import { LocateFixed, Maximize2 } from 'lucide-react';
 import type { Feature, MultiPolygon, Polygon } from 'geojson';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
@@ -114,6 +113,11 @@ function safeCenterMapOnLatLng(
   }
 }
 
+export interface GameMapActions {
+  centerOnOwnFix: () => void;
+  fitPlayArea: () => void;
+}
+
 export interface GameMapProps {
   playArea: Feature<Polygon | MultiPolygon>;
   playAreaConfirmed: boolean;
@@ -143,8 +147,8 @@ export interface GameMapProps {
   clickMode: MapClickInteractionMode;
   onMapCoordinateClick?: (pt: LatLng) => void;
   onRequestGpsPermission?: () => Promise<GeoFix | null> | void;
+  actionsRef?: React.MutableRefObject<GameMapActions | null>;
   layoutInvalidationKey?: string | number;
-  hasBottomDock?: boolean;
   emergencyMessages?: EmergencyMessage[];
   emergencyFocusTarget?: { lat: number; lng: number; seq: number } | null;
 }
@@ -173,8 +177,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
   clickMode,
   onMapCoordinateClick,
   onRequestGpsPermission,
+  actionsRef,
   layoutInvalidationKey,
-  hasBottomDock = false,
   emergencyMessages = [],
   emergencyFocusTarget = null,
 }) => {
@@ -326,7 +330,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
       center: MAP_DEFAULT_CENTER,
       zoom: MAP_DEFAULT_ZOOM,
       zoomControl: false,
-      attributionControl: true,
+      attributionControl: false,
       preferCanvas: true,
       renderer: canvasRenderer,
       fadeAnimation: false,
@@ -959,11 +963,24 @@ const GameMapInner: React.FC<GameMapProps> = ({
     const map = mapRef.current;
     if (!map) return;
     safeFitGeoJsonBounds(map, playArea, {
-      padding: [24, 24],
+      padding: [36, 52],
       maxZoom: 16,
       animate: false,
     });
   }, [playArea]);
+
+  useEffect(() => {
+    if (!actionsRef) return;
+    actionsRef.current = {
+      centerOnOwnFix: handleCenterOnOwnFix,
+      fitPlayArea: handleFitPlayArea,
+    };
+    return () => {
+      if (actionsRef.current) {
+        actionsRef.current = null;
+      }
+    };
+  }, [actionsRef, handleCenterOnOwnFix, handleFitPlayArea]);
 
   return (
     <div className="sardinen-map-viewport relative h-full w-full bg-[var(--bg-page)]">
@@ -972,51 +989,6 @@ const GameMapInner: React.FC<GameMapProps> = ({
         data-testid="leaflet-map-container"
         className="h-full w-full z-0"
       />
-
-      {/* Einhand-Daumensteuerung rechts auf der Karte (Zentrieren & 81247-Übersicht) */}
-      <div
-        className={`pointer-events-auto absolute right-[max(0.65rem,env(safe-area-inset-right))] z-[390] flex flex-col gap-1.5 transition-all duration-200 ${
-          hasBottomDock ? 'top-16 sm:top-auto sm:bottom-48' : 'bottom-6'
-        }`}
-      >
-        <button
-          type="button"
-          data-testid="map-locate-me-btn"
-          disabled={!ownFix && !onRequestGpsPermission}
-          onClick={handleCenterOnOwnFix}
-          aria-label="Auf eigenen Standort zentrieren"
-          title="Auf eigenen Standort zentrieren (GPS-Freigabe anfordern)"
-          className="cmf-chassis flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--text-main)] shadow-lg disabled:opacity-40 active:scale-95"
-        >
-          <LocateFixed
-            className={`h-5 w-5 ${
-              ownFix ? 'text-[var(--cmf-teal)]' : 'text-[var(--text-muted)]'
-            }`}
-          />
-        </button>
-
-        <button
-          type="button"
-          data-testid="map-fit-zone-btn"
-          onClick={handleFitPlayArea}
-          aria-label="Gesamtes 81247-Gebiet anzeigen"
-          title="Gesamtes 81247-Gebiet anzeigen"
-          className="cmf-chassis flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--text-main)] shadow-lg active:scale-95"
-        >
-          <Maximize2 className="h-4 w-4 text-[var(--cmf-orange)]" />
-        </button>
-      </div>
-
-      {(clickMode.kind !== 'NONE' || activePreviewQuestion === 'THERMOMETER') && (
-        <div className="cmf-oled pointer-events-none absolute top-14 right-3 left-3 z-[450] mx-auto flex max-w-sm items-center justify-center gap-2 px-3.5 py-2 text-center text-[11px] font-tech tracking-wide uppercase shadow-xl">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--cmf-amber)]" />
-          <span className="text-[#F8FAFC]">
-            {clickMode.kind !== 'NONE'
-              ? (clickMode.label ?? 'Tippe auf die Karte, um den Punkt zu setzen')
-              : 'Tippe auf die Karte oder ziehe Pin B, um den Endpunkt zu wählen'}
-          </span>
-        </div>
-      )}
     </div>
   );
 };
@@ -1069,7 +1041,6 @@ export const GameMap = React.memo(GameMapInner, (prev, next) => {
     prev.coneBearingDeg !== next.coneBearingDeg ||
     prev.selectedRadius !== next.selectedRadius ||
     prev.layoutInvalidationKey !== next.layoutInvalidationKey ||
-    prev.hasBottomDock !== next.hasBottomDock ||
     prev.hiddenClueIds !== next.hiddenClueIds ||
     prev.emergencyMessages !== next.emergencyMessages ||
     prev.emergencyFocusTarget !== next.emergencyFocusTarget ||

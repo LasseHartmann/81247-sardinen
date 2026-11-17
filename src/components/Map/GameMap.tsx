@@ -15,6 +15,7 @@ import {
   buildExcludedOrangeMask,
   computePossibleHidingArea,
 } from '../../geo/hidingArea';
+import type { TeamMemberMapMarker } from '../../services/databaseAdapter';
 import type {
   AnchorPoint,
   ClueRecord,
@@ -25,8 +26,6 @@ import type {
   QuestionRulesConfig,
   QuestionType,
   RadiusOptionMeters,
-  TeamLocation,
-  TeamPublic,
 } from '../../types/game';
 import {
   createAnchorPointIcon,
@@ -36,9 +35,8 @@ import {
   createManhuntPingIcon,
   createOwnPositionIcon,
   createSelectionPinIcon,
-  createTeamBeaconIcon,
-  renderTeamTinPopupHtml,
-  type OnlineTeamMemberBadge,
+  createTeamMemberFishIcon,
+  renderTeamMemberFishPopupHtml,
 } from './CustomMarkers';
 
 export interface MapClickInteractionMode {
@@ -134,10 +132,7 @@ export interface GameMapProps {
     accuracy?: number;
   } | null;
   liveHiderLocations?: Record<string, { lat: number; lng: number; accuracy: number; label: string }>;
-  visibleTeamLocations: Record<string, TeamLocation | null>;
-  teamsPublic: Record<string, TeamPublic>;
-  onlineTeamMembersByTeamId?: Record<string, OnlineTeamMemberBadge[]>;
-  activeTeamIds?: string[];
+  teamMemberMarkers?: TeamMemberMapMarker[];
   clues: ClueRecord[];
   hiddenClueIds: Set<string>;
   activePreviewQuestion?: QuestionType | null;
@@ -167,10 +162,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
   publishedRadar,
   exposedHiderLocation = null,
   liveHiderLocations,
-  visibleTeamLocations,
-  teamsPublic,
-  onlineTeamMembersByTeamId = {},
-  activeTeamIds,
+  teamMemberMarkers = [],
   clues,
   hiddenClueIds,
   activePreviewQuestion = null,
@@ -202,14 +194,12 @@ const GameMapInner: React.FC<GameMapProps> = ({
     new Map()
   );
   const ownMarkerRef = useRef<L.Marker | null>(null);
-  const teamMarkersRef = useRef<
+  const memberFishMarkersRef = useRef<
     Map<
       string,
       {
         marker: L.Marker;
-        name: string;
-        color: string;
-        membersSignature: string;
+        iconSignature: string;
       }
     >
   >(new Map());
@@ -389,7 +379,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
       exposedHiderMarkerRef.current = null;
       liveHiderMarkersRef.current.clear();
       ownMarkerRef.current = null;
-      teamMarkersRef.current.clear();
+      memberFishMarkersRef.current.clear();
       emergencyMarkersRef.current.clear();
       canvasRendererRef.current = null;
       map.remove();
@@ -802,69 +792,72 @@ const GameMapInner: React.FC<GameMapProps> = ({
       }
     }
 
-    // 3b. Team-Beacons
-    const activeSet = activeTeamIds ? new Set(activeTeamIds) : null;
-    const seenTeams = new Set<string>();
+    // 3b. Individuelle Fisch-Positionen aller sichtbaren Sucher-Teammitglieder (kein Team-Logo / keine Büchse)
+    const seenMemberKeys = new Set<string>();
+    let ownSeekerFishRendered = false;
+    const nowMs = Date.now();
 
-    for (const [teamId, loc] of Object.entries(visibleTeamLocations)) {
-      if (!loc) continue;
-      if (activeSet && !activeSet.has(teamId)) continue;
-      const pub = teamsPublic[teamId];
-      if (!pub || pub.status === 'JOINED_SARDINES' || pub.memberPlayerIds.length === 0) continue;
+    for (const mItem of teamMemberMarkers) {
+      if (!Number.isFinite(mItem.lat) || !Number.isFinite(mItem.lng)) continue;
+      seenMemberKeys.add(mItem.key);
+      if (mItem.isOwnPlayer) {
+        ownSeekerFishRendered = true;
+      }
 
-      seenTeams.add(teamId);
-      const onlineMembers = onlineTeamMembersByTeamId[teamId] ?? [];
-      const membersSignature = onlineMembers
-        .map((m) => `${m.playerId}:${m.name}:${m.avatar ?? ''}`)
-        .join('|');
-      const popupHtml = renderTeamTinPopupHtml({
-        teamName: pub.name,
-        color: pub.color,
-        accuracyMeters: loc.accuracy,
-        onlineMembers,
-        activeContributorCount: loc.activeContributorCount,
+      const iconSignature = [
+        mItem.playerId,
+        mItem.playerName,
+        mItem.avatar ?? '',
+        mItem.teamName,
+        mItem.teamColor,
+        mItem.isOnlineNow ? '1' : '0',
+        mItem.offsetPxX,
+        mItem.offsetPxY,
+      ].join('|');
+
+      const popupHtml = renderTeamMemberFishPopupHtml({
+        playerId: mItem.playerId,
+        playerName: mItem.playerName,
+        avatar: mItem.avatar,
+        teamName: mItem.teamName,
+        teamColor: mItem.teamColor,
+        accuracyMeters: mItem.accuracy,
+        isOnlineNow: mItem.isOnlineNow,
+        lastOnlineAt: mItem.lastOnlineAt,
+        nowMs,
       });
 
-      const existing = teamMarkersRef.current.get(teamId);
+      const existing = memberFishMarkersRef.current.get(mItem.key);
       if (!existing) {
-        const marker = L.marker([loc.lat, loc.lng], {
-          icon: createTeamBeaconIcon(pub.name, pub.color, onlineMembers),
+        const marker = L.marker([mItem.lat, mItem.lng], {
+          icon: createTeamMemberFishIcon(mItem),
+          zIndexOffset: mItem.isOwnPlayer ? 620 : 560,
         })
           .bindPopup(popupHtml)
           .addTo(group);
-        teamMarkersRef.current.set(teamId, {
+        memberFishMarkersRef.current.set(mItem.key, {
           marker,
-          name: pub.name,
-          color: pub.color,
-          membersSignature,
+          iconSignature,
         });
       } else {
-        existing.marker.setLatLng([loc.lat, loc.lng]);
+        existing.marker.setLatLng([mItem.lat, mItem.lng]);
         existing.marker.setPopupContent(popupHtml);
-        if (
-          existing.name !== pub.name ||
-          existing.color !== pub.color ||
-          existing.membersSignature !== membersSignature
-        ) {
-          existing.marker.setIcon(
-            createTeamBeaconIcon(pub.name, pub.color, onlineMembers)
-          );
-          existing.name = pub.name;
-          existing.color = pub.color;
-          existing.membersSignature = membersSignature;
+        if (existing.iconSignature !== iconSignature) {
+          existing.marker.setIcon(createTeamMemberFishIcon(mItem));
+          existing.iconSignature = iconSignature;
         }
       }
     }
 
-    for (const [teamId, entry] of teamMarkersRef.current.entries()) {
-      if (!seenTeams.has(teamId)) {
+    for (const [mKey, entry] of memberFishMarkersRef.current.entries()) {
+      if (!seenMemberKeys.has(mKey)) {
         group.removeLayer(entry.marker);
-        teamMarkersRef.current.delete(teamId);
+        memberFishMarkersRef.current.delete(mKey);
       }
     }
 
-    // 3c. Eigene Position
-    if (ownFix) {
+    // 3c. Eigene Position (wird ausgeblendet, wenn der eigene Sucher-Fisch bereits exakt dort gezeichnet wird)
+    if (ownFix && !ownSeekerFishRendered) {
       const tooltipText = `POS // ±${Math.round(ownFix.accuracy)}M`;
       if (!ownMarkerRef.current) {
         ownMarkerRef.current = L.marker([ownFix.lat, ownFix.lng], {
@@ -930,10 +923,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
     publishedRadar?.lastPing,
     exposedHiderLocation,
     liveHiderLocations,
-    visibleTeamLocations,
-    teamsPublic,
-    onlineTeamMembersByTeamId,
-    activeTeamIds,
+    teamMemberMarkers,
     emergencyMessages,
   ]);
 
@@ -1040,24 +1030,27 @@ function sameLatLng(
   return a.lat === b.lat && a.lng === b.lng;
 }
 
-function sameTeamLocations(
-  a: Record<string, TeamLocation | null>,
-  b: Record<string, TeamLocation | null>
+function sameTeamMemberMarkers(
+  a: TeamMemberMapMarker[] = [],
+  b: TeamMemberMapMarker[] = []
 ): boolean {
   if (a === b) return true;
-  const keysA = Object.keys(a);
-  const keysB = Object.keys(b);
-  if (keysA.length !== keysB.length) return false;
-  for (const k of keysA) {
-    const la = a[k];
-    const lb = b[k];
-    if (la === lb) continue;
-    if (!la || !lb) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ma = a[i];
+    const mb = b[i];
     if (
-      la.lat !== lb.lat ||
-      la.lng !== lb.lng ||
-      la.accuracy !== lb.accuracy ||
-      la.activeContributorCount !== lb.activeContributorCount
+      ma.key !== mb.key ||
+      ma.lat !== mb.lat ||
+      ma.lng !== mb.lng ||
+      ma.accuracy !== mb.accuracy ||
+      ma.playerName !== mb.playerName ||
+      ma.avatar !== mb.avatar ||
+      ma.teamName !== mb.teamName ||
+      ma.teamColor !== mb.teamColor ||
+      ma.isOnlineNow !== mb.isOnlineNow ||
+      ma.offsetPxX !== mb.offsetPxX ||
+      ma.offsetPxY !== mb.offsetPxY
     ) {
       return false;
     }
@@ -1077,8 +1070,6 @@ export const GameMap = React.memo(GameMapInner, (prev, next) => {
     prev.selectedRadius !== next.selectedRadius ||
     prev.layoutInvalidationKey !== next.layoutInvalidationKey ||
     prev.hasBottomDock !== next.hasBottomDock ||
-    prev.teamsPublic !== next.teamsPublic ||
-    prev.activeTeamIds !== next.activeTeamIds ||
     prev.hiddenClueIds !== next.hiddenClueIds ||
     prev.emergencyMessages !== next.emergencyMessages ||
     prev.emergencyFocusTarget !== next.emergencyFocusTarget ||
@@ -1131,7 +1122,7 @@ export const GameMap = React.memo(GameMapInner, (prev, next) => {
     }
   }
 
-  if (!sameTeamLocations(prev.visibleTeamLocations, next.visibleTeamLocations)) {
+  if (!sameTeamMemberMarkers(prev.teamMemberMarkers, next.teamMemberMarkers)) {
     return false;
   }
 

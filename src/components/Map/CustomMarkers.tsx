@@ -1,15 +1,9 @@
 import L from 'leaflet';
 import {
-  DEFAULT_SARDINE_AVATAR,
   parseSardineAvatar,
   renderCompleteSardineSvgString,
 } from '../../config/sardineAvatar';
-
-export interface OnlineTeamMemberBadge {
-  playerId: string;
-  name: string;
-  avatar?: string;
-}
+import type { TeamMemberMapMarker } from '../../services/databaseAdapter';
 
 function escapeHtml(text: string): string {
   return text
@@ -53,109 +47,98 @@ export function createAnchorPointIcon(): L.DivIcon {
 }
 
 /**
- * Team-Beacon-Marker als geöffnete Sardinenbüchse (Sardines Tin) mit allen aktuell
- * online befindlichen Team-Mitgliedern als individuelle Sardinen im Inneren der Dose.
+ * Individueller Teammitglied-Marker auf der Karte (ohne Team-Logo / Sardinenbüchse):
+ * Zeigt die letzte Position jedes aktiven Teammitglieds direkt als dessen eigenen Fisch
+ * zusammen mit seinem Teamnamen und seiner Teamfarbe.
  */
-export function createTeamBeaconIcon(
-  teamName: string,
-  color: string,
-  onlineMembers: OnlineTeamMemberBadge[] = []
+export function createTeamMemberFishIcon(
+  member: Pick<
+    TeamMemberMapMarker,
+    | 'playerId'
+    | 'playerName'
+    | 'avatar'
+    | 'teamName'
+    | 'teamColor'
+    | 'isOnlineNow'
+    | 'offsetPxX'
+    | 'offsetPxY'
+  >
 ): L.DivIcon {
-  const shortLabel = escapeHtml(
-    teamName.replace(/\s*\(.*\)/, '').trim().toUpperCase()
+  const shortTeam = escapeHtml(
+    member.teamName.replace(/\s*\(.*\)/, '').trim().toUpperCase()
   );
-  const visibleMembers = onlineMembers.slice(0, 4);
-  const overflowCount = Math.max(0, onlineMembers.length - visibleMembers.length);
+  const safePlayer = escapeHtml(member.playerName.trim());
+  const color = member.teamColor || '#00A896';
+  const cfg = parseSardineAvatar(member.avatar, {
+    playerId: member.playerId,
+    name: member.playerName,
+  });
+  const fishSvg = renderCompleteSardineSvgString(cfg, 36);
 
-  const sardinesInsideHtml =
-    visibleMembers.length > 0
-      ? visibleMembers
-          .map((m) => {
-            const cfg = parseSardineAvatar(m.avatar, m);
-            return `<span title="${escapeHtml(m.name)}" style="width:20px;height:22px;display:inline-flex;align-items:center;justify-content:center;margin:0 -1px;">${renderCompleteSardineSvgString(cfg, 22)}</span>`;
-          })
-          .join('') +
-        (overflowCount > 0
-          ? `<span style="margin-left:2px;padding:0 3px;border-radius:4px;background:${color};color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;line-height:14px;">+${overflowCount}</span>`
-          : '')
-      : `<span style="width:20px;height:22px;display:inline-flex;align-items:center;justify-content:center;opacity:0.38;">${renderCompleteSardineSvgString(DEFAULT_SARDINE_AVATAR, 20)}</span>`;
-
-  const slotCount = Math.max(1, visibleMembers.length) + (overflowCount > 0 ? 1 : 0);
-  const tinMinWidth = Math.max(66, 30 + slotCount * 19);
-  const iconWidth = Math.max(108, tinMinWidth + 24);
+  const iconWidth = 128;
   const iconHeight = 64;
-
-  const pullRingSvg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 22" width="12" height="19" style="display:block;flex-shrink:0;margin-right:-2px;">
-      <circle cx="5.5" cy="11" r="4.5" fill="none" stroke="#94A3B8" stroke-width="2.2" />
-      <circle cx="5.5" cy="11" r="4.5" fill="none" stroke="#F8FAFC" stroke-width="0.9" />
-      <rect x="9" y="8.5" width="5" height="5" rx="1.2" fill="#CBD5E1" stroke="#475569" stroke-width="1" />
-    </svg>
-  `;
+  const offX = member.offsetPxX ?? 0;
+  const offY = member.offsetPxY ?? 0;
+  const opacityStyle = member.isOnlineNow ? '1' : '0.88';
 
   return L.divIcon({
-    className: 'sardinen-div-icon sardinen-team-tin-icon',
+    className: 'sardinen-div-icon sardinen-member-fish-icon',
     iconSize: [iconWidth, iconHeight],
-    iconAnchor: [Math.round(iconWidth / 2), iconHeight - 5],
-    popupAnchor: [0, -(iconHeight - 10)],
+    iconAnchor: [Math.round(iconWidth / 2) - offX, iconHeight - 5 - offY],
+    popupAnchor: [offX, -(iconHeight - 10) + offY],
     html: `
-      <div style="width:${iconWidth}px;height:${iconHeight}px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;pointer-events:auto;">
-        <!-- Team-Namensschild über der Büchse -->
-        <div style="display:inline-flex;align-items:center;gap:4px;padding:1.5px 7px;margin-bottom:2px;border-radius:9999px;background:#14171A;border:1.5px solid ${color};color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;letter-spacing:0.04em;white-space:nowrap;box-shadow:0 3px 8px rgba(15,23,42,0.32);">
-          <span style="width:6px;height:6px;border-radius:9999px;background:${color};display:inline-block;"></span>
-          <span>${shortLabel}</span>
-          <span style="opacity:0.75;font-size:8.5px;">• ${onlineMembers.length}</span>
+      <div style="width:${iconWidth}px;height:${iconHeight}px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;pointer-events:auto;opacity:${opacityStyle};">
+        <!-- Spielername + Team-Abzeichen -->
+        <div style="display:inline-flex;align-items:center;gap:4px;padding:1.5px 7px;margin-bottom:2px;border-radius:9999px;background:#14171A;border:1.5px solid ${color};color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;letter-spacing:0.03em;white-space:nowrap;box-shadow:0 3px 8px rgba(15,23,42,0.34);">
+          <span style="width:6px;height:6px;border-radius:9999px;background:${color};display:inline-block;flex-shrink:0;"></span>
+          <span>${safePlayer}</span>
+          <span style="opacity:0.55;">·</span>
+          <span style="color:${color};filter:brightness(1.22);">${shortTeam}</span>
         </div>
 
-        <!-- Geöffnete Sardinenbüchse (Aufreißlasche + Metallrand + aufgerollter Deckel + Online-Sardinen) -->
-        <div style="display:inline-flex;align-items:center;">
-          ${pullRingSvg}
-          <div style="min-width:${tinMinWidth}px;padding:2.5px;border-radius:10px;background:linear-gradient(180deg,#F8FAFC 0%,#CBD5E1 52%,#94A3B8 100%);border:2px solid ${color};box-shadow:0 5px 14px rgba(15,23,42,0.38);display:flex;align-items:center;">
-            <div style="flex:1;min-height:24px;padding:1px 5px;border-radius:6.5px;background:linear-gradient(180deg,#0F172A 0%,#1E293B 100%);border:1px solid #475569;box-shadow:inset 0 2px 4px rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;">
-              ${sardinesInsideHtml}
-            </div>
-            <!-- Aufgerollter Blechdeckel am rechten Büchsenrand -->
-            <div style="width:5px;height:24px;margin-left:2px;border-radius:3px;background:repeating-linear-gradient(180deg,#F8FAFC 0px,#F8FAFC 2px,#64748B 2px,#64748B 4px);border:1px solid #334155;"></div>
-          </div>
+        <!-- Eigener Fisch des Teammitglieds im Teamfarben-Rahmen -->
+        <div title="${safePlayer} (${shortTeam})" style="height:32px;padding:1px 6px;border-radius:9999px;background:rgba(15,23,42,0.88);border:2px solid ${color};box-shadow:0 4px 12px rgba(15,23,42,0.38);display:inline-flex;align-items:center;justify-content:center;">
+          ${fishSvg}
         </div>
 
-        <!-- Präziser GPS-Ankerpunkt -->
+        <!-- Präziser GPS-Ankerpunkt in Teamfarbe -->
         <div style="width:9px;height:9px;border-radius:9999px;background:${color};border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 5px rgba(15,23,42,0.4);"></div>
       </div>
     `,
   });
 }
 
-export function renderTeamTinPopupHtml(params: {
+export function renderTeamMemberFishPopupHtml(params: {
+  playerId: string;
+  playerName: string;
+  avatar?: string;
   teamName: string;
-  color: string;
+  teamColor: string;
   accuracyMeters: number;
-  onlineMembers: OnlineTeamMemberBadge[];
-  activeContributorCount?: number;
+  isOnlineNow: boolean;
+  lastOnlineAt: number;
+  nowMs: number;
 }): string {
   const {
+    playerId,
+    playerName,
+    avatar,
     teamName,
-    color,
+    teamColor,
     accuracyMeters,
-    onlineMembers,
-    activeContributorCount,
+    isOnlineNow,
+    lastOnlineAt,
+    nowMs,
   } = params;
-  const contributorInfo =
-    activeContributorCount && activeContributorCount > 1
-      ? ` [AVG:${activeContributorCount}]`
-      : '';
+  const cfg = parseSardineAvatar(avatar, { playerId, name: playerName });
+  const ageMinutes = Math.max(0, Math.round((nowMs - lastOnlineAt) / 60_000));
+  const statusText = isOnlineNow
+    ? 'Live online'
+    : ageMinutes <= 1
+      ? 'Zuletzt online vor ~1 Min.'
+      : `Zuletzt online vor ${ageMinutes} Min.`;
 
-  const membersListHtml =
-    onlineMembers.length > 0
-      ? `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">${onlineMembers
-          .map((m) => {
-            const cfg = parseSardineAvatar(m.avatar, m);
-            return `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:6px;background:#F1F5F9;border:1px solid #CBD5E1;font-size:11px;font-weight:700;color:#0F172A;">${renderCompleteSardineSvgString(cfg, 16)}<span>${escapeHtml(m.name)}</span></span>`;
-          })
-          .join('')}</div>`
-      : `<div style="margin-top:4px;font-size:11px;color:#64748B;">Aktuell niemand online</div>`;
-
-  return `<div style="min-width:140px;"><div style="display:flex;align-items:center;gap:5px;"><span style="width:8px;height:8px;border-radius:9999px;background:${color};display:inline-block;"></span><strong>${escapeHtml(teamName.toUpperCase())}</strong><span style="font-size:10px;color:#64748B;">${escapeHtml(contributorInfo)}</span></div><div style="font-size:11px;color:#475569;margin-top:2px;">GPS: ±${Math.round(accuracyMeters)} m • ${onlineMembers.length} in der Dose</div>${membersListHtml}</div>`;
+  return `<div style="min-width:148px;"><div style="display:flex;align-items:center;gap:6px;">${renderCompleteSardineSvgString(cfg, 24)}<div><div style="font-weight:800;color:#0F172A;line-height:1.15;">${escapeHtml(playerName)}</div><div style="display:flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:#334155;margin-top:1px;"><span style="width:7px;height:7px;border-radius:9999px;background:${teamColor};display:inline-block;"></span><span>${escapeHtml(teamName)}</span></div></div></div><div style="font-size:11px;color:#475569;margin-top:5px;">${escapeHtml(statusText)} • GPS: ±${Math.round(accuracyMeters)} m</div></div>`;
 }
 
 /**

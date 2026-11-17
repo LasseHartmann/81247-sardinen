@@ -1044,6 +1044,7 @@ export const TEAM_PALETTE = [
 export const PLAYER_SEAT_HEARTBEAT_MS = 10_000;
 export const PLAYER_SEAT_TTL_MS = 28_000;
 export const TEAM_MEMBER_FIX_MAX_AGE_MS = 5 * 60_000;
+export const TEAM_MEMBER_LAST_ONLINE_WINDOW_MS = 20 * 60_000;
 
 export function createDefaultTeams(): Record<string, TeamPublic> {
   const result: Record<string, TeamPublic> = {};

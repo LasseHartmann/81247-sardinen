@@ -26,6 +26,7 @@ import {
   OFFICIAL_81247_AREA_NAME,
   sanitizePlayAreaState,
   TEAM_MEMBER_FIX_MAX_AGE_MS,
+  TEAM_MEMBER_LAST_ONLINE_WINDOW_MS,
   TEAM_PALETTE,
 } from '../config/gameConfig';
 import {
@@ -36,7 +37,7 @@ import {
   validateAndNormalizeAccountName,
 } from '../config/players';
 import { getBrowserDemoStore } from '../demo/demoStore';
-import { roundCoord5 } from '../geo/distance';
+import { distanceMeters, roundCoord5 } from '../geo/distance';
 import {
   generateRandomId,
   generateRoomCode,
@@ -424,6 +425,287 @@ export function isPlayerOnline(
   return false;
 }
 
+export function getPlayerLastTabSeenTimestamp(
+  playerId: string,
+  members: Record<string, MemberRecord>,
+  presence: Record<string, Record<string, PresenceSession>>
+): number {
+  let maxSeen = 0;
+  for (const m of Object.values(members)) {
+    if (!m.enabled || m.playerId !== playerId) continue;
+    const sessions = presence[m.uid];
+    if (!sessions) continue;
+    for (const [key, sess] of Object.entries(sessions)) {
+      if (
+        key === 'emergency_alert' ||
+        key === 'ready_state' ||
+        key === 'hider_pw_lock' ||
+        key === 'round_start_meta' ||
+        key === 'leash_alert'
+      ) {
+        continue;
+      }
+      if (typeof sess?.lastSeen === 'number' && sess.lastSeen > maxSeen) {
+        maxSeen = sess.lastSeen;
+      }
+    }
+  }
+  return maxSeen;
+}
+
+export interface TeamMemberMapMarker {
+  key: string;
+  teamId: string;
+  teamName: string;
+  teamColor: string;
+  playerId: string;
+  playerName: string;
+  avatar?: string;
+  lat: number;
+  lng: number;
+  accuracy: number;
+  fixTimestamp: number;
+  lastOnlineAt: number;
+  isOnlineNow: boolean;
+  isOwnPlayer: boolean;
+  offsetPxX: number;
+  offsetPxY: number;
+}
+
+/**
+ * Ermittelt für jedes sichtbare Sucher-Team die darzustellenden Mitglieds-Positionen:
+ * - Zeigt die letzte Position jedes Teammitglieds, sofern es in den letzten 20 Minuten online war.
+ * - Fallen Mitglieder nach >20 Min. Offline-Zeit heraus, schrumpft die Anzeige bis nur noch 1 Position übrig ist.
+ * - Diese letzte verbleibende Position des Teams bleibt sichtbar, bis eine neue Position aus diesem Team eintrifft.
+ */
+export function resolveVisibleTeamMemberMarkers(params: {
+  visibleTeamLocations: Record<string, TeamLocation | null>;
+  teamsPublic: Record<string, TeamPublic>;
+  members: Record<string, MemberRecord>;
+  presence: Record<string, Record<string, PresenceSession>>;
+  activeTeamIds?: string[];
+  ownMember?: MemberRecord | null;
+  ownFix?: GeoFix | null;
+  nowMs: number;
+  onlineWindowMs?: number;
+}): TeamMemberMapMarker[] {
+  const {
+    visibleTeamLocations,
+    teamsPublic,
+    members,
+    presence,
+    activeTeamIds,
+    ownMember = null,
+    ownFix = null,
+    nowMs,
+    onlineWindowMs = TEAM_MEMBER_LAST_ONLINE_WINDOW_MS,
+  } = params;
+
+  const activeSet = activeTeamIds ? new Set(activeTeamIds) : null;
+  const deduped = deduplicateEnabledMembers(members, presence);
+  const memberByPlayerId = new Map<string, MemberRecord>();
+  const memberByUid = new Map<string, MemberRecord>();
+  for (const m of Object.values(members)) {
+    if (m.enabled && !isOverviewMember(m)) {
+      memberByUid.set(m.uid, m);
+    }
+  }
+  for (const m of deduped) {
+    memberByPlayerId.set(m.playerId, m);
+  }
+
+  const markers: TeamMemberMapMarker[] = [];
+
+  for (const [teamId, teamLoc] of Object.entries(visibleTeamLocations)) {
+    if (activeSet && !activeSet.has(teamId)) continue;
+    const pub = teamsPublic[teamId];
+    if (
+      !pub ||
+      pub.status === 'JOINED_SARDINES' ||
+      pub.memberPlayerIds.length === 0
+    ) {
+      continue;
+    }
+
+    // Sammle alle Spieler-IDs dieses Teams (sowohl aus teamsPublic als auch aus aktiven MemberRecords)
+    const teamPlayerIdSet = new Set<string>(pub.memberPlayerIds);
+    for (const m of deduped) {
+      if (m.side === 'SEEKER' && m.teamId === teamId) {
+        teamPlayerIdSet.add(m.playerId);
+      }
+    }
+
+    const memberFixesMap = teamLoc?.memberFixes ?? {};
+    const positionedCandidates: Array<Omit<TeamMemberMapMarker, 'offsetPxX' | 'offsetPxY'>> = [];
+
+    for (const pid of teamPlayerIdSet) {
+      const memberRec = memberByPlayerId.get(pid);
+      const isOwnPlayer = Boolean(
+        ownMember &&
+          ownMember.side === 'SEEKER' &&
+          ownMember.teamId === teamId &&
+          ownMember.playerId === pid
+      );
+
+      let fix: GeoFix | null = memberFixesMap[pid] ?? null;
+      if (isOwnPlayer && ownFix && Number.isFinite(ownFix.lat) && Number.isFinite(ownFix.lng)) {
+        fix = {
+          lat: ownFix.lat,
+          lng: ownFix.lng,
+          accuracy: ownFix.accuracy,
+          timestamp: Math.max(ownFix.timestamp || 0, fix?.timestamp || 0, nowMs),
+        };
+      }
+
+      if (!fix || !Number.isFinite(fix.lat) || !Number.isFinite(fix.lng)) {
+        continue;
+      }
+
+      const isOnlineNow = isPlayerOnline(
+        pid,
+        members,
+        presence,
+        ownMember?.uid
+      );
+      const lastTabSeen = getPlayerLastTabSeenTimestamp(pid, members, presence);
+      const lastOnlineAt = isOnlineNow
+        ? nowMs
+        : Math.max(fix.timestamp || 0, lastTabSeen || 0);
+
+      positionedCandidates.push({
+        key: `${teamId}:${pid}`,
+        teamId,
+        teamName: pub.name,
+        teamColor: pub.color,
+        playerId: pid,
+        playerName: memberRec?.name ?? pid,
+        avatar: memberRec?.avatar,
+        lat: fix.lat,
+        lng: fix.lng,
+        accuracy: fix.accuracy,
+        fixTimestamp: fix.timestamp || 0,
+        lastOnlineAt,
+        isOnlineNow,
+        isOwnPlayer,
+      });
+    }
+
+    // Fallback für ältere TeamLocation-Einträge ohne memberFixes
+    if (
+      positionedCandidates.length === 0 &&
+      teamLoc &&
+      Number.isFinite(teamLoc.lat) &&
+      Number.isFinite(teamLoc.lng)
+    ) {
+      const byUpdater = teamLoc.updatedByUid
+        ? memberByUid.get(teamLoc.updatedByUid)
+        : undefined;
+      const fallbackPid =
+        (byUpdater && teamPlayerIdSet.has(byUpdater.playerId)
+          ? byUpdater.playerId
+          : null) ??
+        pub.beaconPlayerId ??
+        pub.memberPlayerIds[0];
+      if (fallbackPid) {
+        const memberRec = memberByPlayerId.get(fallbackPid);
+        const isOnlineNow = isPlayerOnline(
+          fallbackPid,
+          members,
+          presence,
+          ownMember?.uid
+        );
+        const lastTabSeen = getPlayerLastTabSeenTimestamp(
+          fallbackPid,
+          members,
+          presence
+        );
+        const lastOnlineAt = isOnlineNow
+          ? nowMs
+          : Math.max(teamLoc.timestamp || 0, lastTabSeen || 0);
+        positionedCandidates.push({
+          key: `${teamId}:${fallbackPid}`,
+          teamId,
+          teamName: pub.name,
+          teamColor: pub.color,
+          playerId: fallbackPid,
+          playerName: memberRec?.name ?? fallbackPid,
+          avatar: memberRec?.avatar,
+          lat: teamLoc.lat,
+          lng: teamLoc.lng,
+          accuracy: teamLoc.accuracy,
+          fixTimestamp: teamLoc.timestamp || 0,
+          lastOnlineAt,
+          isOnlineNow,
+          isOwnPlayer: Boolean(
+            ownMember && ownMember.playerId === fallbackPid
+          ),
+        });
+      }
+    }
+
+    if (positionedCandidates.length === 0) continue;
+
+    // 20-Minuten-Regel mit „Mindestens-1-übrig“-Garantie:
+    // Solange >= 1 Mitglied in den letzten 20 Min. online war (oder eine neue Position gesendet hat),
+    // zeige alle diese aktiven/kürzlichen Mitglieder; andernfalls behalte genau die 1 neueste Position
+    // des Teams bei, bis wieder eine neue Position aus diesem Team eintrifft.
+    const recentCandidates = positionedCandidates.filter(
+      (c) => c.isOnlineNow || nowMs - c.lastOnlineAt <= onlineWindowMs
+    );
+
+    let selectedForTeam: Array<Omit<TeamMemberMapMarker, 'offsetPxX' | 'offsetPxY'>>;
+    if (recentCandidates.length >= 1) {
+      selectedForTeam = recentCandidates.sort((a, b) =>
+        a.playerName.localeCompare(b.playerName, 'de')
+      );
+    } else {
+      const sortedByNewest = [...positionedCandidates].sort((a, b) => {
+        if (b.fixTimestamp !== a.fixTimestamp) {
+          return b.fixTimestamp - a.fixTimestamp;
+        }
+        if (b.lastOnlineAt !== a.lastOnlineAt) {
+          return b.lastOnlineAt - a.lastOnlineAt;
+        }
+        return a.playerName.localeCompare(b.playerName, 'de');
+      });
+      selectedForTeam = [sortedByNewest[0]];
+    }
+
+    for (const item of selectedForTeam) {
+      markers.push({
+        ...item,
+        offsetPxX: 0,
+        offsetPxY: 0,
+      });
+    }
+  }
+
+  // Deterministischer Fächer-Versatz, falls mehrere Fische fast exakt am selben Ort (<= 10 m) stehen
+  const assigned = new Set<number>();
+  for (let i = 0; i < markers.length; i++) {
+    if (assigned.has(i)) continue;
+    const cluster = [i];
+    assigned.add(i);
+    for (let j = i + 1; j < markers.length; j++) {
+      if (assigned.has(j)) continue;
+      if (distanceMeters(markers[i], markers[j]) <= 10) {
+        cluster.push(j);
+        assigned.add(j);
+      }
+    }
+    if (cluster.length > 1) {
+      const n = cluster.length;
+      cluster.forEach((memberIdx, k) => {
+        const centered = k - (n - 1) / 2;
+        markers[memberIdx].offsetPxX = Math.round(centered * 34);
+        markers[memberIdx].offsetPxY = n >= 3 && k % 2 === 1 ? -14 : 0;
+      });
+    }
+  }
+
+  return markers;
+}
+
 export function deduplicateEnabledMembers(
   members: Record<string, MemberRecord>,
   presence: Record<string, Record<string, PresenceSession>>,
@@ -790,23 +1072,31 @@ export function computeAveragedTeamLocationFromMemberFixes(
   nowMs: number
 ): TeamLocation {
   const prevFixes = prevLocation?.memberFixes ?? {};
-  const nextFixes: Record<string, GeoFix> = {};
+  const retainedMemberFixes: Record<string, GeoFix> = {};
+  const MAX_ROUND_RETENTION_MS = 24 * 60 * 60_000;
 
-  // Behalte nur frische Fixes (max. 5 Minuten alt), damit ein ausgefallenes Handy den Schnitt nicht ewig wegzieht
+  // Bewahre die letzte Position jedes Teammitglieds der Runde in memberFixes auf,
+  // damit die 20-Minuten-Online-Regel & der Letzte-Position-Fallback auf der Karte exakt greifen.
   for (const [pid, oldFix] of Object.entries(prevFixes)) {
-    if (oldFix && nowMs - oldFix.timestamp <= TEAM_MEMBER_FIX_MAX_AGE_MS) {
-      nextFixes[pid] = oldFix;
+    if (oldFix && nowMs - oldFix.timestamp <= MAX_ROUND_RETENTION_MS) {
+      retainedMemberFixes[pid] = oldFix;
     }
   }
 
-  nextFixes[playerId] = {
+  const freshEntry: GeoFix = {
     lat: roundCoord5(fix.lat),
     lng: roundCoord5(fix.lng),
     accuracy: Math.round(fix.accuracy),
     timestamp: nowMs,
   };
+  retainedMemberFixes[playerId] = freshEntry;
 
-  const activeList = Object.values(nextFixes);
+  // Für die Durchschnitts-Koordinate des Teams zählen weiterhin nur frische Fixes (<= 5 Min.)
+  const freshForAverage = Object.values(retainedMemberFixes).filter(
+    (f) => nowMs - f.timestamp <= TEAM_MEMBER_FIX_MAX_AGE_MS
+  );
+  const activeList =
+    freshForAverage.length > 0 ? freshForAverage : [freshEntry];
   const count = activeList.length;
   const sumLat = activeList.reduce((acc, f) => acc + f.lat, 0);
   const sumLng = activeList.reduce((acc, f) => acc + f.lng, 0);
@@ -819,7 +1109,7 @@ export function computeAveragedTeamLocationFromMemberFixes(
     timestamp: nowMs,
     updatedByUid: uid,
     activeContributorCount: count,
-    memberFixes: nextFixes,
+    memberFixes: retainedMemberFixes,
   };
 }
 

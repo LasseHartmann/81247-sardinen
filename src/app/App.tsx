@@ -64,7 +64,7 @@ import { useWakeLock } from '../hooks/useWakeLock';
 import {
   buildReadyToken,
   deduplicateEnabledMembers,
-  isPlayerOnline,
+  resolveVisibleTeamMemberMarkers,
 } from '../services/databaseAdapter';
 import {
   generateRandomId,
@@ -232,7 +232,17 @@ export const App: React.FC = () => {
     string | null
   >(null);
   const [buyingPreviewClue, setBuyingPreviewClue] = useState(false);
+  const [memberMarkerClockMs, setMemberMarkerClockMs] = useState<number>(() =>
+    adapter.getServerNow()
+  );
   const autoSubmittingThermoRef = useRef(false);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setMemberMarkerClockMs(adapter.getServerNow());
+    }, 15_000);
+    return () => window.clearInterval(id);
+  }, [adapter]);
 
   const latestPublicStateRef = useRef(publicState);
   latestPublicStateRef.current = publicState;
@@ -1053,42 +1063,19 @@ export const App: React.FC = () => {
       ? { [ownTeam.id]: gameState.teamLocations[ownTeam.id] ?? null }
       : gameState.teamLocations;
 
-  const onlineTeamMembersByTeamId = (() => {
-    const result: Record<
-      string,
-      Array<{ playerId: string; name: string; avatar?: string }>
-    > = {};
-    const deduped = deduplicateEnabledMembers(
-      gameState.members,
-      gameState.presence
-    );
-    for (const m of deduped) {
-      if (isOverviewMember(m)) continue;
-      if (m.side !== 'SEEKER' || !m.teamId) continue;
-      if (
-        !isPlayerOnline(
-          m.playerId,
-          gameState.members,
-          gameState.presence,
-          ownMember.uid
-        )
-      ) {
-        continue;
-      }
-      if (!result[m.teamId]) {
-        result[m.teamId] = [];
-      }
-      result[m.teamId].push({
-        playerId: m.playerId,
-        name: m.name,
-        avatar: m.avatar,
-      });
-    }
-    for (const list of Object.values(result)) {
-      list.sort((a, b) => a.name.localeCompare(b.name, 'de'));
-    }
-    return result;
-  })();
+  const visibleTeamMemberMarkers =
+    publicState.status === 'LOBBY'
+      ? []
+      : resolveVisibleTeamMemberMarkers({
+          visibleTeamLocations: visibleMapTeamLocations,
+          teamsPublic: gameState.teamsPublic,
+          members: gameState.members,
+          presence: gameState.presence,
+          activeTeamIds: activeRoundTeamIds,
+          ownMember,
+          ownFix: geo.currentFix,
+          nowMs: Math.max(memberMarkerClockMs, adapter.getServerNow()),
+        });
 
   const exposedHiderLocation =
     gameState.activeLeashViolation &&
@@ -1831,10 +1818,7 @@ export const App: React.FC = () => {
             publishedRadar={publicState.radarCircle}
             exposedHiderLocation={exposedHiderLocation}
             liveHiderLocations={liveHiderLocations}
-            visibleTeamLocations={visibleMapTeamLocations}
-            teamsPublic={gameState.teamsPublic}
-            onlineTeamMembersByTeamId={onlineTeamMembersByTeamId}
-            activeTeamIds={activeRoundTeamIds}
+            teamMemberMarkers={visibleTeamMemberMarkers}
             clues={isManhunt ? [] : visibleMapClues}
             hiddenClueIds={hiddenClueIds}
             activePreviewQuestion={isManhunt ? null : activePreviewQuestion}
@@ -1947,8 +1931,8 @@ export const App: React.FC = () => {
                     <span>Türkiser Kreis = Versteck-Radius / Radar</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="h-3 w-4 shrink-0 rounded-xs border border-zinc-500 bg-amber-400/70" />
-                    <span>Sardinendose = Sucher-Team (live)</span>
+                    <span className="h-2.5 w-4 shrink-0 rounded-full border border-amber-500 bg-amber-400/80" />
+                    <span>Fisch + Team = Letzte Position der Sucher</span>
                   </div>
                 </div>
               </div>

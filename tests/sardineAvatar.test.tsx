@@ -3,8 +3,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { PlayerAvatar } from '../src/components/Common/PlayerAvatar';
 import { AdminAccountManager } from '../src/components/Lobby/AdminAccountManager';
 import {
-  createTeamBeaconIcon,
-  renderTeamTinPopupHtml,
+  createTeamMemberFishIcon,
+  renderTeamMemberFishPopupHtml,
 } from '../src/components/Map/CustomMarkers';
 import {
   canPlayerUseExclusiveTier,
@@ -14,6 +14,7 @@ import {
   type SardineAvatarConfig,
 } from '../src/config/sardineAvatar';
 import { createDemoStore } from '../src/demo/demoStore';
+import { resolveVisibleTeamMemberMarkers } from '../src/services/databaseAdapter';
 
 describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
   afterEach(() => {
@@ -113,69 +114,183 @@ describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
     expect(el.querySelector('svg')).not.toBeNull();
   });
 
-  it('baut die Karten-Sardinenbüchse (createTeamBeaconIcon) mit allen Online-Teammitgliedern im Inneren', () => {
-    const members = [
-      {
+  it('zeigt statt eines Team-Logos jedes Teammitglied als eigenen Fisch mit Team an (20-Min.-Fenster + Letzte-Position-Garantie)', () => {
+    const lasseAvatar = serializeSardineAvatar({
+      color: 'gold',
+      hat: 'crown',
+      glasses: 'monocle',
+      extra: 'mustache',
+    });
+
+    const icon = createTeamMemberFishIcon({
+      playerId: 'lasse',
+      playerName: 'Lasse',
+      avatar: lasseAvatar,
+      teamName: 'Team 1 (Bernstein)',
+      teamColor: '#f59e0b',
+      isOnlineNow: true,
+      offsetPxX: 0,
+      offsetPxY: 0,
+    });
+    const html = String(icon.options.html ?? '');
+    expect(html).toContain('Lasse');
+    expect(html).toContain('TEAM 1');
+    expect(html).not.toContain('in der Dose');
+    expect(html).toContain('<svg ');
+
+    const t0 = 1_700_000_000_000;
+    const popupHtml = renderTeamMemberFishPopupHtml({
+      playerId: 'lasse',
+      playerName: 'Lasse',
+      avatar: lasseAvatar,
+      teamName: 'Team 1 (Bernstein)',
+      teamColor: '#f59e0b',
+      accuracyMeters: 8,
+      isOnlineNow: false,
+      lastOnlineAt: t0 - 5 * 60_000,
+      nowMs: t0,
+    });
+    expect(popupHtml).toContain('Lasse');
+    expect(popupHtml).toContain('Team 1 (Bernstein)');
+    expect(popupHtml).toContain('vor 5 Min.');
+
+    // 3 Teammitglieder: Lasse (Fix bei t0), Linus (Fix bei t0 + 10m), Thomas (Fix bei t0 + 15m)
+    const members = {
+      u_lasse: {
+        uid: 'u_lasse',
         playerId: 'lasse',
         name: 'Lasse',
-        avatar: serializeSardineAvatar({
-          color: 'gold',
-          hat: 'crown',
-          glasses: 'monocle',
-          extra: 'mustache',
-        }),
+        avatar: lasseAvatar,
+        isHost: false,
+        enabled: true,
+        side: 'SEEKER' as const,
+        teamId: 'team-1',
       },
-      {
+      u_linus: {
+        uid: 'u_linus',
         playerId: 'linus',
         name: 'Linus',
-        avatar: serializeSardineAvatar({
-          color: 'midnight',
-          hat: 'ninja',
-          glasses: 'shades',
-          extra: 'chain',
-        }),
+        isHost: false,
+        enabled: true,
+        side: 'SEEKER' as const,
+        teamId: 'team-1',
       },
-      {
+      u_thomas: {
+        uid: 'u_thomas',
         playerId: 'thomas',
         name: 'Thomas',
-        avatar: serializeSardineAvatar({
-          color: 'orange',
-          hat: 'captain',
-          glasses: 'goggles',
-          extra: 'cape',
-        }),
+        isHost: false,
+        enabled: true,
+        side: 'SEEKER' as const,
+        teamId: 'team-1',
       },
-    ];
+    };
+    const teamsPublic = {
+      'team-1': {
+        id: 'team-1',
+        name: 'Team 1 (Bernstein)',
+        color: '#f59e0b',
+        memberPlayerIds: ['lasse', 'linus', 'thomas'],
+        beaconPlayerId: 'lasse',
+        status: 'ACTIVE' as const,
+        penaltyMs: 0,
+        catchTimestampMs: null,
+        clueCount: 0,
+      },
+    };
+    const baseTeamLoc = {
+      lat: 48.165,
+      lng: 11.465,
+      accuracy: 8,
+      timestamp: t0 + 15 * 60_000,
+      updatedByUid: 'u_thomas',
+      memberFixes: {
+        lasse: { lat: 48.16, lng: 11.46, accuracy: 8, timestamp: t0 },
+        linus: {
+          lat: 48.165,
+          lng: 11.465,
+          accuracy: 8,
+          timestamp: t0 + 10 * 60_000,
+        },
+        thomas: {
+          lat: 48.17,
+          lng: 11.47,
+          accuracy: 8,
+          timestamp: t0 + 15 * 60_000,
+        },
+      },
+    };
+    const offlinePresence = {
+      u_lasse: { tab1: { online: false, lastSeen: t0 } },
+      u_linus: { tab1: { online: false, lastSeen: t0 + 10 * 60_000 } },
+      u_thomas: { tab1: { online: false, lastSeen: t0 + 15 * 60_000 } },
+    };
 
-    const icon = createTeamBeaconIcon('Team 1 (Bernstein)', '#f59e0b', members);
-    const html = String(icon.options.html ?? '');
-    expect(html).toContain('TEAM 1');
-    expect(html).toContain('• 3');
-    expect(html).toContain('title="Lasse"');
-    expect(html).toContain('title="Linus"');
-    expect(html).toContain('title="Thomas"');
-    // Aufreißlasche + 3 Sardinen = mindestens 4 eingebettete SVGs
-    expect((html.match(/<svg /g) ?? []).length).toBeGreaterThanOrEqual(4);
-
-    // Bei 5+ Online-Spielern werden 4 Sardinen + "+1" Überlauf-Badge angezeigt
-    const iconFive = createTeamBeaconIcon('Team 2', '#a855f7', [
-      ...members,
-      { playerId: 'nick', name: 'Nick' },
-      { playerId: 'max', name: 'Max' },
-    ]);
-    expect(String(iconFive.options.html ?? '')).toContain('+1');
-
-    const popupHtml = renderTeamTinPopupHtml({
-      teamName: 'Team 1',
-      color: '#f59e0b',
-      accuracyMeters: 8,
-      onlineMembers: members,
-      activeContributorCount: 3,
+    // 1. Bei t0 + 18 Min.: alle 3 waren in den letzten 20 Min. online -> alle 3 sichtbar
+    const at18m = resolveVisibleTeamMemberMarkers({
+      visibleTeamLocations: { 'team-1': baseTeamLoc },
+      teamsPublic,
+      members,
+      presence: offlinePresence,
+      nowMs: t0 + 18 * 60_000,
     });
-    expect(popupHtml).toContain('3 in der Dose');
-    expect(popupHtml).toContain('Lasse');
-    expect(popupHtml).toContain('Linus');
-    expect(popupHtml).toContain('Thomas');
+    expect(at18m.map((m) => m.playerId)).toEqual(['lasse', 'linus', 'thomas']);
+
+    // 2. Bei t0 + 25 Min.: Lasse (>20 Min. offline) fällt weg, Linus & Thomas bleiben sichtbar
+    const at25m = resolveVisibleTeamMemberMarkers({
+      visibleTeamLocations: { 'team-1': baseTeamLoc },
+      teamsPublic,
+      members,
+      presence: offlinePresence,
+      nowMs: t0 + 25 * 60_000,
+    });
+    expect(at25m.map((m) => m.playerId)).toEqual(['linus', 'thomas']);
+
+    // 3. Bei t0 + 32 Min.: auch Linus (>20 Min.) fällt weg -> nur noch 1 Position übrig (Thomas)
+    const at32m = resolveVisibleTeamMemberMarkers({
+      visibleTeamLocations: { 'team-1': baseTeamLoc },
+      teamsPublic,
+      members,
+      presence: offlinePresence,
+      nowMs: t0 + 32 * 60_000,
+    });
+    expect(at32m.map((m) => m.playerId)).toEqual(['thomas']);
+
+    // 4. Bei t0 + 50 Min. (alle >20 Min. offline): die letzte verbleibende Position (Thomas) bleibt sichtbar!
+    const at50m = resolveVisibleTeamMemberMarkers({
+      visibleTeamLocations: { 'team-1': baseTeamLoc },
+      teamsPublic,
+      members,
+      presence: offlinePresence,
+      nowMs: t0 + 50 * 60_000,
+    });
+    expect(at50m.map((m) => m.playerId)).toEqual(['thomas']);
+    expect(at50m[0].lat).toBe(48.17);
+
+    // 5. Sobald eine neue Position aus dem Team eintrifft (Lasse bei t0 + 52 Min.), wird diese neue gezeigt
+    const updatedLoc = {
+      ...baseTeamLoc,
+      timestamp: t0 + 52 * 60_000,
+      updatedByUid: 'u_lasse',
+      memberFixes: {
+        ...baseTeamLoc.memberFixes,
+        lasse: {
+          lat: 48.175,
+          lng: 11.475,
+          accuracy: 6,
+          timestamp: t0 + 52 * 60_000,
+        },
+      },
+    };
+    const at52m = resolveVisibleTeamMemberMarkers({
+      visibleTeamLocations: { 'team-1': updatedLoc },
+      teamsPublic,
+      members,
+      presence: offlinePresence,
+      nowMs: t0 + 52 * 60_000,
+    });
+    expect(at52m.map((m) => m.playerId)).toEqual(['lasse']);
+    expect(at52m[0].lat).toBe(48.175);
   });
 
   it('erzwingt für das Admin-Konto das Matrix-Cyber-Icon und ermöglicht dem Admin das Verwalten von Konten (Passwort-Reset, Sperren & Löschen)', async () => {

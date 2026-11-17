@@ -171,17 +171,21 @@ export function useGeolocation(params: UseGeolocationParams): {
   }, [watcherGeneration, powerSaveMode]);
 
   // Effektive Position bestimmen (Manueller Testklick > Hardware-GPS > Manhunt-GPS-Fallback > Demo-Default)
+  const storedMemberDemoFix =
+    (ownMember?.playerId
+      ? ownTeamStoredLocation?.memberFixes?.[ownMember.playerId]
+      : undefined) ?? ownTeamStoredLocation;
   const currentFix: GeoFix | null =
     (canUseManualClicks && manualFix) ||
     hardwareFix ||
     (isManhuntSardineFallbackAllowed && manualFix) ||
     (adapter.mode === 'demo'
-      ? ownTeamStoredLocation
+      ? storedMemberDemoFix
         ? {
-            lat: ownTeamStoredLocation.lat,
-            lng: ownTeamStoredLocation.lng,
-            accuracy: ownTeamStoredLocation.accuracy,
-            timestamp: ownTeamStoredLocation.timestamp,
+            lat: storedMemberDemoFix.lat,
+            lng: storedMemberDemoFix.lng,
+            accuracy: storedMemberDemoFix.accuracy,
+            timestamp: storedMemberDemoFix.timestamp,
           }
         : {
             lat: MAP_DEFAULT_CENTER[0],

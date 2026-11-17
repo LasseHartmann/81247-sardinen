@@ -155,7 +155,7 @@ export function useGameTimer(
       : 0;
 
   let nextStageRemainingMs: number | null = null;
-  let nextStageLabel = 'Finales 25m-Radar aktiv';
+  let nextStageLabel = 'Finales 100m-Radar aktiv';
   const classicRadii = getClassicRadarRadiiForPlayArea(publicState.playArea);
 
   if (computedPhase === 'HIDING' && netElapsedMs < sched.hidingDurationMs) {

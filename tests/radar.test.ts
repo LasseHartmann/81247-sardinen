@@ -62,7 +62,7 @@ describe('Inside-Out Schrumpf-Radar (500-Trial Monte-Carlo & Phasenlogik)', () =
       expect(check.valid, check.violations.join('; ')).toBe(true);
 
       // Prüfe zusätzlich explizit alle Radien und Anti-Tangenten-Abstand
-      expect(stages.map((s) => s.radiusMeters)).toEqual([800, 400, 200, 100, 25]);
+      expect(stages.map((s) => s.radiusMeters)).toEqual([800, 500, 300, 200, 100]);
 
       const c5 = stages[4];
       const distAtoC5 = distanceMeters(anchor, c5.center);
@@ -109,18 +109,18 @@ describe('Inside-Out Schrumpf-Radar (500-Trial Monte-Carlo & Phasenlogik)', () =
     expect(getDueRadarCircle(25 * 60_000, stages)?.stage).toBe(1);
 
     expect(getPhaseForElapsedMs(30 * 60_000, STANDARD_SCHEDULE)).toBe('RADAR_2');
-    expect(getDueRadarCircle(30 * 60_000, stages)?.radiusMeters).toBe(400);
+    expect(getDueRadarCircle(30 * 60_000, stages)?.radiusMeters).toBe(500);
 
     expect(getPhaseForElapsedMs(35 * 60_000, STANDARD_SCHEDULE)).toBe('RADAR_3');
-    expect(getDueRadarCircle(35 * 60_000, stages)?.radiusMeters).toBe(200);
+    expect(getDueRadarCircle(35 * 60_000, stages)?.radiusMeters).toBe(300);
 
     expect(getPhaseForElapsedMs(40 * 60_000, STANDARD_SCHEDULE)).toBe('RADAR_4');
-    expect(getDueRadarCircle(40 * 60_000, stages)?.radiusMeters).toBe(100);
+    expect(getDueRadarCircle(40 * 60_000, stages)?.radiusMeters).toBe(200);
 
     expect(getPhaseForElapsedMs(45 * 60_000, STANDARD_SCHEDULE)).toBe('ENDGAME');
     const endgameCircle = getDueRadarCircle(52 * 60_000, stages);
     expect(endgameCircle?.stage).toBe(5);
-    expect(endgameCircle?.radiusMeters).toBe(25);
+    expect(endgameCircle?.radiusMeters).toBe(100);
   });
 
   it('berechnet den Manhunt-Ping- & Schrumpfplan (alle 10 Min. in den ersten 3/4, alle 5 Min. im letzten Viertel)', () => {
@@ -237,7 +237,7 @@ describe('Inside-Out Schrumpf-Radar (500-Trial Monte-Carlo & Phasenlogik)', () =
     expect(nonZeroOffsetStages).toBeGreaterThan(2000);
   });
 
-  it('passt die 5 Radar-Schrumpfstufen dynamisch an die Kartengröße an (von Kartengröße bis 25 m) und unterstützt Suchdauern von 30 Min. bis 10 Std. (600 Min.)', () => {
+  it('passt die 5 Radar-Schrumpfstufen dynamisch an die Kartengröße an (von Kartengröße bis 100 m) und unterstützt Suchdauern von 30 Min. bis 10 Std. (600 Min.)', () => {
     const rng = createSeededRng(2026_1116);
 
     // 1. Fläche & Äquivalent-Radius für 81247, Ganz München & Kreis-Zone
@@ -255,13 +255,13 @@ describe('Inside-Out Schrumpf-Radar (500-Trial Monte-Carlo & Phasenlogik)', () =
     expect(radii81247[2]).toBeGreaterThan(radii81247[3]);
     expect(radii81247[3]).toBeGreaterThan(radii81247[4]);
     expect(radii81247[4]).toBeGreaterThan(radii81247[5]);
-    expect(radii81247[5]).toBe(25);
+    expect(radii81247[5]).toBe(100);
 
     const munichPoly = buildMunichMultiPlzPolygon(ALL_MUNICH_POSTAL_CODES);
     const radiiMunich = getClassicRadarRadiiForPlayArea(munichPoly);
     expect(radiiMunich[1]).toBeGreaterThan(radii81247[1]);
     expect(radiiMunich[1]).toBeGreaterThan(9000);
-    expect(radiiMunich[5]).toBe(25);
+    expect(radiiMunich[5]).toBe(100);
 
     const circle500 = buildCustomCirclePlayAreaState({
       center: { lat: 48.1632, lng: 11.4569 },
@@ -272,7 +272,7 @@ describe('Inside-Out Schrumpf-Radar (500-Trial Monte-Carlo & Phasenlogik)', () =
     });
     const radiiCircle500 = getClassicRadarRadiiForPlayArea(circle500);
     expect(radiiCircle500[1]).toBe(500);
-    expect(radiiCircle500[5]).toBe(25);
+    expect(radiiCircle500[5]).toBe(100);
 
     // Alle dynamischen Radien erfüllen die Inside-Out-Verschachtelungs-Invarianten
     for (const customRadii of [radii81247, radiiMunich, radiiCircle500]) {
@@ -287,7 +287,7 @@ describe('Inside-Out Schrumpf-Radar (500-Trial Monte-Carlo & Phasenlogik)', () =
         customRadii[2],
         customRadii[3],
         customRadii[4],
-        25,
+        100,
       ]);
       const check = verifyRadarStageInvariants(
         { lat: 48.1632, lng: 11.4569 },

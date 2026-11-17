@@ -29,7 +29,6 @@ import {
   getActivePostalCodes,
   getMunichPlzEntry,
   getQuestionPenaltyMs,
-  MANHUNT_RADAR_RADII,
   parseAndValidateMunichPostalCodes,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
@@ -51,8 +50,7 @@ import {
   snapPointIntoMunichPlz,
   validateManualAnchorSelection,
 } from '../geo/boundary';
-import { destinationPoint, distanceMeters } from '../geo/distance';
-import { getClassicRadarRadiiForPlayArea } from '../geo/radar';
+import { distanceMeters } from '../geo/distance';
 import { useAuth } from '../hooks/useAuth';
 import {
   lockHiderAnchorAndGenerateRadar,
@@ -94,7 +92,6 @@ import type {
   PlayerSide,
   QuestionParams,
   QuestionType,
-  RadarStageId,
   RadiusOptionMeters,
 } from '../types/game';
 import {
@@ -210,7 +207,6 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<BottomNavTab>('LOBBY');
   const [hiddenClueIds, setHiddenClueIds] = useState<Set<string>>(new Set());
   const [thermoPointA, setThermoPointA] = useState<LatLng | null>(null);
-  const [thermoPointB, setThermoPointB] = useState<LatLng | null>(null);
   const [coneBearingDeg, setConeBearingDeg] = useState<number>(0);
   const [selectedRadius, setSelectedRadius] = useState<RadiusOptionMeters>(250);
   const [activePreviewQuestion, setActivePreviewQuestion] =
@@ -230,13 +226,12 @@ export const App: React.FC = () => {
   const [hiderFilterTeamId, setHiderFilterTeamId] = useState<string>('NONE');
   const [circlePickError, setCirclePickError] = useState<string | null>(null);
   const [circleEditorCollapsed, setCircleEditorCollapsed] = useState(false);
-  const [lobbyPreviewStage, setLobbyPreviewStage] =
-    useState<RadarStageId | null>(null);
   const [showMapLegend, setShowMapLegend] = useState(false);
   const [dismissedBriefingSessionId, setDismissedBriefingSessionId] = useState<
     string | null
   >(null);
   const [buyingPreviewClue, setBuyingPreviewClue] = useState(false);
+  const autoSubmittingThermoRef = useRef(false);
 
   const latestPublicStateRef = useRef(publicState);
   latestPublicStateRef.current = publicState;
@@ -251,7 +246,81 @@ export const App: React.FC = () => {
   useEffect(() => {
     setHiderFilterTeamId('NONE');
     setHiddenClueIds(new Set());
+    setThermoPointA(null);
   }, [publicState?.sessionId]);
+
+  // Thermometer stoppt automatisch, sobald die Mindestdistanz (250 m) ab Startpunkt A zurückgelegt wurde
+  useEffect(() => {
+    if (
+      !thermoPointA ||
+      !geo.currentFix ||
+      !publicState ||
+      publicState.status !== 'RUNNING' ||
+      publicState.currentPhase === 'HIDING' ||
+      !ownMember ||
+      ownMember.side !== 'SEEKER' ||
+      !ownTeam ||
+      ownTeam.status !== 'ACTIVE' ||
+      autoSubmittingThermoRef.current
+    ) {
+      return;
+    }
+
+    const endPt: LatLng = {
+      lat: geo.currentFix.lat,
+      lng: geo.currentFix.lng,
+    };
+    const walkedMeters = distanceMeters(thermoPointA, endPt);
+    if (walkedMeters < THERMOMETER_MIN_DISTANCE_METERS) {
+      return;
+    }
+
+    const startPt = thermoPointA;
+    autoSubmittingThermoRef.current = true;
+    setThermoPointA(null);
+    if (activePreviewQuestion === 'THERMOMETER') {
+      setActivePreviewQuestion(null);
+    }
+
+    const penaltyMs = getQuestionPenaltyMs(
+      'THERMOMETER',
+      publicState.classicSearchDurationMs
+    );
+    const req: ClueRequest = {
+      id: generateRandomId('req'),
+      teamId: ownTeam.id,
+      requestedByUid: ownMember.uid,
+      sessionId: publicState.sessionId,
+      questionType: 'THERMOMETER',
+      category: QUESTION_CATEGORY_MAP.THERMOMETER,
+      params: {
+        pointA: startPt,
+        pointB: endPt,
+      },
+      status: 'PENDING',
+      penaltyMs,
+      penaltyApplied: false,
+      refundedMs: 0,
+      createdAt: adapter.getServerNow(),
+      requesterSnapshotLocation: {
+        lat: geo.currentFix.lat,
+        lng: geo.currentFix.lng,
+        accuracy: Math.round(geo.currentFix.accuracy),
+      },
+    };
+
+    void adapter.createClueRequest(req).finally(() => {
+      autoSubmittingThermoRef.current = false;
+    });
+  }, [
+    adapter,
+    activePreviewQuestion,
+    geo.currentFix,
+    ownMember,
+    ownTeam,
+    publicState,
+    thermoPointA,
+  ]);
 
   useEffect(() => {
     if (publicState?.gameMode === 'MANHUNT') {
@@ -1160,24 +1229,6 @@ export const App: React.FC = () => {
       setMapClickMode({ kind: 'NONE' });
       return;
     }
-    if (mapClickMode.kind === 'PICK_THERMO_A') {
-      setThermoPointA(pt);
-      setMapClickMode({ kind: 'NONE' });
-      if (activePreviewQuestion !== 'THERMOMETER') {
-        setActiveTab('QUESTIONS');
-      }
-      return;
-    }
-    if (mapClickMode.kind === 'PICK_THERMO_B') {
-      if (!thermoPointA && geo.currentFix) {
-        setThermoPointA({ lat: geo.currentFix.lat, lng: geo.currentFix.lng });
-      }
-      setThermoPointB(pt);
-      setMapClickMode({ kind: 'NONE' });
-      if (activePreviewQuestion !== 'THERMOMETER') {
-        setActiveTab('QUESTIONS');
-      }
-    }
   };
 
   const handleLockAnchorByHider = async () => {
@@ -1523,6 +1574,11 @@ export const App: React.FC = () => {
       return;
     }
 
+    if (activePreviewQuestion === 'THERMOMETER') {
+      setThermoPointA({ lat: geo.currentFix.lat, lng: geo.currentFix.lng });
+      return;
+    }
+
     let params: QuestionParams = {};
     if (
       activePreviewQuestion === 'SPLIT_NS' ||
@@ -1535,19 +1591,6 @@ export const App: React.FC = () => {
       params = { bearingDeg: coneBearingDeg };
     } else if (activePreviewQuestion === 'RADIUS_RADAR') {
       params = { radiusMeters: selectedRadius };
-    } else if (activePreviewQuestion === 'THERMOMETER') {
-      const ptA = thermoPointA ?? {
-        lat: geo.currentFix.lat,
-        lng: geo.currentFix.lng,
-      };
-      const ptB = thermoPointB ?? {
-        lat: geo.currentFix.lat,
-        lng: geo.currentFix.lng,
-      };
-      if (distanceMeters(ptA, ptB) < THERMOMETER_MIN_DISTANCE_METERS) {
-        return;
-      }
-      params = { pointA: ptA, pointB: ptB };
     }
 
     setBuyingPreviewClue(true);
@@ -1577,10 +1620,6 @@ export const App: React.FC = () => {
         },
       };
       await adapter.createClueRequest(req);
-      if (activePreviewQuestion === 'THERMOMETER') {
-        setThermoPointA(null);
-        setThermoPointB(null);
-      }
       setMapClickMode({ kind: 'NONE' });
       setActivePreviewQuestion(null);
     } finally {
@@ -1770,19 +1809,7 @@ export const App: React.FC = () => {
               !isManhunt &&
               Boolean(isSardineDashboardView || isOverviewAccount)
             }
-            publishedRadar={
-              publicState.status === 'LOBBY' && lobbyPreviewStage !== null
-                ? {
-                    stage: lobbyPreviewStage,
-                    radiusMeters: isManhunt
-                      ? MANHUNT_RADAR_RADII[lobbyPreviewStage]
-                      : getClassicRadarRadiiForPlayArea(publicState.playArea)[
-                          lobbyPreviewStage
-                        ],
-                    center: currentCircleCenter,
-                  }
-                : publicState.radarCircle
-            }
+            publishedRadar={publicState.radarCircle}
             exposedHiderLocation={exposedHiderLocation}
             liveHiderLocations={liveHiderLocations}
             visibleTeamLocations={visibleMapTeamLocations}
@@ -1795,17 +1822,6 @@ export const App: React.FC = () => {
             coneBearingDeg={coneBearingDeg}
             selectedRadius={selectedRadius}
             thermoPointA={thermoPointA}
-            thermoPointB={thermoPointB}
-            onChangeThermoPointA={setThermoPointA}
-            onChangeThermoPointB={(pt) => {
-              if (!thermoPointA && geo.currentFix) {
-                setThermoPointA({
-                  lat: geo.currentFix.lat,
-                  lng: geo.currentFix.lng,
-                });
-              }
-              setThermoPointB(pt);
-            }}
             clickMode={mapClickMode}
             onMapCoordinateClick={handleMapCoordinateClick}
             onRequestGpsPermission={geo.retryGpsPermission}
@@ -2002,44 +2018,25 @@ export const App: React.FC = () => {
 
           {/* Einheitliches Daumenzonen-Bottom-Dock am unteren Kartenrand (Smartphone-optimiert) */}
           <div className="pointer-events-none absolute right-2.5 bottom-2.5 left-2.5 z-[420] flex flex-col gap-2">
-            {/* 1. Aktive Live-Tippvorschau mit direktem Kauf-Button auf der Karte */}
-            {activePreviewQuestion && (() => {
+            {/* 1. Aktive Live-Tippvorschau oder laufendes Thermometer auf der Karte */}
+            {(activePreviewQuestion || thermoPointA) && (() => {
+              const effectiveQuestion = activePreviewQuestion ?? 'THERMOMETER';
               const previewPenaltyMin = Math.round(
                 getQuestionPenaltyMs(
-                  activePreviewQuestion,
+                  effectiveQuestion,
                   publicState.classicSearchDurationMs
                 ) / 60_000
               );
-              const previewA =
-                thermoPointA ??
-                (geo.currentFix
-                  ? { lat: geo.currentFix.lat, lng: geo.currentFix.lng }
-                  : null);
-              const previewB =
-                thermoPointB &&
-                (!previewA || distanceMeters(previewA, thermoPointB) >= 5)
-                  ? thermoPointB
-                  : previewA
-                    ? destinationPoint(
-                        previewA,
-                        THERMOMETER_MIN_DISTANCE_METERS,
-                        45
-                      )
-                    : null;
               const distAB =
-                previewA && previewB
-                  ? Math.round(distanceMeters(previewA, previewB))
+                thermoPointA && geo.currentFix
+                  ? Math.round(distanceMeters(thermoPointA, geo.currentFix))
                   : 0;
-              const isThermoOk =
-                activePreviewQuestion !== 'THERMOMETER' ||
-                distAB >= THERMOMETER_MIN_DISTANCE_METERS;
               const canBuyHere = Boolean(
                 isActiveSeeker &&
                   ownTeam &&
                   geo.currentFix &&
                   publicState.status === 'RUNNING' &&
                   effectivePhase !== 'HIDING' &&
-                  isThermoOk &&
                   !buyingPreviewClue
               );
 
@@ -2052,7 +2049,7 @@ export const App: React.FC = () => {
                     <div className="flex min-w-0 items-center gap-2">
                       <Eye className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
                       <span className="truncate font-tech text-xs font-bold text-[#F8FAFC] uppercase">
-                        {getQuestionLabelDe(activePreviewQuestion)}
+                        {getQuestionLabelDe(effectiveQuestion)}
                       </span>
                     </div>
                     <button
@@ -2069,7 +2066,7 @@ export const App: React.FC = () => {
                     </button>
                   </div>
 
-                  {activePreviewQuestion === 'CONE_45' && (
+                  {effectiveQuestion === 'CONE_45' && (
                     <div className="flex items-center justify-between gap-1.5 border-t border-dashed border-[#27272A] pt-2">
                       <button
                         type="button"
@@ -2093,7 +2090,7 @@ export const App: React.FC = () => {
                     </div>
                   )}
 
-                  {activePreviewQuestion === 'RADIUS_RADAR' && (
+                  {effectiveQuestion === 'RADIUS_RADAR' && (
                     <div className="grid grid-cols-5 gap-1 border-t border-dashed border-[#27272A] pt-2">
                       {([50, 100, 250, 500, 1000] as const).map((r) => (
                         <button
@@ -2112,14 +2109,14 @@ export const App: React.FC = () => {
                     </div>
                   )}
 
-                  {(activePreviewQuestion === 'SPLIT_NS' ||
-                    activePreviewQuestion === 'SPLIT_EW') && (
+                  {(effectiveQuestion === 'SPLIT_NS' ||
+                    effectiveQuestion === 'SPLIT_EW') && (
                     <div className="grid grid-cols-2 gap-1.5 border-t border-dashed border-[#27272A] pt-2">
                       <button
                         type="button"
                         onClick={() => setActivePreviewQuestion('SPLIT_NS')}
                         className={`min-h-[36px] rounded-lg px-2 font-tech text-[11px] font-bold uppercase ${
-                          activePreviewQuestion === 'SPLIT_NS'
+                          effectiveQuestion === 'SPLIT_NS'
                             ? 'bg-[var(--cmf-orange)] text-white'
                             : 'bg-[#181B20] text-[#CBD2D9]'
                         }`}
@@ -2130,7 +2127,7 @@ export const App: React.FC = () => {
                         type="button"
                         onClick={() => setActivePreviewQuestion('SPLIT_EW')}
                         className={`min-h-[36px] rounded-lg px-2 font-tech text-[11px] font-bold uppercase ${
-                          activePreviewQuestion === 'SPLIT_EW'
+                          effectiveQuestion === 'SPLIT_EW'
                             ? 'bg-[var(--cmf-orange)] text-white'
                             : 'bg-[#181B20] text-[#CBD2D9]'
                         }`}
@@ -2140,58 +2137,48 @@ export const App: React.FC = () => {
                     </div>
                   )}
 
-                  {activePreviewQuestion === 'THERMOMETER' && (
+                  {effectiveQuestion === 'THERMOMETER' && (
                     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-[#27272A] pt-2 text-[11px]">
                       <span className="font-tech text-[#CBD2D9]">
-                        Ziehe <strong className="text-white">Pin A</strong> &amp;{' '}
-                        <strong className="text-white">Pin B</strong> auf der Karte
+                        {thermoPointA
+                          ? `Bewege dich ${THERMOMETER_MIN_DISTANCE_METERS} m vom Startpunkt A (stoppt automatisch)`
+                          : `Startet am aktuellen GPS und stoppt automatisch nach ${THERMOMETER_MIN_DISTANCE_METERS} m`}
                       </span>
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 font-tech text-[10px] font-bold uppercase ${
-                            isThermoOk
-                              ? 'bg-[#00A896]/25 text-[#2DD4BF]'
-                              : 'bg-[#F59E0B]/25 text-[#FBBF24]'
-                          }`}
-                        >
+                      {thermoPointA && (
+                        <span className="rounded-full bg-[#F59E0B]/25 px-2.5 py-0.5 font-tech text-[10px] font-bold text-[#FBBF24] uppercase">
                           {distAB} / {THERMOMETER_MIN_DISTANCE_METERS} m
                         </span>
-                        {geo.currentFix && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              geo.currentFix &&
-                              setThermoPointB({
-                                lat: geo.currentFix.lat,
-                                lng: geo.currentFix.lng,
-                              })
-                            }
-                            className="rounded-lg bg-[#181B20] px-2 py-1 font-tech text-[10px] font-bold text-[#CBD2D9] uppercase"
-                          >
-                            B = Mein GPS
-                          </button>
-                        )}
-                      </div>
+                      )}
                     </div>
                   )}
 
-                  {isActiveSeeker && (
-                    <button
-                      type="button"
-                      data-testid="map-preview-buy-btn"
-                      disabled={!canBuyHere}
-                      onClick={() => void handleBuyActivePreviewClue()}
-                      className="cmf-btn-primary font-dot flex min-h-[42px] w-full items-center justify-center gap-2 px-4 py-2 text-xs font-bold disabled:opacity-45"
-                    >
-                      <span>
-                        {buyingPreviewClue
-                          ? 'Kaufe Tipp ...'
-                          : !isThermoOk
-                            ? `Mindestens ${THERMOMETER_MIN_DISTANCE_METERS} m Abstand nötig`
-                            : `Jetzt kaufen (+${previewPenaltyMin} Min.)`}
-                      </span>
-                    </button>
-                  )}
+                  {isActiveSeeker &&
+                    (effectiveQuestion === 'THERMOMETER' && thermoPointA ? (
+                      <button
+                        type="button"
+                        onClick={() => setThermoPointA(null)}
+                        className="cmf-btn-secondary font-tech flex min-h-[40px] w-full items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold text-[var(--cmf-orange)] uppercase"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        <span>Thermometer abbrechen ({distAB} / {THERMOMETER_MIN_DISTANCE_METERS} m)</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="map-preview-buy-btn"
+                        disabled={!canBuyHere}
+                        onClick={() => void handleBuyActivePreviewClue()}
+                        className="cmf-btn-primary font-dot flex min-h-[42px] w-full items-center justify-center gap-2 px-4 py-2 text-xs font-bold disabled:opacity-45"
+                      >
+                        <span>
+                          {buyingPreviewClue
+                            ? 'Kaufe Tipp ...'
+                            : effectiveQuestion === 'THERMOMETER'
+                              ? `Thermometer starten (+${previewPenaltyMin} Min.)`
+                              : `Jetzt kaufen (+${previewPenaltyMin} Min.)`}
+                        </span>
+                      </button>
+                    ))}
                 </div>
               );
             })()}
@@ -2381,13 +2368,13 @@ export const App: React.FC = () => {
               </PhysicsBottomSheet>
             )}
 
-            {/* 2. Kompakte Karten- & Schrumpfgrenzen-Vorschau-Leiste im Lobby-Modus */}
+            {/* 2. Kompakte Gebiets-Leiste im Lobby-Modus */}
             {publicState.status === 'LOBBY' && !isEditingCircleOnMap && (
-              <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg space-y-2.5 px-3.5 py-2.5 shadow-xl">
+              <div className="cmf-chassis cmf-sheet-up pointer-events-auto mx-auto w-full max-w-lg px-3.5 py-2.5 shadow-xl">
                 <div className="flex flex-wrap items-center justify-between gap-2.5">
                   <div className="min-w-0 flex-1">
                     <span className="block font-tech text-[10px] font-bold tracking-wider text-[var(--cmf-teal)] uppercase">
-                      GEBIETS- & SCHRUMPF-VORSCHAU // LOBBY
+                      SPIELGEBIET // LOBBY
                     </span>
                     <span className="block truncate font-industrial text-xs font-bold text-[var(--text-main)] sm:text-sm">
                       {publicState.playArea.name}
@@ -2408,10 +2395,7 @@ export const App: React.FC = () => {
                     <button
                       type="button"
                       data-testid="map-return-to-lobby-btn"
-                      onClick={() => {
-                        setLobbyPreviewStage(null);
-                        setActiveTab('LOBBY');
-                      }}
+                      onClick={() => setActiveTab('LOBBY')}
                       className="cmf-btn-primary font-dot inline-flex min-h-[38px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold"
                     >
                       <Users className="h-3.5 w-3.5" />
@@ -2419,47 +2403,6 @@ export const App: React.FC = () => {
                     </button>
                   </div>
                 </div>
-
-                {/* Schrumpf-Stufen-Wähler direkt auf der Vollbild-Karte */}
-                {(() => {
-                  const previewRadii = isManhunt
-                    ? MANHUNT_RADAR_RADII
-                    : getClassicRadarRadiiForPlayArea(publicState.playArea);
-                  return (
-                    <div
-                      data-testid="map-lobby-shrink-preview-bar"
-                      className="grid grid-cols-6 gap-1 border-t cmf-divider pt-2"
-                    >
-                      <button
-                        type="button"
-                        data-testid="map-lobby-shrink-stage-0"
-                        onClick={() => setLobbyPreviewStage(null)}
-                        className={`min-h-[32px] rounded-lg px-1.5 py-1 font-tech text-[10px] font-bold uppercase transition-all ${
-                          lobbyPreviewStage === null
-                            ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
-                            : 'cmf-btn-secondary'
-                        }`}
-                      >
-                        Start
-                      </button>
-                      {([1, 2, 3, 4, 5] as RadarStageId[]).map((st) => (
-                        <button
-                          key={st}
-                          type="button"
-                          data-testid={`map-lobby-shrink-stage-${st}`}
-                          onClick={() => setLobbyPreviewStage(st)}
-                          className={`min-h-[32px] rounded-lg px-1 py-1 font-tech text-[10px] font-bold transition-all ${
-                            lobbyPreviewStage === st
-                              ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
-                              : 'cmf-btn-secondary'
-                          }`}
-                        >
-                          {st}: {previewRadii[st]}m
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })()}
               </div>
             )}
 
@@ -2746,7 +2689,6 @@ export const App: React.FC = () => {
             ownMember={ownMember}
             ownTeam={ownTeam}
             ownFix={geo.currentFix}
-            canUseMapClicks={canUseMapClicks}
             teamRequests={visibleRequestsMap}
             teamClues={seekerOwnTeamCluesMap}
             cluesByTeam={gameState.cluesByTeam}
@@ -2759,15 +2701,12 @@ export const App: React.FC = () => {
             onToggleClueOverlay={handleToggleClueOverlay}
             thermoPointA={thermoPointA}
             onSetThermoPointA={setThermoPointA}
-            thermoPointB={thermoPointB}
-            onSetThermoPointB={setThermoPointB}
             coneBearingDeg={coneBearingDeg}
             onChangeConeBearingDeg={setConeBearingDeg}
             selectedRadius={selectedRadius}
             onChangeSelectedRadius={setSelectedRadius}
             activePreviewQuestion={activePreviewQuestion}
             onChangePreviewQuestion={setActivePreviewQuestion}
-            onRequestMapPointPick={setMapClickMode}
             onNavigateToMap={() => setActiveTab('MAP')}
           />
         )}

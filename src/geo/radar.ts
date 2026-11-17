@@ -14,13 +14,13 @@ import { bearingDegrees, destinationPoint, distanceMeters } from './distance';
 
 export const DEFAULT_RADAR_RADII: Record<RadarStageId, number> = {
   1: 800,
-  2: 400,
-  3: 200,
-  4: 100,
-  5: 25,
+  2: 500,
+  3: 300,
+  4: 200,
+  5: 100,
 };
 
-export const FINAL_RADAR_RADIUS_METERS = 25;
+export const FINAL_RADAR_RADIUS_METERS = 100;
 
 function isPlayAreaStateObj(
   input: PlayAreaState | Feature<Polygon | MultiPolygon>
@@ -101,7 +101,7 @@ function roundRadarRadiusStep(rawMeters: number): number {
 /**
  * Berechnet die 5 Radar-Schrumpfstufen (Stufe 1 -> 5) dynamisch passend zur Kartengröße,
  * sodass das Radar von der Größe der Karte (Stufe 1 = R_map = sqrt(Fläche / pi))
- * geometrisch bis auf 25 m (Stufe 5) schrumpft.
+ * geometrisch bis auf 100 m (Stufe 5) schrumpft.
  */
 export function getClassicRadarRadiiForPlayArea(
   playArea?: PlayAreaState | Feature<Polygon | MultiPolygon> | null
@@ -111,7 +111,7 @@ export function getClassicRadarRadiiForPlayArea(
   }
   const rawMapRadius = getPlayAreaEquivalentRadiusMeters(playArea);
   const r5 = FINAL_RADAR_RADIUS_METERS;
-  const r1 = Math.max(65, roundRadarRadiusStep(rawMapRadius));
+  const r1 = Math.max(r5 + 40, roundRadarRadiusStep(rawMapRadius));
 
   const rawStages: Record<RadarStageId, number> = {
     1: r1,
@@ -121,7 +121,7 @@ export function getClassicRadarRadiiForPlayArea(
     5: r5,
   };
 
-  // Garantiere strikt absteigende Radien R1 > R2 > R3 > R4 > R5 = 25 m
+  // Garantiere strikt absteigende Radien R1 > R2 > R3 > R4 > R5 = 100 m
   const stages: Record<RadarStageId, number> = { ...rawStages };
   stages[5] = r5;
   stages[4] = Math.max(stages[5] + 5, stages[4]);

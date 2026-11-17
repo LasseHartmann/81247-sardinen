@@ -151,7 +151,7 @@ export function getPhaseLabelDe(phase: GamePhase): string {
     case 'RADAR_4':
       return 'Radar Stufe 4 (100 m)';
     case 'ENDGAME':
-      return 'Endspiel (25 m)';
+      return 'Endspiel (100 m)';
   }
 }
 

@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { GameHubScreen } from '../src/components/Lobby/GameHubScreen';
-import { ShrinkingBorderPreview } from '../src/components/Lobby/ShrinkingBorderPreview';
-import {
-  buildCustomCirclePlayAreaState,
-  buildRadarScheduleForHidingMinutes,
-} from '../src/config/gameConfig';
+import { HiderMediaResponseModal } from '../src/components/Questions/HiderMediaResponseModal';
 import { createDemoStore } from '../src/demo/demoStore';
 
 describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
@@ -103,36 +99,55 @@ describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
     expect(store.getSnapshot().rooms?.[roomB.roomCode]).toBeDefined();
   });
 
-  it('rendert die interaktive Schrumpf-Grenzen-Vorschau (ShrinkingBorderPreview) mit allen 5 Stufen und Animation', () => {
-    const circleArea = buildCustomCirclePlayAreaState({
-      center: { lat: 48.1632, lng: 11.4569 },
-      radiusMeters: 800,
-      postalCodes: ['81247'],
-      confirmedByUid: 'host',
-      nowMs: 1000,
-    });
-    const schedule = buildRadarScheduleForHidingMinutes(15, 60);
-
+  it('bietet bei Foto-Fragen im HiderMediaResponseModal eine Kamera-Blitz-Steuerung an', () => {
+    const store = createDemoStore();
     render(
-      <ShrinkingBorderPreview
-        playArea={circleArea}
-        gameMode="CLASSIC"
-        radarSchedule={schedule}
+      <HiderMediaResponseModal
+        adapter={store.adapter}
+        openRequests={[
+          {
+            id: 'req-photo-1',
+            teamId: 'team-alpha',
+            requestedByUid: 'seeker1',
+            sessionId: 'sess-1',
+            questionType: 'MEDIA_SKY',
+            category: 4,
+            params: {},
+            status: 'AWAITING_HIDER_MEDIA',
+            penaltyMs: 180_000,
+            penaltyApplied: true,
+            refundedMs: 0,
+            createdAt: Date.now(),
+            requesterSnapshotLocation: {
+              lat: 48.1632,
+              lng: 11.4569,
+              accuracy: 8,
+            },
+          },
+        ]}
+        teamsPublic={{}}
+        teamLocations={{}}
+        anchorPoint={{
+          lat: 48.1632,
+          lng: 11.4569,
+          accuracy: 8,
+          lockedAt: Date.now(),
+          lockedByUid: 'hider1',
+        }}
+        publicState={{
+          phase: 'OPEN_SEARCH',
+          classicSearchDurationMs: 60 * 60_000,
+        } as never}
+        netElapsedMs={15 * 60_000}
+        sardineGroupMemberNames={['Anna']}
       />
     );
 
-    expect(screen.getByTestId('shrinking-border-preview')).toBeTruthy();
-    expect(screen.getByTestId('shrink-preview-radius-1').textContent).toBe(
-      '800 m'
-    );
-    expect(screen.getByTestId('shrink-preview-radius-5').textContent).toBe(
-      '25 m'
-    );
+    const flashToggle = screen.getByTestId('hider-camera-flash-toggle');
+    expect(flashToggle.textContent).toContain('Blitz: AUS');
 
-    fireEvent.click(screen.getByTestId('shrink-preview-stage-3'));
-    expect(screen.getByText(/Stufe 3: Radius/i)).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId('shrink-preview-play-btn'));
-    expect(screen.getByText(/Stopp/i)).toBeTruthy();
+    fireEvent.click(flashToggle);
+    expect(flashToggle.textContent).toContain('Blitz: AN');
+    expect(screen.getByTestId('open-hider-camera-btn')).toBeTruthy();
   });
 });

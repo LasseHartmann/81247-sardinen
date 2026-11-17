@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
-  ChevronDown,
   ChevronUp,
   Clock,
   Compass,
@@ -86,7 +85,6 @@ import type {
 import { formatMinutesHumanDe } from '../../utils/formatting';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
 import { PlayerHostedLobbiesSection } from './PlayerHostedLobbiesSection';
-import { ShrinkingBorderPreview } from './ShrinkingBorderPreview';
 
 export interface LobbyScreenProps {
   adapter: DatabaseAdapter;
@@ -150,8 +148,6 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   const [confirmDeleteLobby, setConfirmDeleteLobby] = useState(false);
   const [deletingLobby, setDeletingLobby] = useState(false);
   const [showAllSeekerTeams, setShowAllSeekerTeams] = useState(false);
-  const [guestDetailsExpanded, setGuestDetailsExpanded] = useState(false);
-  const [hostAdvancedExpanded, setHostAdvancedExpanded] = useState(false);
 
   const handleDeleteCurrentLobby = async () => {
     if (!isHost || deletingLobby) return;
@@ -1224,61 +1220,33 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
           {!canEditSettings ? (
             /* Kompakte 3-Kachel-Zusammenfassung für Nicht-Hosts */
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <div className="cmf-well p-3">
-                  <span className="font-tech block text-[9px] font-bold text-[var(--text-muted)] uppercase">
-                    MODUS
-                  </span>
-                  <span className="font-industrial text-sm font-bold text-[var(--text-main)]">
-                    {isManhunt ? 'Manhunt (Bewegung)' : 'Klassisch (Festes Versteck)'}
-                  </span>
-                </div>
-                <div data-testid="lobby-zone-summary" className="cmf-well p-3">
-                  <span className="font-tech block text-[9px] font-bold text-[var(--text-muted)] uppercase">
-                    SPIELGEBIET
-                  </span>
-                  <span className="font-industrial text-sm font-bold text-[var(--text-main)]">
-                    {activeZoneSummaryTitle}
-                  </span>
-                </div>
-                <div className="cmf-well p-3">
-                  <span className="font-tech block text-[9px] font-bold text-[var(--text-muted)] uppercase">
-                    ZEITEN
-                  </span>
-                  <span className="font-industrial text-sm font-bold text-[var(--text-main)]">
-                    {isManhunt
-                      ? `${manhuntHeadStartMin} Min. Vorsprung • ${manhuntShrinkMin} Min. Jagd`
-                      : `${classicHidingMin} Min. Verstecken • ${formatMinutesHumanDe(classicSearchMin)} Suche`}
-                  </span>
-                </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="cmf-well p-3">
+                <span className="font-tech block text-[9px] font-bold text-[var(--text-muted)] uppercase">
+                  MODUS
+                </span>
+                <span className="font-industrial text-sm font-bold text-[var(--text-main)]">
+                  {isManhunt ? 'Manhunt (Bewegung)' : 'Klassisch (Festes Versteck)'}
+                </span>
               </div>
-
-              <button
-                type="button"
-                onClick={() => setGuestDetailsExpanded((v) => !v)}
-                className="cmf-btn-secondary font-tech flex min-h-[36px] w-full items-center justify-center gap-1.5 py-1.5 text-[11px] font-bold uppercase"
-              >
-                {guestDetailsExpanded ? (
-                  <>
-                    <ChevronUp className="h-3.5 w-3.5" />
-                    <span>Zonen-Vorschau ausblenden</span>
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-3.5 w-3.5" />
-                    <span>Zonen-Schrumpfung ansehen</span>
-                  </>
-                )}
-              </button>
-
-              {guestDetailsExpanded && (
-                <ShrinkingBorderPreview
-                  playArea={publicState.playArea}
-                  gameMode={publicState.gameMode}
-                  radarSchedule={publicState.radarSchedule}
-                />
-              )}
+              <div data-testid="lobby-zone-summary" className="cmf-well p-3">
+                <span className="font-tech block text-[9px] font-bold text-[var(--text-muted)] uppercase">
+                  SPIELGEBIET
+                </span>
+                <span className="font-industrial text-sm font-bold text-[var(--text-main)]">
+                  {activeZoneSummaryTitle}
+                </span>
+              </div>
+              <div className="cmf-well p-3">
+                <span className="font-tech block text-[9px] font-bold text-[var(--text-muted)] uppercase">
+                  ZEITEN
+                </span>
+                <span className="font-industrial text-sm font-bold text-[var(--text-main)]">
+                  {isManhunt
+                    ? `${manhuntHeadStartMin} Min. Vorsprung • ${manhuntShrinkMin} Min. Jagd`
+                    : `${classicHidingMin} Min. Verstecken • ${formatMinutesHumanDe(classicSearchMin)} Suche`}
+                </span>
+              </div>
             </div>
           ) : (
             /* Übersichtliche Host-Konfiguration */
@@ -1595,70 +1563,54 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                         </div>
                       </div>
 
-                      <div className="cmf-well space-y-2 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <span className="font-tech block text-[10px] font-bold text-[var(--text-muted)] uppercase">
-                              Suchdauer
-                            </span>
-                            <span
-                              data-testid="lobby-classic-search-value"
-                              className="font-dot text-lg font-bold text-[var(--text-main)]"
-                            >
-                              {formatMinutesHumanDe(classicSearchMin)}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              data-testid="lobby-search-minus-btn"
-                              disabled={
-                                classicSearchMin <=
-                                CLASSIC_SEARCH_DURATION_MIN_MINUTES
-                              }
-                              onClick={() =>
-                                handleChangeClassicSearchMin(
-                                  classicSearchMin -
-                                    CLASSIC_SEARCH_DURATION_STEP_MINUTES
-                                )
-                              }
-                              className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
-                            >
-                              <Minus className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              data-testid="lobby-search-plus-btn"
-                              disabled={
-                                classicSearchMin >=
-                                CLASSIC_SEARCH_DURATION_MAX_MINUTES
-                              }
-                              onClick={() =>
-                                handleChangeClassicSearchMin(
-                                  classicSearchMin +
-                                    CLASSIC_SEARCH_DURATION_STEP_MINUTES
-                                )
-                              }
-                              className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
-                            >
-                              <Plus className="h-4 w-4" />
-                            </button>
-                          </div>
+                      <div className="cmf-well flex items-center justify-between gap-2 p-3">
+                        <div>
+                          <span className="font-tech block text-[10px] font-bold text-[var(--text-muted)] uppercase">
+                            Suchdauer
+                          </span>
+                          <span
+                            data-testid="lobby-classic-search-value"
+                            className="font-dot text-lg font-bold text-[var(--text-main)]"
+                          >
+                            {formatMinutesHumanDe(classicSearchMin)}
+                          </span>
                         </div>
-
-                        <input
-                          type="range"
-                          data-testid="lobby-search-duration-slider"
-                          aria-label="Suchdauer in Minuten"
-                          min={CLASSIC_SEARCH_DURATION_MIN_MINUTES}
-                          max={CLASSIC_SEARCH_DURATION_MAX_MINUTES}
-                          step={CLASSIC_SEARCH_DURATION_STEP_MINUTES}
-                          value={classicSearchMin}
-                          onChange={(e) =>
-                            handleChangeClassicSearchMin(Number(e.target.value))
-                          }
-                          className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-black/15 accent-[var(--cmf-teal)]"
-                        />
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            data-testid="lobby-search-minus-btn"
+                            disabled={
+                              classicSearchMin <=
+                              CLASSIC_SEARCH_DURATION_MIN_MINUTES
+                            }
+                            onClick={() =>
+                              handleChangeClassicSearchMin(
+                                classicSearchMin -
+                                  CLASSIC_SEARCH_DURATION_STEP_MINUTES
+                              )
+                            }
+                            className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="lobby-search-plus-btn"
+                            disabled={
+                              classicSearchMin >=
+                              CLASSIC_SEARCH_DURATION_MAX_MINUTES
+                            }
+                            onClick={() =>
+                              handleChangeClassicSearchMin(
+                                classicSearchMin +
+                                  CLASSIC_SEARCH_DURATION_STEP_MINUTES
+                              )
+                            }
+                            className="cmf-btn-secondary flex h-9 w-9 items-center justify-center rounded-xl disabled:opacity-40"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -1669,7 +1621,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                       <span>2. {formatMinutesHumanDe(classicSearchMin)} Suche</span>
                       <span>→</span>
                       <span>
-                        3. Radar ab +{formatMinutesHumanDe(radarStartAfterSearchMin)} ({classicRadii[1]}m → 25m)
+                        3. Radar ab +{formatMinutesHumanDe(radarStartAfterSearchMin)} ({classicRadii[1]}m → 100m)
                       </span>
                     </div>
                   </div>
@@ -1754,59 +1706,36 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 )}
               </div>
 
-              {/* Einklappbare Vorschau & Profi-Optionen */}
-              <div className="border-t cmf-divider pt-3 space-y-3">
-                <button
-                  type="button"
-                  onClick={() => setHostAdvancedExpanded((v) => !v)}
-                  className="cmf-btn-secondary font-tech flex min-h-[38px] w-full items-center justify-between px-3.5 py-2 text-[11px] font-bold uppercase"
-                >
-                  <span>Zonen-Vorschau &amp; Test-Optionen</span>
-                  {hostAdvancedExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </button>
-
-                {hostAdvancedExpanded && (
-                  <div className="space-y-3">
-                    <ShrinkingBorderPreview
-                      playArea={publicState.playArea}
-                      gameMode={publicState.gameMode}
-                      radarSchedule={publicState.radarSchedule}
-                    />
-
-                    <div className="cmf-well flex items-center justify-between gap-3 p-3">
-                      <div>
-                        <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
-                          Indoor-Testmodus (Standort per Klick)
-                        </span>
-                        <span className="text-[11px] text-[var(--text-muted)]">
-                          Nur zum Testen im Haus – draußen ausschalten!
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={publicState.allowTestClicks}
-                        onClick={() =>
-                          void adapter.savePublicStateByHost({
-                            ...publicState,
-                            allowTestClicks: !publicState.allowTestClicks,
-                          })
-                        }
-                        className={`font-tech min-h-[36px] shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-bold uppercase ${
-                          publicState.allowTestClicks
-                            ? 'cmf-btn-active'
-                            : 'cmf-btn-secondary'
-                        }`}
-                      >
-                        {publicState.allowTestClicks ? 'AN' : 'AUS'}
-                      </button>
-                    </div>
+              {/* Optionaler Indoor-Testmodus */}
+              <div className="border-t cmf-divider pt-3">
+                <div className="cmf-well flex items-center justify-between gap-3 p-3">
+                  <div>
+                    <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
+                      Indoor-Testmodus (Standort per Klick)
+                    </span>
+                    <span className="text-[11px] text-[var(--text-muted)]">
+                      Nur zum Testen im Haus – draußen ausschalten!
+                    </span>
                   </div>
-                )}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={publicState.allowTestClicks}
+                    onClick={() =>
+                      void adapter.savePublicStateByHost({
+                        ...publicState,
+                        allowTestClicks: !publicState.allowTestClicks,
+                      })
+                    }
+                    className={`font-tech min-h-[36px] shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-bold uppercase ${
+                      publicState.allowTestClicks
+                        ? 'cmf-btn-active'
+                        : 'cmf-btn-secondary'
+                    }`}
+                  >
+                    {publicState.allowTestClicks ? 'AN' : 'AUS'}
+                  </button>
+                </div>
               </div>
             </div>
           )}

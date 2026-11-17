@@ -1153,7 +1153,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       3. AUTOMATISCHES ENDSPIEL-SCHRUMPF-RADAR
                     </p>
                     <p className="leading-relaxed text-[var(--text-muted)]">
-                      Im Verlauf der Suchzeit erscheint für alle Teams kostenlos ein schrumpfender Radar-Kreis um das Versteck (angepasst an die Kartengröße bis auf <strong>25 m</strong> im Endspiel).
+                      Im Verlauf der Suchzeit erscheint für alle Teams kostenlos ein schrumpfender Radar-Kreis um das Versteck (angepasst an die Kartengröße bis auf <strong>100 m</strong> im Endspiel).
                     </p>
                   </div>
                 </div>

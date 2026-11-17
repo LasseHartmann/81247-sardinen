@@ -25,7 +25,7 @@ import {
   THERMOMETER_MIN_DISTANCE_METERS,
 } from '../../config/gameConfig';
 import { isOverviewMember } from '../../config/players';
-import { destinationPoint, distanceMeters } from '../../geo/distance';
+import { distanceMeters } from '../../geo/distance';
 import type { DatabaseAdapter } from '../../services/databaseAdapter';
 import { generateRandomId } from '../../services/qrService';
 import type {
@@ -45,7 +45,6 @@ import {
   formatDurationClock,
 } from '../../utils/formatting';
 import { HardwareKnob } from '../Common/HardwareKnob';
-import type { MapClickInteractionMode } from '../Map/GameMap';
 import { ClueHistoryList } from './ClueHistoryList';
 
 export interface QuestionMenuProps {
@@ -55,7 +54,6 @@ export interface QuestionMenuProps {
   ownMember: MemberRecord;
   ownTeam: TeamPublic | null;
   ownFix: GeoFix | null;
-  canUseMapClicks: boolean;
   teamRequests: Record<string, ClueRequest>;
   teamClues: Record<string, ClueRecord>;
   cluesByTeam: Record<string, Record<string, ClueRecord>>;
@@ -68,15 +66,12 @@ export interface QuestionMenuProps {
   onToggleClueOverlay: (clueId: string) => void;
   thermoPointA: LatLng | null;
   onSetThermoPointA: (pt: LatLng | null) => void;
-  thermoPointB: LatLng | null;
-  onSetThermoPointB: (pt: LatLng | null) => void;
   coneBearingDeg: number;
   onChangeConeBearingDeg: (deg: number) => void;
   selectedRadius: RadiusOptionMeters;
   onChangeSelectedRadius: (r: RadiusOptionMeters) => void;
   activePreviewQuestion: QuestionType | null;
   onChangePreviewQuestion: (q: QuestionType | null) => void;
-  onRequestMapPointPick: (mode: MapClickInteractionMode) => void;
   onNavigateToMap: () => void;
 }
 
@@ -101,15 +96,12 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   onToggleClueOverlay,
   thermoPointA,
   onSetThermoPointA,
-  thermoPointB,
-  onSetThermoPointB,
   coneBearingDeg,
   onChangeConeBearingDeg,
   selectedRadius,
   onChangeSelectedRadius,
   activePreviewQuestion,
   onChangePreviewQuestion,
-  onRequestMapPointPick,
   onNavigateToMap,
 }) => {
   const [splitAxis, setSplitAxis] = useState<'SPLIT_NS' | 'SPLIT_EW'>('SPLIT_NS');
@@ -157,10 +149,9 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         r.status === 'AWAITING_HIDER_MEDIA')
   );
 
-  const effectiveEndpointB: LatLng | null = thermoPointB ?? ownFix;
   const thermoDistanceMeters =
-    thermoPointA && effectiveEndpointB
-      ? Math.round(distanceMeters(thermoPointA, effectiveEndpointB))
+    thermoPointA && ownFix
+      ? Math.round(distanceMeters(thermoPointA, ownFix))
       : 0;
 
   const toggleOrShowMapPreview = (qType: QuestionType) => {
@@ -168,22 +159,6 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
     if (activePreviewQuestion === qType) {
       onChangePreviewQuestion(null);
     } else {
-      if (qType === 'THERMOMETER') {
-        const baseA =
-          thermoPointA ??
-          (ownFix ? { lat: ownFix.lat, lng: ownFix.lng } : null);
-        if (!thermoPointA && baseA) {
-          onSetThermoPointA(baseA);
-        }
-        if (
-          baseA &&
-          (!thermoPointB || distanceMeters(baseA, thermoPointB) < 5)
-        ) {
-          onSetThermoPointB(
-            destinationPoint(baseA, THERMOMETER_MIN_DISTANCE_METERS, 45)
-          );
-        }
-      }
       onChangePreviewQuestion(qType);
       onNavigateToMap();
     }
@@ -252,7 +227,6 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
       await adapter.createClueRequest(req);
       if (questionType === 'THERMOMETER') {
         onSetThermoPointA(null);
-        onSetThermoPointB(null);
       }
       if (activePreviewQuestion) {
         onChangePreviewQuestion(null);
@@ -664,72 +638,102 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             </div>
           </div>
 
-          {/* 1C: Warm oder Kalt (Thermometer) */}
+          {/* 1C: Warm oder Kalt (Thermometer – stoppt automatisch nach 250 m Bewegung) */}
           <div className="cmf-well p-3.5 space-y-2.5">
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-2 font-industrial text-sm font-bold text-[var(--text-main)]">
                   <Thermometer className="h-4 w-4 text-[var(--cmf-teal)]" />
-                  Warm oder Kalt (Thermometer)
+                  Warm oder Kalt ({THERMOMETER_MIN_DISTANCE_METERS} m)
                 </span>
                 <span className="cmf-badge-teal rounded-full px-2 py-0.5 font-tech text-[10px] font-bold uppercase">
                   +{thermoMin} Min.
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                Setzt Start A und Ziel B (mind. {THERMOMETER_MIN_DISTANCE_METERS} m Abstand): Seid ihr bei B näher dran (wärmer) oder weiter weg (kälter)?
+                Startet an eurem aktuellen Standort und stoppt automatisch, sobald ihr euch {THERMOMETER_MIN_DISTANCE_METERS} m bewegt habt.
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-2 pt-0.5">
-              <button
-                type="button"
-                data-testid="pick-thermo-b-map-btn"
-                onClick={() => {
-                  const baseA =
-                    thermoPointA ??
-                    (ownFix ? { lat: ownFix.lat, lng: ownFix.lng } : null);
-                  if (!thermoPointA && baseA) {
-                    onSetThermoPointA(baseA);
-                  }
-                  if (
-                    baseA &&
-                    (!thermoPointB || distanceMeters(baseA, thermoPointB) < 5)
-                  ) {
-                    onSetThermoPointB(
-                      destinationPoint(baseA, THERMOMETER_MIN_DISTANCE_METERS, 45)
-                    );
-                  }
-                  onChangePreviewQuestion('THERMOMETER');
-                  onRequestMapPointPick({
-                    kind: 'PICK_THERMO_B',
-                    label: `Ziehe Pin A & B auf der Karte (mind. ${THERMOMETER_MIN_DISTANCE_METERS} m Abstand)`,
-                  });
-                  onNavigateToMap();
-                }}
-                className="cmf-btn-secondary font-tech inline-flex min-h-[44px] items-center justify-center gap-1.5 bg-white/80 px-3.5 py-2 text-[11px] font-bold text-[var(--text-main)] uppercase"
+            {thermoPointA ? (
+              <div
+                data-testid="thermometer-active-tracker"
+                className="space-y-2.5 pt-0.5"
               >
-                <Eye className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
-                <span>
-                  {thermoPointA
-                    ? `Punkte ändern (${thermoDistanceMeters} m)`
-                    : 'Punkte A & B auf Karte setzen'}
-                </span>
-              </button>
+                <div className="cmf-oled space-y-2 p-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-tech font-bold text-[#F8FAFC] uppercase">
+                      Thermometer läuft ...
+                    </span>
+                    <span className="font-dot text-sm text-[var(--cmf-amber)]">
+                      {thermoDistanceMeters} / {THERMOMETER_MIN_DISTANCE_METERS} m
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-white/15">
+                    <div
+                      className="h-full rounded-full bg-[var(--cmf-teal)] transition-all duration-300"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.round(
+                            (thermoDistanceMeters /
+                              THERMOMETER_MIN_DISTANCE_METERS) *
+                              100
+                          )
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-[#9AA4AE]">
+                    Bewegt euch weiter – bei {THERMOMETER_MIN_DISTANCE_METERS} m stoppt das Thermometer automatisch!
+                  </p>
+                </div>
 
-              {thermoPointA &&
-                effectiveEndpointB &&
-                thermoDistanceMeters >= THERMOMETER_MIN_DISTANCE_METERS &&
-                renderBuyButton({
-                  questionType: 'THERMOMETER',
-                  penaltyMin: thermoMin,
-                  label: 'Kaufen',
-                  params: {
-                    pointA: thermoPointA,
-                    pointB: effectiveEndpointB,
-                  },
-                })}
-            </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChangePreviewQuestion('THERMOMETER');
+                      onNavigateToMap();
+                    }}
+                    className="cmf-btn-secondary font-tech inline-flex min-h-[42px] flex-1 items-center justify-center gap-1.5 bg-white/80 px-3 py-2 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                  >
+                    <MapIcon className="h-4 w-4 text-[var(--cmf-teal)]" />
+                    <span>Auf Karte zeigen</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="cancel-thermometer-btn"
+                    onClick={() => {
+                      onSetThermoPointA(null);
+                      if (activePreviewQuestion === 'THERMOMETER') {
+                        onChangePreviewQuestion(null);
+                      }
+                    }}
+                    className="cmf-btn-secondary font-tech inline-flex min-h-[42px] items-center justify-center gap-1 px-3.5 py-2 text-[11px] font-bold text-[var(--cmf-orange)] uppercase"
+                  >
+                    <X className="h-4 w-4" />
+                    <span>Abbrechen</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                {renderPreviewButton('THERMOMETER')}
+                <button
+                  type="button"
+                  data-testid="start-thermometer-btn"
+                  disabled={!canPurchase || busyType !== null}
+                  onClick={() => {
+                    if (!ownFix) return;
+                    onSetThermoPointA({ lat: ownFix.lat, lng: ownFix.lng });
+                  }}
+                  className="cmf-btn-primary font-dot flex min-h-[44px] flex-1 items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold disabled:opacity-45"
+                >
+                  <span>Thermometer starten (+{thermoMin} Min.)</span>
+                </button>
+              </div>
+            )}
           </div>
         </section>
 

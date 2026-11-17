@@ -151,7 +151,7 @@ export const TopHud: React.FC<TopHudProps> = ({
               </>
             ) : (
               <span className="truncate whitespace-nowrap">
-                {isManhunt ? '150m Zone' : '25m Radar'}
+                {isManhunt ? '150m Zone' : '100m Radar'}
               </span>
             )}
           </div>

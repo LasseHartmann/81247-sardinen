@@ -45,8 +45,6 @@ export interface MapClickInteractionMode {
     | 'NONE'
     | 'TEST_LOCATION'
     | 'PICK_ANCHOR_POINT'
-    | 'PICK_THERMO_A'
-    | 'PICK_THERMO_B'
     | 'PICK_PLAY_AREA_CIRCLE';
   label?: string;
 }
@@ -145,9 +143,6 @@ export interface GameMapProps {
   coneBearingDeg?: number;
   selectedRadius?: RadiusOptionMeters;
   thermoPointA?: LatLng | null;
-  thermoPointB?: LatLng | null;
-  onChangeThermoPointA?: (pt: LatLng) => void;
-  onChangeThermoPointB?: (pt: LatLng) => void;
   clickMode: MapClickInteractionMode;
   onMapCoordinateClick?: (pt: LatLng) => void;
   onRequestGpsPermission?: () => Promise<GeoFix | null> | void;
@@ -180,9 +175,6 @@ const GameMapInner: React.FC<GameMapProps> = ({
   coneBearingDeg = 0,
   selectedRadius = 250,
   thermoPointA,
-  thermoPointB,
-  onChangeThermoPointA,
-  onChangeThermoPointB,
   clickMode,
   onMapCoordinateClick,
   onRequestGpsPermission,
@@ -226,12 +218,6 @@ const GameMapInner: React.FC<GameMapProps> = ({
   onClickRef.current = onMapCoordinateClick;
   const clickModeRef = useRef(clickMode);
   clickModeRef.current = clickMode;
-  const activePreviewRef = useRef(activePreviewQuestion);
-  activePreviewRef.current = activePreviewQuestion;
-  const onThermoARef = useRef(onChangeThermoPointA);
-  onThermoARef.current = onChangeThermoPointA;
-  const onThermoBRef = useRef(onChangeThermoPointB);
-  onThermoBRef.current = onChangeThermoPointB;
   const onCircleCenterRef = useRef(onChangeCirclePlayAreaCenter);
   onCircleCenterRef.current = onChangeCirclePlayAreaCenter;
 
@@ -274,17 +260,22 @@ const GameMapInner: React.FC<GameMapProps> = ({
   }, [thermoPointA, activePreviewQuestion, previewOriginLat, previewOriginLng]);
 
   const effectiveThermoB = useMemo<LatLng | null>(() => {
+    const liveFix =
+      previewOriginLat !== null && previewOriginLng !== null
+        ? { lat: previewOriginLat, lng: previewOriginLng }
+        : null;
     if (
-      thermoPointB &&
-      (!effectiveThermoA || distanceMeters(effectiveThermoA, thermoPointB) >= 5)
+      liveFix &&
+      effectiveThermoA &&
+      distanceMeters(effectiveThermoA, liveFix) >= 5
     ) {
-      return thermoPointB;
+      return liveFix;
     }
     if (activePreviewQuestion === 'THERMOMETER' && effectiveThermoA) {
       return destinationPoint(effectiveThermoA, THERMOMETER_MIN_DISTANCE_METERS, 45);
     }
-    return thermoPointB ?? null;
-  }, [thermoPointB, effectiveThermoA, activePreviewQuestion]);
+    return liveFix;
+  }, [effectiveThermoA, activePreviewQuestion, previewOriginLat, previewOriginLng]);
 
   const liveConePreview = useMemo(() => {
     if (!activePreviewQuestion) return null;
@@ -352,10 +343,6 @@ const GameMapInner: React.FC<GameMapProps> = ({
       };
       if (clickModeRef.current.kind !== 'NONE' && onClickRef.current) {
         onClickRef.current(pt);
-        return;
-      }
-      if (activePreviewRef.current === 'THERMOMETER' && onThermoBRef.current) {
-        onThermoBRef.current(pt);
       }
     });
 
@@ -524,7 +511,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
     group.clearLayers();
     const renderer = canvasRendererRef.current ?? undefined;
 
-    const isThermoPreview = activePreviewQuestion === 'THERMOMETER';
+    const isThermoPreview =
+      activePreviewQuestion === 'THERMOMETER' || Boolean(thermoPointA);
     const thermoDist =
       effectiveThermoA && effectiveThermoB
         ? distanceMeters(effectiveThermoA, effectiveThermoB)
@@ -546,9 +534,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
       }).addTo(group);
     }
 
-    let abLine: L.Polyline | null = null;
     if (isThermoPreview && effectiveThermoA) {
-      // 250-Meter-Mindestradius um Startpunkt A als Orientierungskreis
+      // 250-Meter-Zielkreis um Startpunkt A
       L.circle([effectiveThermoA.lat, effectiveThermoA.lng], {
         renderer,
         radius: THERMOMETER_MIN_DISTANCE_METERS,
@@ -560,7 +547,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
       }).addTo(group);
 
       if (effectiveThermoB) {
-        abLine = L.polyline(
+        L.polyline(
           [
             [effectiveThermoA.lat, effectiveThermoA.lng],
             [effectiveThermoB.lat, effectiveThermoB.lng],
@@ -574,54 +561,13 @@ const GameMapInner: React.FC<GameMapProps> = ({
           }
         ).addTo(group);
       }
-    }
 
-    if (effectiveThermoA && (thermoPointA || isThermoPreview)) {
-      const markerA = L.marker([effectiveThermoA.lat, effectiveThermoA.lng], {
+      L.marker([effectiveThermoA.lat, effectiveThermoA.lng], {
         icon: createSelectionPinIcon('A', 'primary'),
-        draggable: Boolean(isThermoPreview && onThermoARef.current),
+        draggable: false,
       })
         .bindTooltip('THERMOMETER START [A]')
         .addTo(group);
-
-      markerA.on('drag', () => {
-        const pos = markerA.getLatLng();
-        if (abLine && effectiveThermoB) {
-          abLine.setLatLngs([
-            [pos.lat, pos.lng],
-            [effectiveThermoB.lat, effectiveThermoB.lng],
-          ]);
-        }
-      });
-      markerA.on('dragend', () => {
-        const pos = markerA.getLatLng();
-        onThermoARef.current?.({ lat: pos.lat, lng: pos.lng });
-      });
-    }
-
-    if (effectiveThermoB && (thermoPointB || isThermoPreview)) {
-      const markerB = L.marker([effectiveThermoB.lat, effectiveThermoB.lng], {
-        icon: createSelectionPinIcon('B', 'secondary'),
-        draggable: Boolean(onThermoBRef.current),
-      })
-        .bindTooltip(
-          `THERMOMETER ENDE [B] (${Math.round(thermoDist)} m) — Ziehen oder Karte antippen`
-        )
-        .addTo(group);
-
-      markerB.on('drag', () => {
-        const pos = markerB.getLatLng();
-        if (abLine && effectiveThermoA) {
-          abLine.setLatLngs([
-            [effectiveThermoA.lat, effectiveThermoA.lng],
-            [pos.lat, pos.lng],
-          ]);
-        }
-      });
-      markerB.on('dragend', () => {
-        const pos = markerB.getLatLng();
-        onThermoBRef.current?.({ lat: pos.lat, lng: pos.lng });
-      });
     }
 
     if (anchorPickLat !== null && anchorPickLng !== null) {
@@ -677,7 +623,6 @@ const GameMapInner: React.FC<GameMapProps> = ({
     effectiveThermoA,
     effectiveThermoB,
     thermoPointA,
-    thermoPointB,
     anchorPickLat,
     anchorPickLng,
     clickMode.kind,
@@ -1146,7 +1091,6 @@ export const GameMap = React.memo(GameMapInner, (prev, next) => {
   }
 
   if (!sameLatLng(prev.thermoPointA, next.thermoPointA)) return false;
-  if (!sameLatLng(prev.thermoPointB, next.thermoPointB)) return false;
   if (!sameLatLng(prev.exposedHiderLocation, next.exposedHiderLocation)) return false;
   if (prev.liveHiderLocations !== next.liveHiderLocations) return false;
 

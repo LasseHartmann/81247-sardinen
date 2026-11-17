@@ -84,6 +84,7 @@ import type {
 } from '../../types/game';
 import { formatMinutesHumanDe } from '../../utils/formatting';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
+import { HostQuestionRulesEditor } from './HostQuestionRulesEditor';
 import { PlayerHostedLobbiesSection } from './PlayerHostedLobbiesSection';
 
 export interface LobbyScreenProps {
@@ -1705,6 +1706,23 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* Preise & Distanzen der 4 Frage-Kategorien (Host-Konfiguration) */}
+              {!isManhunt && (
+                <div className="border-t cmf-divider pt-3">
+                  <HostQuestionRulesEditor
+                    questionConfig={publicState.questionConfig}
+                    onChange={(nextQuestionConfig) => {
+                      void adapter
+                        .savePublicStateByHost({
+                          ...publicState,
+                          questionConfig: nextQuestionConfig,
+                        })
+                        .catch(() => {});
+                    }}
+                  />
+                </div>
+              )}
 
               {/* Optionaler Indoor-Testmodus */}
               <div className="border-t cmf-divider pt-3">

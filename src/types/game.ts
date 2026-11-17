@@ -261,6 +261,30 @@ export interface PublicGameState {
   allowTestClicks: boolean;
   leashAlertActive: boolean;
   activeTeamIds: string[];
+  questionConfig?: QuestionRulesConfig;
+}
+
+export interface QuestionRulesConfig {
+  /** Kat. 1: Richtung (Nord/Süd, Ost/West, 45°-Kegel) Preis in Minuten */
+  directionPriceMinutes: number;
+  /** Kat. 1: Warm oder Kalt (Thermometer) Preis in Minuten */
+  thermometerPriceMinutes: number;
+  /** Kat. 1: Warm oder Kalt (Thermometer) Distanz in Metern (Standard: 250 m) */
+  thermometerDistanceMeters: number;
+  /** Kat. 2: Umkreis-Check (Radius-Radar) Preis in Minuten */
+  radiusRadarPriceMinutes: number;
+  /** Kat. 2: Umkreis-Check Distanz in Metern (Standard: 250 m) */
+  radiusRadarDistanceMeters: number;
+  /** Kat. 2: Entfernungs-Ring (Donut-Ring) Preis in Minuten */
+  donutRingPriceMinutes: number;
+  /** Kat. 2: Entfernungs-Ring Ringbreite in Metern (Standard: 200 m) */
+  donutRingStepMeters: number;
+  /** Kat. 3: Umgebungs-Check (Haltestelle, Wertstoffinsel, Grünfläche) Preis in Minuten */
+  environmentPriceMinutes: number;
+  /** Kat. 3: Umgebungs-Check Distanz (Umkreis um Haltestelle/Wertstoffinsel) in Metern (Standard: 150 m) */
+  environmentDistanceMeters: number;
+  /** Kat. 4: Live-Foto Preis in Minuten (Standard: 5 Min.) */
+  photoPriceMinutes: number;
 }
 
 export interface ControllerLease {
@@ -292,15 +316,9 @@ export type QuestionType =
   | 'MEDIA_GROUND'
   | 'MEDIA_SELFIE';
 
-export type RadiusOptionMeters = 50 | 100 | 250 | 500 | 1000;
+export type RadiusOptionMeters = number;
 
-export type DonutBandLabel =
-  | '0–200 m'
-  | '200–400 m'
-  | '400–600 m'
-  | '600–800 m'
-  | '800–1000 m'
-  | '1000 m+';
+export type DonutBandLabel = string;
 
 export interface QuestionParams {
   splitPoint?: LatLng;
@@ -308,6 +326,9 @@ export interface QuestionParams {
   pointB?: LatLng;
   bearingDeg?: number;
   radiusMeters?: RadiusOptionMeters;
+  thermometerDistanceMeters?: number;
+  donutStepMeters?: number;
+  environmentDistanceMeters?: number;
 }
 
 export type ClueRequestStatus =

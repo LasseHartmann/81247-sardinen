@@ -29,13 +29,14 @@ import {
   getActivePostalCodes,
   getMunichPlzEntry,
   getQuestionPenaltyMs,
+  getRadiusRadarOptions,
   parseAndValidateMunichPostalCodes,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
   PLAY_AREA_CIRCLE_STEP_METERS,
   QUESTION_CATEGORY_MAP,
+  resolveQuestionRulesConfig,
   TEAM_PALETTE,
-  THERMOMETER_MIN_DISTANCE_METERS,
 } from '../config/gameConfig';
 import { preloadGreenPolygonsForPostalCode } from '../config/fallbackOsm81247';
 import {
@@ -249,7 +250,14 @@ export const App: React.FC = () => {
     setThermoPointA(null);
   }, [publicState?.sessionId]);
 
-  // Thermometer stoppt automatisch, sobald die Mindestdistanz (250 m) ab Startpunkt A zurückgelegt wurde
+  const hostRadiusDefault = resolveQuestionRulesConfig(
+    publicState?.questionConfig
+  ).radiusRadarDistanceMeters;
+  useEffect(() => {
+    setSelectedRadius(hostRadiusDefault);
+  }, [hostRadiusDefault]);
+
+  // Thermometer stoppt automatisch, sobald die Mindestdistanz ab Startpunkt A zurückgelegt wurde
   useEffect(() => {
     if (
       !thermoPointA ||
@@ -266,12 +274,14 @@ export const App: React.FC = () => {
       return;
     }
 
+    const qConfig = resolveQuestionRulesConfig(publicState.questionConfig);
+    const targetThermoMeters = qConfig.thermometerDistanceMeters;
     const endPt: LatLng = {
       lat: geo.currentFix.lat,
       lng: geo.currentFix.lng,
     };
     const walkedMeters = distanceMeters(thermoPointA, endPt);
-    if (walkedMeters < THERMOMETER_MIN_DISTANCE_METERS) {
+    if (walkedMeters < targetThermoMeters) {
       return;
     }
 
@@ -284,7 +294,8 @@ export const App: React.FC = () => {
 
     const penaltyMs = getQuestionPenaltyMs(
       'THERMOMETER',
-      publicState.classicSearchDurationMs
+      publicState.classicSearchDurationMs,
+      publicState.questionConfig
     );
     const req: ClueRequest = {
       id: generateRandomId('req'),
@@ -296,6 +307,7 @@ export const App: React.FC = () => {
       params: {
         pointA: startPt,
         pointB: endPt,
+        thermometerDistanceMeters: targetThermoMeters,
       },
       status: 'PENDING',
       penaltyMs,
@@ -1579,18 +1591,24 @@ export const App: React.FC = () => {
       return;
     }
 
-    let params: QuestionParams = {};
+    const qConfig = resolveQuestionRulesConfig(publicState.questionConfig);
+    let params: QuestionParams = {
+      thermometerDistanceMeters: qConfig.thermometerDistanceMeters,
+      donutStepMeters: qConfig.donutRingStepMeters,
+      environmentDistanceMeters: qConfig.environmentDistanceMeters,
+    };
     if (
       activePreviewQuestion === 'SPLIT_NS' ||
       activePreviewQuestion === 'SPLIT_EW'
     ) {
       params = {
+        ...params,
         splitPoint: { lat: geo.currentFix.lat, lng: geo.currentFix.lng },
       };
     } else if (activePreviewQuestion === 'CONE_45') {
-      params = { bearingDeg: coneBearingDeg };
+      params = { ...params, bearingDeg: coneBearingDeg };
     } else if (activePreviewQuestion === 'RADIUS_RADAR') {
-      params = { radiusMeters: selectedRadius };
+      params = { ...params, radiusMeters: selectedRadius };
     }
 
     setBuyingPreviewClue(true);
@@ -1598,7 +1616,8 @@ export const App: React.FC = () => {
       const category = QUESTION_CATEGORY_MAP[activePreviewQuestion];
       const penaltyMs = getQuestionPenaltyMs(
         activePreviewQuestion,
-        publicState.classicSearchDurationMs
+        publicState.classicSearchDurationMs,
+        publicState.questionConfig
       );
       const req: ClueRequest = {
         id: generateRandomId('req'),
@@ -1822,6 +1841,7 @@ export const App: React.FC = () => {
             coneBearingDeg={coneBearingDeg}
             selectedRadius={selectedRadius}
             thermoPointA={thermoPointA}
+            questionConfig={publicState.questionConfig}
             clickMode={mapClickMode}
             onMapCoordinateClick={handleMapCoordinateClick}
             onRequestGpsPermission={geo.retryGpsPermission}
@@ -2021,10 +2041,18 @@ export const App: React.FC = () => {
             {/* 1. Aktive Live-Tippvorschau oder laufendes Thermometer auf der Karte */}
             {(activePreviewQuestion || thermoPointA) && (() => {
               const effectiveQuestion = activePreviewQuestion ?? 'THERMOMETER';
+              const qConfig = resolveQuestionRulesConfig(
+                publicState.questionConfig
+              );
+              const targetThermoMeters = qConfig.thermometerDistanceMeters;
+              const radiusOptions = getRadiusRadarOptions(
+                publicState.questionConfig
+              );
               const previewPenaltyMin = Math.round(
                 getQuestionPenaltyMs(
                   effectiveQuestion,
-                  publicState.classicSearchDurationMs
+                  publicState.classicSearchDurationMs,
+                  publicState.questionConfig
                 ) / 60_000
               );
               const distAB =
@@ -2091,13 +2119,13 @@ export const App: React.FC = () => {
                   )}
 
                   {effectiveQuestion === 'RADIUS_RADAR' && (
-                    <div className="grid grid-cols-5 gap-1 border-t border-dashed border-[#27272A] pt-2">
-                      {([50, 100, 250, 500, 1000] as const).map((r) => (
+                    <div className="flex flex-wrap gap-1 border-t border-dashed border-[#27272A] pt-2">
+                      {radiusOptions.map((r) => (
                         <button
                           key={r}
                           type="button"
                           onClick={() => setSelectedRadius(r)}
-                          className={`min-h-[36px] rounded-lg px-1 font-tech text-[10px] font-bold uppercase ${
+                          className={`min-h-[36px] flex-1 rounded-lg px-1.5 font-tech text-[10px] font-bold uppercase ${
                             selectedRadius === r
                               ? 'bg-[var(--cmf-orange)] text-white'
                               : 'bg-[#181B20] text-[#CBD2D9]'
@@ -2141,12 +2169,12 @@ export const App: React.FC = () => {
                     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-[#27272A] pt-2 text-[11px]">
                       <span className="font-tech text-[#CBD2D9]">
                         {thermoPointA
-                          ? `Bewege dich ${THERMOMETER_MIN_DISTANCE_METERS} m vom Startpunkt A (stoppt automatisch)`
-                          : `Startet am aktuellen GPS und stoppt automatisch nach ${THERMOMETER_MIN_DISTANCE_METERS} m`}
+                          ? `Bewege dich ${targetThermoMeters} m vom Startpunkt A (stoppt automatisch)`
+                          : `Startet am aktuellen GPS und stoppt automatisch nach ${targetThermoMeters} m`}
                       </span>
                       {thermoPointA && (
                         <span className="rounded-full bg-[#F59E0B]/25 px-2.5 py-0.5 font-tech text-[10px] font-bold text-[#FBBF24] uppercase">
-                          {distAB} / {THERMOMETER_MIN_DISTANCE_METERS} m
+                          {distAB} / {targetThermoMeters} m
                         </span>
                       )}
                     </div>
@@ -2160,7 +2188,7 @@ export const App: React.FC = () => {
                         className="cmf-btn-secondary font-tech flex min-h-[40px] w-full items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold text-[var(--cmf-orange)] uppercase"
                       >
                         <X className="h-3.5 w-3.5" />
-                        <span>Thermometer abbrechen ({distAB} / {THERMOMETER_MIN_DISTANCE_METERS} m)</span>
+                        <span>Thermometer abbrechen ({distAB} / {targetThermoMeters} m)</span>
                       </button>
                     ) : (
                       <button

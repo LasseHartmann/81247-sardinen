@@ -15,14 +15,16 @@ import {
   X,
   Filter,
   Map as MapIcon,
+  Settings2,
 } from 'lucide-react';
 import {
   getMediaRefundMs,
   getQuestionPenaltyMs,
+  getRadiusRadarOptions,
   MEDIA_RESPONSE_TIMEOUT_NET_MS,
   QUESTION_CATEGORY_MAP,
+  resolveQuestionRulesConfig,
   TEAM_PALETTE,
-  THERMOMETER_MIN_DISTANCE_METERS,
 } from '../../config/gameConfig';
 import { isOverviewMember } from '../../config/players';
 import { distanceMeters } from '../../geo/distance';
@@ -45,6 +47,7 @@ import {
   formatDurationClock,
 } from '../../utils/formatting';
 import { HardwareKnob } from '../Common/HardwareKnob';
+import { HostQuestionRulesEditor } from '../Lobby/HostQuestionRulesEditor';
 import { ClueHistoryList } from './ClueHistoryList';
 
 export interface QuestionMenuProps {
@@ -74,8 +77,6 @@ export interface QuestionMenuProps {
   onChangePreviewQuestion: (q: QuestionType | null) => void;
   onNavigateToMap: () => void;
 }
-
-const RADIUS_OPTIONS: readonly RadiusOptionMeters[] = [50, 100, 250, 500, 1000];
 
 export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   adapter,
@@ -107,7 +108,11 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   const [splitAxis, setSplitAxis] = useState<'SPLIT_NS' | 'SPLIT_EW'>('SPLIT_NS');
   const [busyType, setBusyType] = useState<QuestionType | null>(null);
   const [confirmingType, setConfirmingType] = useState<QuestionType | null>(null);
+  const [showHostRulesEditor, setShowHostRulesEditor] = useState(false);
 
+  const isHostOrAdmin = Boolean(
+    ownMember.isHost || isOverviewMember(ownMember)
+  );
   const isPaused = publicState.status === 'PAUSED' || publicState.pausedAt !== null;
   const isHidingPhase =
     publicState.status !== 'RUNNING' || publicState.currentPhase === 'HIDING';
@@ -116,24 +121,58 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   );
 
   const classicSearchDurationMs = publicState.classicSearchDurationMs;
-  const splitRadarMin = Math.round(
-    getQuestionPenaltyMs('SPLIT_NS', classicSearchDurationMs) / 60_000
+  const qConfig = resolveQuestionRulesConfig(publicState.questionConfig);
+  const radiusOptions = getRadiusRadarOptions(publicState.questionConfig);
+
+  const directionMin = Math.round(
+    getQuestionPenaltyMs(
+      'SPLIT_NS',
+      classicSearchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
   const thermoMin = Math.round(
-    getQuestionPenaltyMs('THERMOMETER', classicSearchDurationMs) / 60_000
+    getQuestionPenaltyMs(
+      'THERMOMETER',
+      classicSearchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
+  );
+  const radiusRadarMin = Math.round(
+    getQuestionPenaltyMs(
+      'RADIUS_RADAR',
+      classicSearchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
   const envMin = Math.round(
-    getQuestionPenaltyMs('OSM_TRANSIT', classicSearchDurationMs) / 60_000
+    getQuestionPenaltyMs(
+      'OSM_TRANSIT',
+      classicSearchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
   const donutMin = Math.round(
-    getQuestionPenaltyMs('DONUT_RING', classicSearchDurationMs) / 60_000
+    getQuestionPenaltyMs(
+      'DONUT_RING',
+      classicSearchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
   const photoMin = Math.round(
-    getQuestionPenaltyMs('MEDIA_SKY', classicSearchDurationMs) / 60_000
+    getQuestionPenaltyMs(
+      'MEDIA_SKY',
+      classicSearchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
   const photoRefundMin = Math.round(
-    getMediaRefundMs(classicSearchDurationMs) / 60_000
+    getMediaRefundMs(classicSearchDurationMs, publicState.questionConfig) /
+      60_000
   );
+  const thermoTargetMeters = qConfig.thermometerDistanceMeters;
+  const donutStepMeters = qConfig.donutRingStepMeters;
+  const envDistanceMeters = qConfig.environmentDistanceMeters;
 
   const canPurchase = Boolean(
     isSeekerActive && !isPaused && !isHidingPhase && ownFix
@@ -203,8 +242,15 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
       const category = QUESTION_CATEGORY_MAP[questionType];
       const penaltyMs = getQuestionPenaltyMs(
         questionType,
-        classicSearchDurationMs
+        classicSearchDurationMs,
+        publicState.questionConfig
       );
+      const enrichedParams: QuestionParams = {
+        thermometerDistanceMeters: thermoTargetMeters,
+        donutStepMeters,
+        environmentDistanceMeters: envDistanceMeters,
+        ...params,
+      };
       const req: ClueRequest = {
         id: generateRandomId('req'),
         teamId: ownTeam.id,
@@ -212,7 +258,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         sessionId: publicState.sessionId,
         questionType,
         category,
-        params,
+        params: enrichedParams,
         status: 'PENDING',
         penaltyMs,
         penaltyApplied: false,
@@ -336,15 +382,46 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
       <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
         <div className="mx-auto max-w-2xl space-y-4 pb-10">
           <div className="cmf-chassis p-4 sm:p-5 space-y-3">
-            <div>
-              <h2 className="font-dot flex items-center gap-2 text-lg sm:text-xl text-[var(--text-main)]">
-                <Filter className="h-4 w-4 text-[var(--cmf-teal)]" />
-                Gekaufte Tipps der Teams
-              </h2>
-              <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                Tippe auf ein Team, um dessen Tipps zu sehen.
-              </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="font-dot flex items-center gap-2 text-lg sm:text-xl text-[var(--text-main)]">
+                  <Filter className="h-4 w-4 text-[var(--cmf-teal)]" />
+                  Gekaufte Tipps der Teams
+                </h2>
+                <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                  Tippe auf ein Team, um dessen Tipps zu sehen.
+                </p>
+              </div>
+              {isHostOrAdmin && (
+                <button
+                  type="button"
+                  data-testid="toggle-host-question-rules-btn"
+                  onClick={() => setShowHostRulesEditor((v) => !v)}
+                  className={`font-tech inline-flex min-h-[36px] items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-bold uppercase ${
+                    showHostRulesEditor ? 'cmf-btn-active' : 'cmf-btn-secondary'
+                  }`}
+                >
+                  <Settings2 className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                  <span>Preise &amp; Distanzen</span>
+                </button>
+              )}
             </div>
+
+            {isHostOrAdmin && showHostRulesEditor && (
+              <div className="border-t cmf-divider pt-3">
+                <HostQuestionRulesEditor
+                  questionConfig={publicState.questionConfig}
+                  onChange={(nextQuestionConfig) => {
+                    void adapter
+                      .savePublicStateByHost({
+                        ...publicState,
+                        questionConfig: nextQuestionConfig,
+                      })
+                      .catch(() => {});
+                  }}
+                />
+              </div>
+            )}
 
             <div
               data-testid="hider-team-clue-filter"
@@ -460,7 +537,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   return (
     <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-2xl space-y-4 pb-12">
-        <div className="cmf-chassis p-4 sm:p-5">
+        <div className="cmf-chassis p-4 sm:p-5 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-dot text-lg sm:text-xl text-[var(--text-main)]">
@@ -471,18 +548,50 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               </p>
             </div>
 
-            {activePreviewQuestion && (
-              <button
-                type="button"
-                data-testid="menu-clear-preview-btn"
-                onClick={() => onChangePreviewQuestion(null)}
-                className="cmf-btn-active font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase"
-              >
-                <X className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
-                Vorschau aus
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {isHostOrAdmin && (
+                <button
+                  type="button"
+                  data-testid="toggle-host-question-rules-btn"
+                  onClick={() => setShowHostRulesEditor((v) => !v)}
+                  className={`font-tech inline-flex min-h-[38px] items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold uppercase ${
+                    showHostRulesEditor ? 'cmf-btn-active' : 'cmf-btn-secondary'
+                  }`}
+                >
+                  <Settings2 className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                  <span>Preise &amp; Distanzen</span>
+                </button>
+              )}
+
+              {activePreviewQuestion && (
+                <button
+                  type="button"
+                  data-testid="menu-clear-preview-btn"
+                  onClick={() => onChangePreviewQuestion(null)}
+                  className="cmf-btn-active font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase"
+                >
+                  <X className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                  Vorschau aus
+                </button>
+              )}
+            </div>
           </div>
+
+          {isHostOrAdmin && showHostRulesEditor && (
+            <div className="border-t cmf-divider pt-3">
+              <HostQuestionRulesEditor
+                questionConfig={publicState.questionConfig}
+                onChange={(nextQuestionConfig) => {
+                  void adapter
+                    .savePublicStateByHost({
+                      ...publicState,
+                      questionConfig: nextQuestionConfig,
+                    })
+                    .catch(() => {});
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Schnellsprungleiste */}
@@ -540,7 +649,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                   Himmelsrichtung
                 </span>
                 <span className="cmf-badge-teal rounded-full px-2 py-0.5 font-tech text-[10px] font-bold uppercase">
-                  +{splitRadarMin} Min.
+                  +{directionMin} Min.
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-[var(--text-muted)]">
@@ -583,7 +692,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               {renderPreviewButton(splitAxis)}
               {renderBuyButton({
                 questionType: splitAxis,
-                penaltyMin: splitRadarMin,
+                penaltyMin: directionMin,
                 label: 'Kaufen',
                 testId: 'buy-split-clue-btn',
                 params: {
@@ -604,7 +713,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                   Richtungs-Kegel (45°)
                 </span>
                 <span className="cmf-badge-teal rounded-full px-2 py-0.5 font-tech text-[10px] font-bold uppercase">
-                  +{splitRadarMin} Min.
+                  +{directionMin} Min.
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-[var(--text-muted)]">
@@ -631,27 +740,27 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               {renderPreviewButton('CONE_45')}
               {renderBuyButton({
                 questionType: 'CONE_45',
-                penaltyMin: splitRadarMin,
+                penaltyMin: directionMin,
                 label: 'Kaufen',
                 params: { bearingDeg: coneBearingDeg },
               })}
             </div>
           </div>
 
-          {/* 1C: Warm oder Kalt (Thermometer – stoppt automatisch nach 250 m Bewegung) */}
+          {/* 1C: Warm oder Kalt (Thermometer – stoppt automatisch nach konfigurierter Bewegung) */}
           <div className="cmf-well p-3.5 space-y-2.5">
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-2 font-industrial text-sm font-bold text-[var(--text-main)]">
                   <Thermometer className="h-4 w-4 text-[var(--cmf-teal)]" />
-                  Warm oder Kalt ({THERMOMETER_MIN_DISTANCE_METERS} m)
+                  Warm oder Kalt ({thermoTargetMeters} m)
                 </span>
                 <span className="cmf-badge-teal rounded-full px-2 py-0.5 font-tech text-[10px] font-bold uppercase">
                   +{thermoMin} Min.
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                Startet an eurem aktuellen Standort und stoppt automatisch, sobald ihr euch {THERMOMETER_MIN_DISTANCE_METERS} m bewegt habt.
+                Startet an eurem aktuellen Standort und stoppt automatisch, sobald ihr euch {thermoTargetMeters} m bewegt habt.
               </p>
             </div>
 
@@ -666,7 +775,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                       Thermometer läuft ...
                     </span>
                     <span className="font-dot text-sm text-[var(--cmf-amber)]">
-                      {thermoDistanceMeters} / {THERMOMETER_MIN_DISTANCE_METERS} m
+                      {thermoDistanceMeters} / {thermoTargetMeters} m
                     </span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-white/15">
@@ -676,16 +785,14 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                         width: `${Math.min(
                           100,
                           Math.round(
-                            (thermoDistanceMeters /
-                              THERMOMETER_MIN_DISTANCE_METERS) *
-                              100
+                            (thermoDistanceMeters / thermoTargetMeters) * 100
                           )
                         )}%`,
                       }}
                     />
                   </div>
                   <p className="text-[11px] text-[#9AA4AE]">
-                    Bewegt euch weiter – bei {THERMOMETER_MIN_DISTANCE_METERS} m stoppt das Thermometer automatisch!
+                    Bewegt euch weiter – bei {thermoTargetMeters} m stoppt das Thermometer automatisch!
                   </p>
                 </div>
 
@@ -751,7 +858,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                   Umkreis-Check
                 </span>
                 <span className="cmf-badge-teal rounded-full px-2 py-0.5 font-tech text-[10px] font-bold uppercase">
-                  +{splitRadarMin} Min.
+                  +{radiusRadarMin} Min.
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-[var(--text-muted)]">
@@ -764,7 +871,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               ariaLabel="Umkreis-Check Distanz in Metern"
               dataTestId="radius-radar-knob"
               value={selectedRadius}
-              options={RADIUS_OPTIONS}
+              options={radiusOptions}
               unit=" m"
               onChange={(nextR) =>
                 onChangeSelectedRadius(nextR as RadiusOptionMeters)
@@ -775,7 +882,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               {renderPreviewButton('RADIUS_RADAR')}
               {renderBuyButton({
                 questionType: 'RADIUS_RADAR',
-                penaltyMin: splitRadarMin,
+                penaltyMin: radiusRadarMin,
                 label: 'Kaufen',
                 testId: 'buy-radius-radar-btn',
                 params: { radiusMeters: selectedRadius },
@@ -795,7 +902,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                Verrät euren Abstand in einem genauen 200m-Ring (z. B. 400–600 m entfernt).
+                Verrät euren Abstand in einem genauen {donutStepMeters}m-Ring (z. B. {donutStepMeters * 2}–{donutStepMeters * 3} m entfernt).
               </p>
             </div>
 
@@ -806,6 +913,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 penaltyMin: donutMin,
                 label: 'Kaufen',
                 testId: 'buy-donut-clue-btn',
+                params: { donutStepMeters },
               })}
             </div>
           </div>
@@ -830,7 +938,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           <div className="cmf-well p-3.5 space-y-2.5">
             <span className="flex items-center gap-2 font-industrial text-sm font-bold text-[var(--text-main)]">
               <Train className="h-4 w-4 shrink-0 text-[var(--cmf-amber)]" />
-              Haltestelle im Umkreis von 150 m?
+              Haltestelle im Umkreis von {envDistanceMeters} m?
             </span>
             <div className="flex flex-wrap gap-2">
               {renderPreviewButton('OSM_TRANSIT')}
@@ -838,6 +946,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 questionType: 'OSM_TRANSIT',
                 penaltyMin: envMin,
                 label: 'Kaufen',
+                params: { environmentDistanceMeters: envDistanceMeters },
               })}
             </div>
           </div>
@@ -845,7 +954,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           <div className="cmf-well p-3.5 space-y-2.5">
             <span className="flex items-center gap-2 font-industrial text-sm font-bold text-[var(--text-main)]">
               <Recycle className="h-4 w-4 shrink-0 text-[var(--cmf-teal)]" />
-              Wertstoffinsel im Umkreis von 150 m?
+              Wertstoffinsel im Umkreis von {envDistanceMeters} m?
             </span>
             <div className="flex flex-wrap gap-2">
               {renderPreviewButton('OSM_RECYCLING')}
@@ -853,6 +962,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 questionType: 'OSM_RECYCLING',
                 penaltyMin: envMin,
                 label: 'Kaufen',
+                params: { environmentDistanceMeters: envDistanceMeters },
               })}
             </div>
           </div>

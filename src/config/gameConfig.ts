@@ -6,9 +6,11 @@ import type {
   LatLng,
   PlayAreaState,
   PublicGameState,
+  QuestionRulesConfig,
   QuestionType,
   RadarSchedule,
   RadarStageId,
+  RadiusOptionMeters,
   SafetyPoint,
   TeamPublic,
 } from '../types/game';
@@ -791,6 +793,141 @@ export const QUESTION_PENALTY_MS: Record<1 | 2 | 3 | 4, number> = {
 };
 
 export const THERMOMETER_MIN_DISTANCE_METERS = 250;
+export const DEFAULT_RADIUS_RADAR_DISTANCE_METERS = 250;
+export const DEFAULT_DONUT_RING_STEP_METERS = 200;
+export const DEFAULT_ENVIRONMENT_DISTANCE_METERS = 150;
+
+export const DEFAULT_RADIUS_OPTIONS_METERS: readonly RadiusOptionMeters[] = [
+  50, 100, 250, 500, 1000,
+];
+
+export const DEFAULT_QUESTION_RULES_CONFIG: QuestionRulesConfig = {
+  directionPriceMinutes: 15,
+  thermometerPriceMinutes: 10,
+  thermometerDistanceMeters: THERMOMETER_MIN_DISTANCE_METERS,
+  radiusRadarPriceMinutes: 15,
+  radiusRadarDistanceMeters: DEFAULT_RADIUS_RADAR_DISTANCE_METERS,
+  donutRingPriceMinutes: 4,
+  donutRingStepMeters: DEFAULT_DONUT_RING_STEP_METERS,
+  environmentPriceMinutes: 3,
+  environmentDistanceMeters: DEFAULT_ENVIRONMENT_DISTANCE_METERS,
+  photoPriceMinutes: 5,
+};
+
+function clampInt(
+  value: number | undefined | null,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+export function resolveQuestionRulesConfig(
+  config?: Partial<QuestionRulesConfig> | null
+): QuestionRulesConfig {
+  return {
+    directionPriceMinutes: clampInt(
+      config?.directionPriceMinutes,
+      DEFAULT_QUESTION_RULES_CONFIG.directionPriceMinutes,
+      0,
+      120
+    ),
+    thermometerPriceMinutes: clampInt(
+      config?.thermometerPriceMinutes,
+      DEFAULT_QUESTION_RULES_CONFIG.thermometerPriceMinutes,
+      0,
+      120
+    ),
+    thermometerDistanceMeters: clampInt(
+      config?.thermometerDistanceMeters,
+      DEFAULT_QUESTION_RULES_CONFIG.thermometerDistanceMeters,
+      25,
+      2000
+    ),
+    radiusRadarPriceMinutes: clampInt(
+      config?.radiusRadarPriceMinutes,
+      DEFAULT_QUESTION_RULES_CONFIG.radiusRadarPriceMinutes,
+      0,
+      120
+    ),
+    radiusRadarDistanceMeters: clampInt(
+      config?.radiusRadarDistanceMeters,
+      DEFAULT_QUESTION_RULES_CONFIG.radiusRadarDistanceMeters,
+      25,
+      5000
+    ),
+    donutRingPriceMinutes: clampInt(
+      config?.donutRingPriceMinutes,
+      DEFAULT_QUESTION_RULES_CONFIG.donutRingPriceMinutes,
+      0,
+      120
+    ),
+    donutRingStepMeters: clampInt(
+      config?.donutRingStepMeters,
+      DEFAULT_QUESTION_RULES_CONFIG.donutRingStepMeters,
+      25,
+      2000
+    ),
+    environmentPriceMinutes: clampInt(
+      config?.environmentPriceMinutes,
+      DEFAULT_QUESTION_RULES_CONFIG.environmentPriceMinutes,
+      0,
+      120
+    ),
+    environmentDistanceMeters: clampInt(
+      config?.environmentDistanceMeters,
+      DEFAULT_QUESTION_RULES_CONFIG.environmentDistanceMeters,
+      25,
+      1000
+    ),
+    photoPriceMinutes: clampInt(
+      config?.photoPriceMinutes,
+      DEFAULT_QUESTION_RULES_CONFIG.photoPriceMinutes,
+      0,
+      120
+    ),
+  };
+}
+
+export function isDefaultQuestionRulesConfig(
+  config?: Partial<QuestionRulesConfig> | null
+): boolean {
+  if (!config) return true;
+  const resolved = resolveQuestionRulesConfig(config);
+  return (
+    resolved.directionPriceMinutes ===
+      DEFAULT_QUESTION_RULES_CONFIG.directionPriceMinutes &&
+    resolved.thermometerPriceMinutes ===
+      DEFAULT_QUESTION_RULES_CONFIG.thermometerPriceMinutes &&
+    resolved.thermometerDistanceMeters ===
+      DEFAULT_QUESTION_RULES_CONFIG.thermometerDistanceMeters &&
+    resolved.radiusRadarPriceMinutes ===
+      DEFAULT_QUESTION_RULES_CONFIG.radiusRadarPriceMinutes &&
+    resolved.radiusRadarDistanceMeters ===
+      DEFAULT_QUESTION_RULES_CONFIG.radiusRadarDistanceMeters &&
+    resolved.donutRingPriceMinutes ===
+      DEFAULT_QUESTION_RULES_CONFIG.donutRingPriceMinutes &&
+    resolved.donutRingStepMeters ===
+      DEFAULT_QUESTION_RULES_CONFIG.donutRingStepMeters &&
+    resolved.environmentPriceMinutes ===
+      DEFAULT_QUESTION_RULES_CONFIG.environmentPriceMinutes &&
+    resolved.environmentDistanceMeters ===
+      DEFAULT_QUESTION_RULES_CONFIG.environmentDistanceMeters &&
+    resolved.photoPriceMinutes ===
+      DEFAULT_QUESTION_RULES_CONFIG.photoPriceMinutes
+  );
+}
+
+export function getRadiusRadarOptions(
+  config?: Partial<QuestionRulesConfig> | null
+): RadiusOptionMeters[] {
+  const resolved = resolveQuestionRulesConfig(config);
+  const set = new Set<number>(DEFAULT_RADIUS_OPTIONS_METERS);
+  set.add(resolved.radiusRadarDistanceMeters);
+  return Array.from(set).sort((a, b) => a - b);
+}
 
 function scalePenaltyMinutes(
   baseMinutes: number,
@@ -809,8 +946,33 @@ function scalePenaltyMinutes(
 
 export function getQuestionPenaltyMs(
   questionType: QuestionType,
-  searchDurationMs?: number
+  searchDurationMs?: number,
+  questionConfig?: Partial<QuestionRulesConfig> | null
 ): number {
+  if (questionConfig) {
+    const resolved = resolveQuestionRulesConfig(questionConfig);
+    switch (questionType) {
+      case 'SPLIT_NS':
+      case 'SPLIT_EW':
+      case 'CONE_45':
+        return resolved.directionPriceMinutes * 60_000;
+      case 'THERMOMETER':
+        return resolved.thermometerPriceMinutes * 60_000;
+      case 'RADIUS_RADAR':
+        return resolved.radiusRadarPriceMinutes * 60_000;
+      case 'DONUT_RING':
+        return resolved.donutRingPriceMinutes * 60_000;
+      case 'OSM_TRANSIT':
+      case 'OSM_RECYCLING':
+      case 'OSM_GREEN':
+        return resolved.environmentPriceMinutes * 60_000;
+      case 'MEDIA_SKY':
+      case 'MEDIA_GROUND':
+      case 'MEDIA_SELFIE':
+        return resolved.photoPriceMinutes * 60_000;
+    }
+  }
+
   let baseMinutes: number;
   switch (questionType) {
     case 'SPLIT_NS':
@@ -847,8 +1009,11 @@ export function getQuestionPenaltyMs(
 export const MEDIA_RESPONSE_TIMEOUT_NET_MS = 5 * 60_000; // 5 Min. (300s) Netto-Spielzeit zum Senden eines Fotos
 export const MEDIA_REFUND_MS = 10 * 60_000; // -10 Min. Zeitabzug bei Nicht-Senden innerhalb von 5 Min. (oder Ablehnung) bei 45 Min. Standard-Suchdauer
 
-export function getMediaRefundMs(searchDurationMs?: number): number {
-  return getQuestionPenaltyMs('MEDIA_SKY', searchDurationMs) * 2;
+export function getMediaRefundMs(
+  searchDurationMs?: number,
+  questionConfig?: Partial<QuestionRulesConfig> | null
+): number {
+  return getQuestionPenaltyMs('MEDIA_SKY', searchDurationMs, questionConfig) * 2;
 }
 export const MEDIA_AUTO_EXPIRE_MS = 10 * 60_000; // Empfangene Fotos verschwinden automatisch nach 10 Min.
 export const MEDIA_POST_DOWNLOAD_EXPIRE_MS = 60_000; // Nach Klick auf Download verkürzt sich die Restzeit auf max. 1 Min.

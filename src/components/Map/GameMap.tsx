@@ -7,7 +7,7 @@ import {
   LEASH_RADIUS_METERS,
   MAP_DEFAULT_CENTER,
   MAP_DEFAULT_ZOOM,
-  THERMOMETER_MIN_DISTANCE_METERS,
+  resolveQuestionRulesConfig,
 } from '../../config/gameConfig';
 import { buildQuestionPreviewGeoJson } from '../../geo/clueGeometry';
 import { destinationPoint, distanceMeters } from '../../geo/distance';
@@ -22,6 +22,7 @@ import type {
   GeoFix,
   LatLng,
   PublishedRadarCircle,
+  QuestionRulesConfig,
   QuestionType,
   RadiusOptionMeters,
   TeamLocation,
@@ -143,6 +144,7 @@ export interface GameMapProps {
   coneBearingDeg?: number;
   selectedRadius?: RadiusOptionMeters;
   thermoPointA?: LatLng | null;
+  questionConfig?: Partial<QuestionRulesConfig> | null;
   clickMode: MapClickInteractionMode;
   onMapCoordinateClick?: (pt: LatLng) => void;
   onRequestGpsPermission?: () => Promise<GeoFix | null> | void;
@@ -175,6 +177,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
   coneBearingDeg = 0,
   selectedRadius = 250,
   thermoPointA,
+  questionConfig = null,
   clickMode,
   onMapCoordinateClick,
   onRequestGpsPermission,
@@ -259,6 +262,12 @@ const GameMapInner: React.FC<GameMapProps> = ({
     return null;
   }, [thermoPointA, activePreviewQuestion, previewOriginLat, previewOriginLng]);
 
+  const qConfig = useMemo(
+    () => resolveQuestionRulesConfig(questionConfig),
+    [questionConfig]
+  );
+  const thermoTargetDistanceMeters = qConfig.thermometerDistanceMeters;
+
   const effectiveThermoB = useMemo<LatLng | null>(() => {
     const liveFix =
       previewOriginLat !== null && previewOriginLng !== null
@@ -272,10 +281,16 @@ const GameMapInner: React.FC<GameMapProps> = ({
       return liveFix;
     }
     if (activePreviewQuestion === 'THERMOMETER' && effectiveThermoA) {
-      return destinationPoint(effectiveThermoA, THERMOMETER_MIN_DISTANCE_METERS, 45);
+      return destinationPoint(effectiveThermoA, thermoTargetDistanceMeters, 45);
     }
     return liveFix;
-  }, [effectiveThermoA, activePreviewQuestion, previewOriginLat, previewOriginLng]);
+  }, [
+    effectiveThermoA,
+    activePreviewQuestion,
+    previewOriginLat,
+    previewOriginLng,
+    thermoTargetDistanceMeters,
+  ]);
 
   const liveConePreview = useMemo(() => {
     if (!activePreviewQuestion) return null;
@@ -290,6 +305,9 @@ const GameMapInner: React.FC<GameMapProps> = ({
         radiusMeters: selectedRadius,
         pointA: effectiveThermoA ?? undefined,
         pointB: effectiveThermoB ?? undefined,
+        thermometerDistanceMeters: qConfig.thermometerDistanceMeters,
+        donutStepMeters: qConfig.donutRingStepMeters,
+        environmentDistanceMeters: qConfig.environmentDistanceMeters,
       },
       originPt,
       possibleHidingArea ?? playArea
@@ -304,6 +322,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
     previewOriginLng,
     possibleHidingArea,
     playArea,
+    qConfig,
   ]);
 
   useEffect(() => {
@@ -518,7 +537,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
         ? distanceMeters(effectiveThermoA, effectiveThermoB)
         : 0;
     const isThermoValid =
-      !isThermoPreview || thermoDist >= THERMOMETER_MIN_DISTANCE_METERS;
+      !isThermoPreview || thermoDist >= thermoTargetDistanceMeters;
     const previewColor = isThermoValid ? '#00A896' : '#F59E0B';
 
     if (liveConePreview) {
@@ -535,10 +554,10 @@ const GameMapInner: React.FC<GameMapProps> = ({
     }
 
     if (isThermoPreview && effectiveThermoA) {
-      // 250-Meter-Zielkreis um Startpunkt A
+      // Zielkreis um Startpunkt A
       L.circle([effectiveThermoA.lat, effectiveThermoA.lng], {
         renderer,
-        radius: THERMOMETER_MIN_DISTANCE_METERS,
+        radius: thermoTargetDistanceMeters,
         color: '#64748B',
         weight: 1.5,
         dashArray: '5 5',
@@ -623,6 +642,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
     effectiveThermoA,
     effectiveThermoB,
     thermoPointA,
+    thermoTargetDistanceMeters,
     anchorPickLat,
     anchorPickLng,
     clickMode.kind,
@@ -1091,6 +1111,7 @@ export const GameMap = React.memo(GameMapInner, (prev, next) => {
   }
 
   if (!sameLatLng(prev.thermoPointA, next.thermoPointA)) return false;
+  if (prev.questionConfig !== next.questionConfig) return false;
   if (!sameLatLng(prev.exposedHiderLocation, next.exposedHiderLocation)) return false;
   if (prev.liveHiderLocations !== next.liveHiderLocations) return false;
 

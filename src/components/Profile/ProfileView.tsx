@@ -27,6 +27,7 @@ import {
   DEFAULT_CLASSIC_SEARCH_MINUTES,
   GAME_ID,
   getQuestionPenaltyMs,
+  resolveQuestionRulesConfig,
 } from '../../config/gameConfig';
 import { getPlayerGreeting, isOverviewMember } from '../../config/players';
 import {
@@ -156,23 +157,48 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const searchDurationMs =
     publicState.classicSearchDurationMs ??
     DEFAULT_CLASSIC_SEARCH_MINUTES * 60_000;
+  const qConfig = resolveQuestionRulesConfig(publicState.questionConfig);
   const splitPenaltyMin = Math.round(
-    getQuestionPenaltyMs('SPLIT_NS', searchDurationMs) / 60_000
+    getQuestionPenaltyMs(
+      'SPLIT_NS',
+      searchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
   const thermoPenaltyMin = Math.round(
-    getQuestionPenaltyMs('THERMOMETER', searchDurationMs) / 60_000
+    getQuestionPenaltyMs(
+      'THERMOMETER',
+      searchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
   const osmPenaltyMin = Math.round(
-    getQuestionPenaltyMs('OSM_TRANSIT', searchDurationMs) / 60_000
+    getQuestionPenaltyMs(
+      'OSM_TRANSIT',
+      searchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
   const radarPenaltyMin = Math.round(
-    getQuestionPenaltyMs('RADIUS_RADAR', searchDurationMs) / 60_000
+    getQuestionPenaltyMs(
+      'RADIUS_RADAR',
+      searchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
   const donutPenaltyMin = Math.round(
-    getQuestionPenaltyMs('DONUT_RING', searchDurationMs) / 60_000
+    getQuestionPenaltyMs(
+      'DONUT_RING',
+      searchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
   const photoPenaltyMin = Math.round(
-    getQuestionPenaltyMs('MEDIA_SKY', searchDurationMs) / 60_000
+    getQuestionPenaltyMs(
+      'MEDIA_SKY',
+      searchDurationMs,
+      publicState.questionConfig
+    ) / 60_000
   );
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
@@ -1126,19 +1152,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         <strong className="font-tech">+{splitPenaltyMin} Min.</strong>
                       </li>
                       <li className="flex items-center justify-between gap-2">
-                        <span>• Thermometer (Warm / Kalt zwischen A &amp; B)</span>
+                        <span>• Thermometer (Warm / Kalt nach {qConfig.thermometerDistanceMeters} m)</span>
                         <strong className="font-tech">+{thermoPenaltyMin} Min.</strong>
                       </li>
                       <li className="flex items-center justify-between gap-2">
-                        <span>• Radius-Radar (50 m – 1000 m Treffer-Check)</span>
+                        <span>• Radius-Radar (Standard {qConfig.radiusRadarDistanceMeters} m Treffer-Check)</span>
                         <strong className="font-tech">+{radarPenaltyMin} Min.</strong>
                       </li>
                       <li className="flex items-center justify-between gap-2">
-                        <span>• Umgebungs-Check (ÖPNV 150m, Wertstoffinsel, Grün)</span>
+                        <span>• Umgebungs-Check (ÖPNV &amp; Wertstoff {qConfig.environmentDistanceMeters}m, Grün)</span>
                         <strong className="font-tech">+{osmPenaltyMin} Min.</strong>
                       </li>
                       <li className="flex items-center justify-between gap-2">
-                        <span>• Donut-Entfernungsring (200m-Bänder)</span>
+                        <span>• Donut-Entfernungsring ({qConfig.donutRingStepMeters}m-Bänder)</span>
                         <strong className="font-tech">+{donutPenaltyMin} Min.</strong>
                       </li>
                       <li className="flex items-center justify-between gap-2">

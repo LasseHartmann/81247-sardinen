@@ -137,7 +137,10 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
   const refundMs =
     req.penaltyMs > 0
       ? req.penaltyMs * 2
-      : getMediaRefundMs(publicState.classicSearchDurationMs);
+      : getMediaRefundMs(
+          publicState.classicSearchDurationMs,
+          publicState.questionConfig
+        );
   const refundMin = Math.round(refundMs / 60_000);
   const deadlineNet =
     req.mediaDeadlineNetElapsedMs ??

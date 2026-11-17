@@ -1,8 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { GameHubScreen } from '../src/components/Lobby/GameHubScreen';
+import { HostQuestionRulesEditor } from '../src/components/Lobby/HostQuestionRulesEditor';
 import { HiderMediaResponseModal } from '../src/components/Questions/HiderMediaResponseModal';
+import {
+  DEFAULT_QUESTION_RULES_CONFIG,
+  getQuestionPenaltyMs,
+} from '../src/config/gameConfig';
 import { createDemoStore } from '../src/demo/demoStore';
+import { classifyDonutBand } from '../src/geo/clueGeometry';
+import type { QuestionRulesConfig } from '../src/types/game';
 
 describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
   afterEach(() => {
@@ -149,5 +156,63 @@ describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
     fireEvent.click(flashToggle);
     expect(flashToggle.textContent).toContain('Blitz: AN');
     expect(screen.getByTestId('open-hider-camera-btn')).toBeTruthy();
+  });
+
+  it('erlaubt dem Host das Bearbeiten der Preise und Distanzen jeder Frage-Kategorie', () => {
+    let currentCfg: QuestionRulesConfig = { ...DEFAULT_QUESTION_RULES_CONFIG };
+    const { rerender } = render(
+      <HostQuestionRulesEditor
+        questionConfig={currentCfg}
+        onChange={(next) => {
+          currentCfg = next;
+        }}
+      />
+    );
+
+    expect(screen.getByTestId('question-rule-direction-price').textContent).toBe(
+      '+15 Min.'
+    );
+    expect(screen.getByTestId('question-rule-thermo-distance').textContent).toBe(
+      '250 m'
+    );
+    expect(screen.getByTestId('question-rule-donut-distance').textContent).toBe(
+      '200 m'
+    );
+    expect(screen.getByTestId('question-rule-env-distance').textContent).toBe(
+      '150 m'
+    );
+
+    // Ändere Preise & Distanzen aller Kategorien
+    fireEvent.click(screen.getByTestId('question-rule-direction-price-minus'));
+    rerender(
+      <HostQuestionRulesEditor
+        questionConfig={currentCfg}
+        onChange={(next) => {
+          currentCfg = next;
+        }}
+      />
+    );
+    expect(currentCfg.directionPriceMinutes).toBe(14);
+    expect(getQuestionPenaltyMs('SPLIT_NS', 60 * 60_000, currentCfg)).toBe(
+      14 * 60_000
+    );
+
+    fireEvent.click(screen.getByTestId('question-rule-thermo-distance-plus'));
+    expect(currentCfg.thermometerDistanceMeters).toBe(275);
+
+    fireEvent.click(screen.getByTestId('question-rule-donut-distance-minus'));
+    expect(currentCfg.donutRingStepMeters).toBe(175);
+    expect(classifyDonutBand(300, currentCfg.donutRingStepMeters).label).toBe(
+      '175–350 m'
+    );
+
+    fireEvent.click(screen.getByTestId('question-rule-env-distance-plus'));
+    expect(currentCfg.environmentDistanceMeters).toBe(175);
+
+    fireEvent.click(screen.getByTestId('question-rule-photo-price-plus'));
+    expect(currentCfg.photoPriceMinutes).toBe(6);
+    expect(getQuestionPenaltyMs('MEDIA_SKY', 45 * 60_000, currentCfg)).toBe(
+      6 * 60_000
+    );
   });
 });

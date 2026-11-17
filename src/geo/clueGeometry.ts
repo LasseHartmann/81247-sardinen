@@ -197,8 +197,12 @@ export function evaluateThermometer(
     features.push(clippedExcluded);
   }
 
+  const targetMeters = Math.max(
+    25,
+    Math.round(distanceMeters(pointA, pointB))
+  );
   return {
-    title: 'Thermometer (250 m)',
+    title: `Thermometer (${targetMeters >= 200 && targetMeters <= 260 ? 250 : targetMeters} m)`,
     answerText,
     detailText: isWarmer
       ? 'Punkt B ist näher am Versteck als Punkt A.'
@@ -269,21 +273,23 @@ export function evaluateCone45(
 }
 
 /**
- * 2A: ÖPNV-Nähe 150 m (+3 Min.)
+ * 2A: ÖPNV-Nähe (Standard: 150 m, +3 Min.)
  */
 export function evaluateOsmTransit(
   anchorPoint: LatLng,
   transitStops: LatLng[],
-  playArea: Feature<Polygon | MultiPolygon>
+  playArea: Feature<Polygon | MultiPolygon>,
+  radiusMeters = 150
 ): EvaluatedClueResult {
-  const isWithin150m = transitStops.some(
-    (stop) => distanceMeters(anchorPoint, stop) <= 150
+  const safeRadius = Math.max(25, Math.round(radiusMeters));
+  const isWithinRadius = transitStops.some(
+    (stop) => distanceMeters(anchorPoint, stop) <= safeRadius
   );
 
   const circles: Feature<Polygon | MultiPolygon>[] = [];
   for (const stop of transitStops) {
     circles.push(
-      turf.circle([stop.lng, stop.lat], 150, {
+      turf.circle([stop.lng, stop.lat], safeRadius, {
         units: 'meters',
         steps: 28,
       })
@@ -316,35 +322,37 @@ export function evaluateOsmTransit(
   }
 
   return {
-    title: 'Haltestelle (150 m)',
-    answerText: isWithin150m
-      ? 'JA (Innerhalb 150 m)'
-      : 'NEIN (Weiter als 150 m)',
-    detailText: isWithin150m
-      ? 'Haltestelle ist maximal 150 m vom Versteck entfernt.'
-      : 'Keine Haltestelle im Umkreis von 150 m.',
-    isPositiveHit: isWithin150m,
+    title: `Haltestelle (${safeRadius} m)`,
+    answerText: isWithinRadius
+      ? `JA (Innerhalb ${safeRadius} m)`
+      : `NEIN (Weiter als ${safeRadius} m)`,
+    detailText: isWithinRadius
+      ? `Haltestelle ist maximal ${safeRadius} m vom Versteck entfernt.`
+      : `Keine Haltestelle im Umkreis von ${safeRadius} m.`,
+    isPositiveHit: isWithinRadius,
     overlayGeoJson: turf.featureCollection(bufferedStops),
     overlayStyle: 'TRANSIT_BUFFERS',
   };
 }
 
 /**
- * 2B: Wertstoffinsel-Nähe 150 m (+3 Min.)
+ * 2B: Wertstoffinsel-Nähe (Standard: 150 m, +3 Min.)
  */
 export function evaluateOsmRecycling(
   anchorPoint: LatLng,
   recyclingPoints: LatLng[],
-  playArea: Feature<Polygon | MultiPolygon>
+  playArea: Feature<Polygon | MultiPolygon>,
+  radiusMeters = 150
 ): EvaluatedClueResult {
-  const isWithin150m = recyclingPoints.some(
-    (pt) => distanceMeters(anchorPoint, pt) <= 150
+  const safeRadius = Math.max(25, Math.round(radiusMeters));
+  const isWithinRadius = recyclingPoints.some(
+    (pt) => distanceMeters(anchorPoint, pt) <= safeRadius
   );
 
   const circles: Feature<Polygon | MultiPolygon>[] = [];
   for (const pt of recyclingPoints) {
     circles.push(
-      turf.circle([pt.lng, pt.lat], 150, {
+      turf.circle([pt.lng, pt.lat], safeRadius, {
         units: 'meters',
         steps: 28,
       })
@@ -377,14 +385,14 @@ export function evaluateOsmRecycling(
   }
 
   return {
-    title: 'Wertstoffinsel (150 m)',
-    answerText: isWithin150m
-      ? 'JA (Innerhalb 150 m)'
-      : 'NEIN (Weiter als 150 m)',
-    detailText: isWithin150m
-      ? 'Wertstoffinsel ist maximal 150 m vom Versteck entfernt.'
-      : 'Keine Wertstoffinsel im Umkreis von 150 m.',
-    isPositiveHit: isWithin150m,
+    title: `Wertstoffinsel (${safeRadius} m)`,
+    answerText: isWithinRadius
+      ? `JA (Innerhalb ${safeRadius} m)`
+      : `NEIN (Weiter als ${safeRadius} m)`,
+    detailText: isWithinRadius
+      ? `Wertstoffinsel ist maximal ${safeRadius} m vom Versteck entfernt.`
+      : `Keine Wertstoffinsel im Umkreis von ${safeRadius} m.`,
+    isPositiveHit: isWithinRadius,
     overlayGeoJson: turf.featureCollection(bufferedPoints),
     overlayStyle: 'TRANSIT_BUFFERS',
   };
@@ -477,29 +485,34 @@ export function evaluateRadiusRadar(
 }
 
 /**
- * Klassifiziert eine Distanz in ein 200m-Donut-Band ohne exakten Meter-Leak.
+ * Klassifiziert eine Distanz in ein Donut-Band (Standard: 200m-Schritte) ohne exakten Meter-Leak.
  */
-export function classifyDonutBand(distMeters: number): {
+export function classifyDonutBand(
+  distMeters: number,
+  stepMeters = 200
+): {
   label: DonutBandLabel;
   innerRadiusMeters: number;
   outerRadiusMeters: number | null;
 } {
-  if (distMeters < 200) {
-    return { label: '0–200 m', innerRadiusMeters: 0, outerRadiusMeters: 200 };
+  const step = Math.max(25, Math.round(stepMeters));
+  for (let i = 0; i < 5; i++) {
+    const inner = i * step;
+    const outer = (i + 1) * step;
+    if (distMeters < outer) {
+      return {
+        label: `${inner}–${outer} m`,
+        innerRadiusMeters: inner,
+        outerRadiusMeters: outer,
+      };
+    }
   }
-  if (distMeters < 400) {
-    return { label: '200–400 m', innerRadiusMeters: 200, outerRadiusMeters: 400 };
-  }
-  if (distMeters < 600) {
-    return { label: '400–600 m', innerRadiusMeters: 400, outerRadiusMeters: 600 };
-  }
-  if (distMeters < 800) {
-    return { label: '600–800 m', innerRadiusMeters: 600, outerRadiusMeters: 800 };
-  }
-  if (distMeters < 1000) {
-    return { label: '800–1000 m', innerRadiusMeters: 800, outerRadiusMeters: 1000 };
-  }
-  return { label: '1000 m+', innerRadiusMeters: 1000, outerRadiusMeters: null };
+  const maxInner = 5 * step;
+  return {
+    label: `${maxInner} m+`,
+    innerRadiusMeters: maxInner,
+    outerRadiusMeters: null,
+  };
 }
 
 /**
@@ -509,10 +522,12 @@ export function evaluateDonutRing(
   seekerOrigin: LatLng,
   anchorPoint: LatLng,
   playArea: Feature<Polygon | MultiPolygon>,
-  isCompensation = false
+  isCompensation = false,
+  stepMeters = 200
 ): EvaluatedClueResult {
   const dist = distanceMeters(seekerOrigin, anchorPoint);
-  const band = classifyDonutBand(dist);
+  const safeStep = Math.max(25, Math.round(stepMeters));
+  const band = classifyDonutBand(dist, safeStep);
 
   let bandGeometry: Feature<Polygon | MultiPolygon> | null = null;
 
@@ -542,13 +557,17 @@ export function evaluateDonutRing(
       bandGeometry = safeClipWithPlayArea(ringPoly, playArea);
     }
   } else {
-    // 1000 m+: Gesamtes Spielgebiet außerhalb des 1000m-Kreises
-    const inner1000 = turf.circle([seekerOrigin.lng, seekerOrigin.lat], 1000, {
-      units: 'meters',
-      steps: 64,
-    });
+    // Oberhalb des 5. Rings: Gesamtes Spielgebiet außerhalb des (5 * safeStep)-Kreises
+    const innerMax = turf.circle(
+      [seekerOrigin.lng, seekerOrigin.lat],
+      5 * safeStep,
+      {
+        units: 'meters',
+        steps: 64,
+      }
+    );
     bandGeometry = turf.difference(
-      turf.featureCollection([playArea, inner1000])
+      turf.featureCollection([playArea, innerMax])
     );
   }
 
@@ -608,13 +627,15 @@ export function evaluateDeterministicQuestion(
       return evaluateOsmTransit(
         anchorPoint,
         osmData?.transitStops ?? getTransitLatLngsForPlayArea(playArea),
-        playArea
+        playArea,
+        params.environmentDistanceMeters ?? 150
       );
     case 'OSM_RECYCLING':
       return evaluateOsmRecycling(
         anchorPoint,
         osmData?.recyclingPoints ?? getRecyclingLatLngsForPlayArea(playArea),
-        playArea
+        playArea,
+        params.environmentDistanceMeters ?? 150
       );
     case 'OSM_GREEN':
       return evaluateOsmGreen(
@@ -630,7 +651,13 @@ export function evaluateDeterministicQuestion(
         playArea
       );
     case 'DONUT_RING':
-      return evaluateDonutRing(seekerSnapshot, anchorPoint, playArea, false);
+      return evaluateDonutRing(
+        seekerSnapshot,
+        anchorPoint,
+        playArea,
+        false,
+        params.donutStepMeters ?? 200
+      );
     default:
       throw new Error(`Fragetyp ${questionType} ist keine deterministische Geo-Frage.`);
   }
@@ -678,10 +705,11 @@ export function buildQuestionPreviewGeoJson(
       const ptA = params.pointA ?? origin;
       if (!ptA) return null;
       const rawPtB = params.pointB;
+      const targetMeters = params.thermometerDistanceMeters ?? 250;
       const ptB =
         rawPtB && distanceMeters(ptA, rawPtB) >= 5
           ? rawPtB
-          : destinationPoint(ptA, 250, params.bearingDeg ?? 45);
+          : destinationPoint(ptA, targetMeters, params.bearingDeg ?? 45);
 
       const midLat = (ptA.lat + ptB.lat) / 2;
       const midLng = (ptA.lng + ptB.lng) / 2;
@@ -722,10 +750,11 @@ export function buildQuestionPreviewGeoJson(
 
     case 'OSM_TRANSIT': {
       const transitStops = getTransitLatLngsForPlayArea(playArea);
+      const envRadius = Math.max(25, Math.round(params.environmentDistanceMeters ?? 150));
       const circles: Feature<Polygon | MultiPolygon>[] = [];
       for (const stop of transitStops) {
         circles.push(
-          turf.circle([stop.lng, stop.lat], 150, {
+          turf.circle([stop.lng, stop.lat], envRadius, {
             units: 'meters',
             steps: 28,
           })
@@ -753,10 +782,11 @@ export function buildQuestionPreviewGeoJson(
 
     case 'OSM_RECYCLING': {
       const recyclingPts = getRecyclingLatLngsForPlayArea(playArea);
+      const envRadius = Math.max(25, Math.round(params.environmentDistanceMeters ?? 150));
       const circles: Feature<Polygon | MultiPolygon>[] = [];
       for (const pt of recyclingPts) {
         circles.push(
-          turf.circle([pt.lng, pt.lat], 150, {
+          turf.circle([pt.lng, pt.lat], envRadius, {
             units: 'meters',
             steps: 28,
           })
@@ -809,10 +839,11 @@ export function buildQuestionPreviewGeoJson(
 
     case 'DONUT_RING': {
       if (!origin) return null;
+      const step = Math.max(25, Math.round(params.donutStepMeters ?? 200));
       const bands: Array<[number, number]> = [
-        [0, 200],
-        [400, 600],
-        [800, 1000],
+        [0, step],
+        [2 * step, 3 * step],
+        [4 * step, 5 * step],
       ];
       const features: Feature[] = [];
       for (const [innerR, outerR] of bands) {

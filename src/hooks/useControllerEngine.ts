@@ -7,6 +7,7 @@ import {
   MEDIA_AUTO_EXPIRE_MS,
   MEDIA_REFUND_MS,
   MEDIA_RESPONSE_TIMEOUT_NET_MS,
+  resolveQuestionRulesConfig,
 } from '../config/gameConfig';
 import {
   getPlayAreaCenter,
@@ -781,9 +782,20 @@ export async function executeControllerTick(
               osmData = await osmFetcher(publicState.playArea.polygon);
             }
 
+            const qConfig = resolveQuestionRulesConfig(
+              publicState.questionConfig
+            );
+            const effectiveParams = {
+              thermometerDistanceMeters: qConfig.thermometerDistanceMeters,
+              donutStepMeters: qConfig.donutRingStepMeters,
+              environmentDistanceMeters: qConfig.environmentDistanceMeters,
+              radiusMeters: qConfig.radiusRadarDistanceMeters,
+              ...claimed.params,
+            };
+
             const evaluated = evaluateDeterministicQuestion(
               claimed.questionType,
-              claimed.params,
+              effectiveParams,
               claimed.requesterSnapshotLocation,
               anchor,
               publicState.playArea.polygon,

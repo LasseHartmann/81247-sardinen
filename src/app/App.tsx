@@ -978,7 +978,7 @@ export const App: React.FC = () => {
   const isActiveSeeker = Boolean(
     ownMember.side === 'SEEKER' && ownTeam && !isJoinedSardines
   );
-  const canUseMapClicks = Boolean(publicState.allowTestClicks);
+  const canUseMapClicks = Boolean(isOverviewAccount);
   const showHostTab = isOverviewAccount;
 
   const activeRoundTeamIds =

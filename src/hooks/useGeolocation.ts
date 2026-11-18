@@ -7,6 +7,7 @@ import {
   MAP_DEFAULT_CENTER,
 } from '../config/gameConfig';
 import { isPointInPlayArea, snapPointIntoPlayArea } from '../geo/boundary';
+import { isOverviewMember } from '../config/players';
 import { distanceMeters } from '../geo/distance';
 import type { DatabaseAdapter } from '../services/databaseAdapter';
 import {
@@ -100,9 +101,7 @@ export function useGeolocation(params: UseGeolocationParams): {
   const broadcasterRef = useRef(new SeekerBeaconBroadcaster());
   const hiderBroadcasterRef = useRef(new HiderPrivateBroadcaster());
 
-  const canUseManualClicks = Boolean(
-    adapter.mode === 'demo' || publicState?.allowTestClicks
-  );
+  const canUseManualClicks = Boolean(isOverviewMember(ownMember));
 
   const isManhuntSardineFallbackAllowed = Boolean(
     publicState?.gameMode === 'MANHUNT' &&

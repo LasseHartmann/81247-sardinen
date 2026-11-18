@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronUp,
   Clock,
   Compass,
@@ -48,6 +49,7 @@ import {
   getActivePostalCodes,
   getMunichPlzEntry,
   isAllMunichPostalCodes,
+  isDefaultQuestionRulesConfig,
   parseAndValidateMunichPostalCodes,
   PLAY_AREA_CIRCLE_MAX_RADIUS_METERS,
   PLAY_AREA_CIRCLE_MIN_RADIUS_METERS,
@@ -168,6 +170,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [teamNameDraft, setTeamNameDraft] = useState('');
   const [savingTeamName, setSavingTeamName] = useState(false);
+  const [showQuestionRules, setShowQuestionRules] = useState(false);
 
   // Gebiets- & PLZ-Zustand
   const isCirclePlayArea = publicState.playArea.shapeType === 'CUSTOM_CIRCLE';
@@ -1707,54 +1710,103 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 )}
               </div>
 
-              {/* Preise & Distanzen der 4 Frage-Kategorien (Host-Konfiguration) */}
+              {/* Preise & Distanzen der 4 Frage-Kategorien (ausklappbar für den Host) */}
               {!isManhunt && (
                 <div className="border-t cmf-divider pt-3">
-                  <HostQuestionRulesEditor
-                    questionConfig={publicState.questionConfig}
-                    onChange={(nextQuestionConfig) => {
-                      void adapter
-                        .savePublicStateByHost({
-                          ...publicState,
-                          questionConfig: nextQuestionConfig,
-                        })
-                        .catch(() => {});
-                    }}
-                  />
+                  <div className="cmf-well p-3 space-y-3">
+                    <button
+                      type="button"
+                      data-testid="lobby-toggle-question-rules-btn"
+                      aria-expanded={showQuestionRules}
+                      onClick={() => setShowQuestionRules((v) => !v)}
+                      className="flex w-full items-center justify-between gap-2 text-left"
+                    >
+                      <div>
+                        <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
+                          Frage-Kategorien: Preise &amp; Distanzen
+                        </span>
+                        <span className="text-[11px] text-[var(--text-muted)]">
+                          Strafminuten und Meter-Radien anpassen
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 font-tech text-[10px] font-bold uppercase ${
+                            isDefaultQuestionRulesConfig(
+                              publicState.questionConfig
+                            )
+                              ? 'cmf-badge-teal'
+                              : 'cmf-badge-orange'
+                          }`}
+                        >
+                          {isDefaultQuestionRulesConfig(
+                            publicState.questionConfig
+                          )
+                            ? 'Standard'
+                            : 'Angepasst'}
+                        </span>
+                        <span className="cmf-btn-secondary inline-flex h-8 w-8 items-center justify-center rounded-xl">
+                          {showQuestionRules ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </span>
+                      </div>
+                    </button>
+
+                    {showQuestionRules && (
+                      <div className="border-t cmf-divider pt-3">
+                        <HostQuestionRulesEditor
+                          questionConfig={publicState.questionConfig}
+                          onChange={(nextQuestionConfig) => {
+                            void adapter
+                              .savePublicStateByHost({
+                                ...publicState,
+                                questionConfig: nextQuestionConfig,
+                              })
+                              .catch(() => {});
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              {/* Optionaler Indoor-Testmodus */}
-              <div className="border-t cmf-divider pt-3">
-                <div className="cmf-well flex items-center justify-between gap-3 p-3">
-                  <div>
-                    <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
-                      Indoor-Testmodus (Standort per Klick)
-                    </span>
-                    <span className="text-[11px] text-[var(--text-muted)]">
-                      Nur zum Testen im Haus – draußen ausschalten!
-                    </span>
+              {/* Indoor-Testmodus strikt nur für das Admin-Konto */}
+              {isOverviewAccount && (
+                <div className="border-t cmf-divider pt-3">
+                  <div className="cmf-well flex items-center justify-between gap-3 p-3">
+                    <div>
+                      <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
+                        Indoor-Testmodus (Standort per Klick)
+                      </span>
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        Nur für das Admin-Konto zum Testen im Haus
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={publicState.allowTestClicks}
+                      onClick={() =>
+                        void adapter.savePublicStateByHost({
+                          ...publicState,
+                          allowTestClicks: !publicState.allowTestClicks,
+                        })
+                      }
+                      className={`font-tech min-h-[36px] shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-bold uppercase ${
+                        publicState.allowTestClicks
+                          ? 'cmf-btn-active'
+                          : 'cmf-btn-secondary'
+                      }`}
+                    >
+                      {publicState.allowTestClicks ? 'AN' : 'AUS'}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={publicState.allowTestClicks}
-                    onClick={() =>
-                      void adapter.savePublicStateByHost({
-                        ...publicState,
-                        allowTestClicks: !publicState.allowTestClicks,
-                      })
-                    }
-                    className={`font-tech min-h-[36px] shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-bold uppercase ${
-                      publicState.allowTestClicks
-                        ? 'cmf-btn-active'
-                        : 'cmf-btn-secondary'
-                    }`}
-                  >
-                    {publicState.allowTestClicks ? 'AN' : 'AUS'}
-                  </button>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </section>

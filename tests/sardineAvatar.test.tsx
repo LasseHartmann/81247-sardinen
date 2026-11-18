@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { PlayerAvatar } from '../src/components/Common/PlayerAvatar';
 import { AdminAccountManager } from '../src/components/Lobby/AdminAccountManager';
+import { ProfileView } from '../src/components/Profile/ProfileView';
 import {
   createTeamMemberFishIcon,
   renderTeamMemberFishPopupHtml,
@@ -15,6 +16,11 @@ import {
   type SardineAvatarConfig,
 } from '../src/config/sardineAvatar';
 import { createDemoStore } from '../src/demo/demoStore';
+import { createDefaultPublicState } from '../src/config/gameConfig';
+import {
+  createEmptyPlayerStats,
+  DEFAULT_DEVICE_PREFERENCES,
+} from '../src/services/playerPreferencesService';
 import { resolveVisibleTeamMemberMarkers } from '../src/services/databaseAdapter';
 
 describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
@@ -382,5 +388,66 @@ describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
     fireEvent.click(screen.getByTestId('admin-acct-confirm-delete-btn-marco'));
 
     expect(store.getSnapshot().accounts?.['marco']).toBeUndefined();
+  });
+
+  it('blendet nicht freigeschaltete Skin-Optionen im Avatar-Editor komplett aus', () => {
+    const store = createDemoStore();
+    const publicState = createDefaultPublicState('sess-skins');
+
+    const renderProfileFor = (playerId: string, name: string) =>
+      render(
+        <ProfileView
+          adapter={store.adapter}
+          ownMember={{
+            uid: `u_${playerId}`,
+            playerId,
+            name,
+            isHost: false,
+            enabled: true,
+            side: 'UNASSIGNED',
+            teamId: null,
+          }}
+          ownTeam={null}
+          publicState={publicState}
+          members={{}}
+          presence={{}}
+          connected={true}
+          ownFix={null}
+          gpsStatus="IDLE"
+          gpsError={null}
+          playerStats={createEmptyPlayerStats()}
+          devicePrefs={DEFAULT_DEVICE_PREFERENCES}
+          onChangeDevicePrefs={() => {}}
+          onSelectAvatar={async () => {}}
+          onRetryGps={() => {}}
+          onLogout={async () => {}}
+        />
+      );
+
+    // 1. Regulärer Spieler (Anna): sieht weder 1. Runde, Helfer noch Owner
+    const annaView = renderProfileFor('anna', 'Anna');
+    expect(screen.getByTestId('avatar-color-silver')).toBeTruthy();
+    expect(screen.queryByTestId('avatar-color-orange')).toBeNull();
+    expect(screen.queryByTestId('avatar-color-midnight')).toBeNull();
+    expect(screen.queryByTestId('avatar-color-gold')).toBeNull();
+    annaView.unmount();
+
+    // 2. Helfer (Thomas, in 1. Runde): sieht Public, 1. Runde & Helfer, aber KEINE Owner-Skins
+    const thomasView = renderProfileFor('thomas', 'Thomas');
+    expect(screen.getByTestId('avatar-color-silver')).toBeTruthy();
+    expect(screen.getByTestId('avatar-color-orange')).toBeTruthy();
+    expect(screen.getByTestId('avatar-color-midnight')).toBeTruthy();
+    expect(screen.queryByTestId('avatar-color-gold')).toBeNull();
+    fireEvent.click(screen.getByTestId('avatar-tab-hat'));
+    expect(screen.getByTestId('avatar-hat-ninja')).toBeTruthy();
+    expect(screen.queryByTestId('avatar-hat-crown')).toBeNull();
+    thomasView.unmount();
+
+    // 3. Owner (Linus): sieht und kann alle Optionen inklusive Owner-Skins ausrüsten
+    const linusView = renderProfileFor('linus', 'Linus');
+    expect(screen.getByTestId('avatar-color-gold')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('avatar-tab-hat'));
+    expect(screen.getByTestId('avatar-hat-crown')).toBeTruthy();
+    linusView.unmount();
   });
 });

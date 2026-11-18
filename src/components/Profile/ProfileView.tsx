@@ -9,7 +9,6 @@ import {
   ChevronUp,
   Footprints,
   KeyRound,
-  Lock,
   LogOut,
   Navigation,
   Radio,
@@ -35,7 +34,6 @@ import {
   createRandomSardineAvatar,
   DEFAULT_SARDINE_AVATAR,
   getExclusiveTierBadgeLabel,
-  getExclusiveTierDescriptionDe,
   parseSardineAvatar,
   sanitizeSardineAvatarForPlayer,
   SARDINE_COLOR_OPTIONS,
@@ -364,10 +362,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             }
           };
 
-          const renderTierBadge = (
-            tier: SardineExclusiveTier,
-            unlocked: boolean
-          ) => {
+          const renderTierBadge = (tier: SardineExclusiveTier) => {
             const label = getExclusiveTierBadgeLabel(tier);
             if (!label) return null;
             const badgeStyle =
@@ -380,7 +375,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <span
                 className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[8.5px] font-bold tracking-wider uppercase ${badgeStyle}`}
               >
-                {!unlocked && <Lock className="h-2.5 w-2.5" />}
                 {label}
               </span>
             );
@@ -498,14 +492,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 ))}
               </div>
 
-              {/* Options-Raster der gewählten Kategorie */}
+              {/* Options-Raster der gewählten Kategorie (nur freigeschaltete Optionen sichtbar) */}
               {avatarTab === 'COLOR' && (
                 <div className="grid grid-cols-3 gap-2">
-                  {SARDINE_COLOR_OPTIONS.map((opt) => {
-                    const unlocked = canPlayerUseExclusiveTier(
-                      opt.tier,
-                      ownMember
-                    );
+                  {SARDINE_COLOR_OPTIONS.filter((opt) =>
+                    canPlayerUseExclusiveTier(opt.tier, ownMember)
+                  ).map((opt) => {
                     const selected = currentSardine.color === opt.id;
                     const previewCfg: SardineAvatarConfig = {
                       ...currentSardine,
@@ -515,27 +507,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       <button
                         key={opt.id}
                         type="button"
-                        disabled={avatarBusy || !unlocked}
+                        disabled={avatarBusy}
                         data-testid={`avatar-color-${opt.id}`}
-                        title={
-                          unlocked
-                            ? opt.label
-                            : `${opt.label} — ${getExclusiveTierDescriptionDe(opt.tier)}`
-                        }
+                        title={opt.label}
                         onClick={() => void applySardineConfig(previewCfg)}
                         className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
                           selected
                             ? 'cmf-btn-active'
-                            : unlocked
-                              ? 'cmf-well hover:bg-white/80'
-                              : 'cmf-well opacity-55 cursor-not-allowed'
+                            : 'cmf-well hover:bg-white/80'
                         }`}
                       >
                         <PlayerAvatar config={previewCfg} size="md" />
                         <span className="font-tech text-[10px] font-bold leading-tight text-[var(--text-main)]">
                           {opt.label}
                         </span>
-                        {renderTierBadge(opt.tier, unlocked)}
+                        {renderTierBadge(opt.tier)}
                       </button>
                     );
                   })}
@@ -544,11 +530,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               {avatarTab === 'HAT' && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {SARDINE_HAT_OPTIONS.map((opt) => {
-                    const unlocked = canPlayerUseExclusiveTier(
-                      opt.tier,
-                      ownMember
-                    );
+                  {SARDINE_HAT_OPTIONS.filter((opt) =>
+                    canPlayerUseExclusiveTier(opt.tier, ownMember)
+                  ).map((opt) => {
                     const selected = currentSardine.hat === opt.id;
                     const previewCfg: SardineAvatarConfig = {
                       ...currentSardine,
@@ -558,27 +542,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       <button
                         key={opt.id}
                         type="button"
-                        disabled={avatarBusy || !unlocked}
+                        disabled={avatarBusy}
                         data-testid={`avatar-hat-${opt.id}`}
-                        title={
-                          unlocked
-                            ? opt.label
-                            : `${opt.label} — ${getExclusiveTierDescriptionDe(opt.tier)}`
-                        }
+                        title={opt.label}
                         onClick={() => void applySardineConfig(previewCfg)}
                         className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
                           selected
                             ? 'cmf-btn-active'
-                            : unlocked
-                              ? 'cmf-well hover:bg-white/80'
-                              : 'cmf-well opacity-55 cursor-not-allowed'
+                            : 'cmf-well hover:bg-white/80'
                         }`}
                       >
                         <PlayerAvatar config={previewCfg} size="md" />
                         <span className="font-tech text-[10px] font-bold leading-tight text-[var(--text-main)]">
                           {opt.label}
                         </span>
-                        {renderTierBadge(opt.tier, unlocked)}
+                        {renderTierBadge(opt.tier)}
                       </button>
                     );
                   })}
@@ -587,11 +565,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               {avatarTab === 'GLASSES' && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {SARDINE_GLASSES_OPTIONS.map((opt) => {
-                    const unlocked = canPlayerUseExclusiveTier(
-                      opt.tier,
-                      ownMember
-                    );
+                  {SARDINE_GLASSES_OPTIONS.filter((opt) =>
+                    canPlayerUseExclusiveTier(opt.tier, ownMember)
+                  ).map((opt) => {
                     const selected = currentSardine.glasses === opt.id;
                     const previewCfg: SardineAvatarConfig = {
                       ...currentSardine,
@@ -601,27 +577,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       <button
                         key={opt.id}
                         type="button"
-                        disabled={avatarBusy || !unlocked}
+                        disabled={avatarBusy}
                         data-testid={`avatar-glasses-${opt.id}`}
-                        title={
-                          unlocked
-                            ? opt.label
-                            : `${opt.label} — ${getExclusiveTierDescriptionDe(opt.tier)}`
-                        }
+                        title={opt.label}
                         onClick={() => void applySardineConfig(previewCfg)}
                         className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
                           selected
                             ? 'cmf-btn-active'
-                            : unlocked
-                              ? 'cmf-well hover:bg-white/80'
-                              : 'cmf-well opacity-55 cursor-not-allowed'
+                            : 'cmf-well hover:bg-white/80'
                         }`}
                       >
                         <PlayerAvatar config={previewCfg} size="md" />
                         <span className="font-tech text-[10px] font-bold leading-tight text-[var(--text-main)]">
                           {opt.label}
                         </span>
-                        {renderTierBadge(opt.tier, unlocked)}
+                        {renderTierBadge(opt.tier)}
                       </button>
                     );
                   })}
@@ -630,11 +600,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               {avatarTab === 'EXTRA' && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {SARDINE_EXTRA_OPTIONS.map((opt) => {
-                    const unlocked = canPlayerUseExclusiveTier(
-                      opt.tier,
-                      ownMember
-                    );
+                  {SARDINE_EXTRA_OPTIONS.filter((opt) =>
+                    canPlayerUseExclusiveTier(opt.tier, ownMember)
+                  ).map((opt) => {
                     const selected = currentSardine.extra === opt.id;
                     const previewCfg: SardineAvatarConfig = {
                       ...currentSardine,
@@ -644,27 +612,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       <button
                         key={opt.id}
                         type="button"
-                        disabled={avatarBusy || !unlocked}
+                        disabled={avatarBusy}
                         data-testid={`avatar-extra-${opt.id}`}
-                        title={
-                          unlocked
-                            ? opt.label
-                            : `${opt.label} — ${getExclusiveTierDescriptionDe(opt.tier)}`
-                        }
+                        title={opt.label}
                         onClick={() => void applySardineConfig(previewCfg)}
                         className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
                           selected
                             ? 'cmf-btn-active'
-                            : unlocked
-                              ? 'cmf-well hover:bg-white/80'
-                              : 'cmf-well opacity-55 cursor-not-allowed'
+                            : 'cmf-well hover:bg-white/80'
                         }`}
                       >
                         <PlayerAvatar config={previewCfg} size="md" />
                         <span className="font-tech text-[10px] font-bold leading-tight text-[var(--text-main)]">
                           {opt.label}
                         </span>
-                        {renderTierBadge(opt.tier, unlocked)}
+                        {renderTierBadge(opt.tier)}
                       </button>
                     );
                   })}

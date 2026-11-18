@@ -172,6 +172,8 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
   const thermoTargetMeters = qConfig.thermometerDistanceMeters;
   const donutStepMeters = qConfig.donutRingStepMeters;
   const envDistanceMeters = qConfig.environmentDistanceMeters;
+  const transitDistanceMeters =
+    qConfig.transitDistanceMeters ?? qConfig.environmentDistanceMeters;
 
   const canPurchase = Boolean(
     isSeekerActive && !isPaused && !isHidingPhase && ownFix
@@ -248,6 +250,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         thermometerDistanceMeters: thermoTargetMeters,
         donutStepMeters,
         environmentDistanceMeters: envDistanceMeters,
+        transitDistanceMeters,
         ...params,
       };
       const req: ClueRequest = {
@@ -940,7 +943,7 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
           <div className="cmf-well p-3.5 space-y-2.5">
             <span className="flex items-center gap-2 font-industrial text-sm font-bold text-[var(--text-main)]">
               <Train className="h-4 w-4 shrink-0 text-[var(--cmf-amber)]" />
-              Haltestelle im Umkreis von {envDistanceMeters} m?
+              Haltestelle im Umkreis von {transitDistanceMeters} m?
             </span>
             <div className="flex flex-wrap gap-2">
               {renderPreviewButton('OSM_TRANSIT')}
@@ -948,7 +951,10 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
                 questionType: 'OSM_TRANSIT',
                 penaltyMin: envMin,
                 label: 'Kaufen',
-                params: { environmentDistanceMeters: envDistanceMeters },
+                params: {
+                  transitDistanceMeters,
+                  environmentDistanceMeters: envDistanceMeters,
+                },
               })}
             </div>
           </div>

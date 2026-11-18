@@ -283,8 +283,10 @@ export interface QuestionRulesConfig {
   donutRingStepMeters: number;
   /** Kat. 3: Umgebungs-Check (Haltestelle, Wertstoffinsel, Grünfläche) Preis in Minuten */
   environmentPriceMinutes: number;
-  /** Kat. 3: Umgebungs-Check Distanz (Umkreis um Haltestelle/Wertstoffinsel) in Metern (Standard: 150 m) */
+  /** Kat. 3: Wertstoffinsel-Umkreis in Metern (Standard: 150 m) */
   environmentDistanceMeters: number;
+  /** Kat. 3: Haltestellen-Umkreis in Metern (Standard: 150 m) */
+  transitDistanceMeters?: number;
   /** Kat. 4: Live-Foto Preis in Minuten (Standard: 5 Min.) */
   photoPriceMinutes: number;
 }
@@ -331,6 +333,7 @@ export interface QuestionParams {
   thermometerDistanceMeters?: number;
   donutStepMeters?: number;
   environmentDistanceMeters?: number;
+  transitDistanceMeters?: number;
 }
 
 export type ClueRequestStatus =

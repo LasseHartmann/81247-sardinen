@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import type { Feature, MultiPolygon, Polygon } from 'geojson';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
+  getActivePostalCodes,
   getRadiusRadarOptions,
   LEASH_RADIUS_METERS,
   MAP_DEFAULT_CENTER,
@@ -12,6 +13,7 @@ import {
 import {
   getRecyclingLatLngsForPlayArea,
   getTransitLatLngsForPlayArea,
+  preloadGreenPolygonsForPostalCode,
 } from '../../config/fallbackOsm81247';
 import { buildQuestionPreviewGeoJson } from '../../geo/clueGeometry';
 import { destinationPoint, distanceMeters } from '../../geo/distance';
@@ -299,8 +301,31 @@ const GameMapInner: React.FC<GameMapProps> = ({
     thermoTargetDistanceMeters,
   ]);
 
+  const [greenDataRev, setGreenDataRev] = useState(0);
+
+  useEffect(() => {
+    if (activePreviewQuestion !== 'OSM_GREEN') return;
+    const rawCodes =
+      (playArea.properties?.postalCodes as string[] | undefined) ??
+      (playArea.properties?.postalCode
+        ? [String(playArea.properties.postalCode)]
+        : getActivePostalCodes(null));
+    let cancelled = false;
+    void Promise.all(
+      rawCodes.slice(0, 12).map((code) => preloadGreenPolygonsForPostalCode(code))
+    ).then(() => {
+      if (!cancelled) {
+        setGreenDataRev((v) => v + 1);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activePreviewQuestion, playArea]);
+
   const liveConePreview = useMemo(() => {
     if (!activePreviewQuestion) return null;
+    void greenDataRev;
     const originPt =
       previewOriginLat !== null && previewOriginLng !== null
         ? { lat: previewOriginLat, lng: previewOriginLng }
@@ -315,6 +340,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
         thermometerDistanceMeters: qConfig.thermometerDistanceMeters,
         donutStepMeters: qConfig.donutRingStepMeters,
         environmentDistanceMeters: qConfig.environmentDistanceMeters,
+        transitDistanceMeters:
+          qConfig.transitDistanceMeters ?? qConfig.environmentDistanceMeters,
       },
       originPt,
       possibleHidingArea ?? playArea
@@ -330,6 +357,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
     possibleHidingArea,
     playArea,
     qConfig,
+    greenDataRev,
   ]);
 
   useEffect(() => {
@@ -551,7 +579,12 @@ const GameMapInner: React.FC<GameMapProps> = ({
         : 0;
     const isThermoValid =
       !isThermoPreview || thermoDist >= thermoTargetDistanceMeters;
-    const previewColor = isThermoValid ? '#0D9488' : '#F59E0B';
+    const previewColor =
+      activePreviewQuestion === 'OSM_GREEN'
+        ? '#16A34A'
+        : isThermoValid
+          ? '#0D9488'
+          : '#F59E0B';
     const refRingColor = '#64748B';
     const refAccentColor = '#0D9488';
 

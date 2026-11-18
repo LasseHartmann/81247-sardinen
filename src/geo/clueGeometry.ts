@@ -628,7 +628,7 @@ export function evaluateDeterministicQuestion(
         anchorPoint,
         osmData?.transitStops ?? getTransitLatLngsForPlayArea(playArea),
         playArea,
-        params.environmentDistanceMeters ?? 150
+        params.transitDistanceMeters ?? params.environmentDistanceMeters ?? 150
       );
     case 'OSM_RECYCLING':
       return evaluateOsmRecycling(
@@ -750,7 +750,14 @@ export function buildQuestionPreviewGeoJson(
 
     case 'OSM_TRANSIT': {
       const transitStops = getTransitLatLngsForPlayArea(playArea);
-      const envRadius = Math.max(10, Math.round(params.environmentDistanceMeters ?? 150));
+      const envRadius = Math.max(
+        10,
+        Math.round(
+          params.transitDistanceMeters ??
+            params.environmentDistanceMeters ??
+            150
+        )
+      );
       const circles: Feature<Polygon | MultiPolygon>[] = [];
       for (const stop of transitStops) {
         circles.push(

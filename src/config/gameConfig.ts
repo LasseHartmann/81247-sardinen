@@ -812,6 +812,7 @@ export const DEFAULT_QUESTION_RULES_CONFIG: QuestionRulesConfig = {
   donutRingStepMeters: DEFAULT_DONUT_RING_STEP_METERS,
   environmentPriceMinutes: 3,
   environmentDistanceMeters: DEFAULT_ENVIRONMENT_DISTANCE_METERS,
+  transitDistanceMeters: DEFAULT_ENVIRONMENT_DISTANCE_METERS,
   photoPriceMinutes: 5,
 };
 
@@ -928,6 +929,12 @@ export function resolveQuestionRulesConfig(
       10,
       1000
     ),
+    transitDistanceMeters: clampInt(
+      config?.transitDistanceMeters ?? config?.environmentDistanceMeters,
+      DEFAULT_ENVIRONMENT_DISTANCE_METERS,
+      10,
+      1000
+    ),
     photoPriceMinutes: clampInt(
       config?.photoPriceMinutes,
       DEFAULT_QUESTION_RULES_CONFIG.photoPriceMinutes,
@@ -969,6 +976,8 @@ export function isDefaultQuestionRulesConfig(
       DEFAULT_QUESTION_RULES_CONFIG.environmentPriceMinutes &&
     resolved.environmentDistanceMeters ===
       DEFAULT_QUESTION_RULES_CONFIG.environmentDistanceMeters &&
+    (resolved.transitDistanceMeters ?? DEFAULT_ENVIRONMENT_DISTANCE_METERS) ===
+      DEFAULT_ENVIRONMENT_DISTANCE_METERS &&
     resolved.photoPriceMinutes ===
       DEFAULT_QUESTION_RULES_CONFIG.photoPriceMinutes
   );

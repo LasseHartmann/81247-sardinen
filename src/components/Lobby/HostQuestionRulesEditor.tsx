@@ -22,7 +22,9 @@ import type { QuestionRulesConfig } from '../../types/game';
 import { RadarDistancesMenuModal } from './RadarDistancesMenuModal';
 
 export type LobbyRulePreviewTarget =
+  | 'OSM_TRANSIT'
   | 'OSM_RECYCLING'
+  | 'OSM_GREEN'
   | 'DONUT_RING'
   | 'THERMOMETER'
   | 'RADIUS_RADAR';
@@ -65,9 +67,9 @@ const StepperRow: React.FC<StepperRowProps> = ({
   onDecrease,
   onIncrease,
 }) => (
-  <div className="flex items-center justify-between gap-2 rounded-xl border border-[var(--shell-border)] bg-white/85 px-3 py-2">
+  <div className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-[var(--shell-border)] bg-white/85 px-3 py-2">
     <div className="min-w-0">
-      <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
+      <span className="font-industrial block truncate text-xs font-bold text-[var(--text-main)]">
         {label}
       </span>
       {sublabel && (
@@ -90,7 +92,7 @@ const StepperRow: React.FC<StepperRowProps> = ({
       </button>
       <span
         data-testid={valueTestId}
-        className="font-dot min-w-[68px] text-center text-xs font-bold text-[var(--text-main)]"
+        className="font-dot min-w-[64px] text-center text-xs font-bold text-[var(--text-main)]"
       >
         {valueText}
       </span>
@@ -108,13 +110,12 @@ const StepperRow: React.FC<StepperRowProps> = ({
   </div>
 );
 
-interface DistanceRowWithPreviewProps {
+interface DistanceCounterRowProps {
   label: string;
   sublabel: string;
   valueMeters: number;
   minMeters: number;
   maxMeters: number;
-  stepMeters?: number;
   valueTestId: string;
   minusTestId: string;
   plusTestId: string;
@@ -125,13 +126,12 @@ interface DistanceRowWithPreviewProps {
   onPreview?: () => void;
 }
 
-const DistanceRowWithPreview: React.FC<DistanceRowWithPreviewProps> = ({
+const DistanceCounterRow: React.FC<DistanceCounterRowProps> = ({
   label,
   sublabel,
   valueMeters,
   minMeters,
   maxMeters,
-  stepMeters = 25,
   valueTestId,
   minusTestId,
   plusTestId,
@@ -141,64 +141,58 @@ const DistanceRowWithPreview: React.FC<DistanceRowWithPreviewProps> = ({
   onChangeMeters,
   onPreview,
 }) => (
-  <div className="space-y-2 rounded-xl border border-[var(--shell-border)] bg-white/85 px-3 py-2.5">
-    <div className="flex items-center justify-between gap-2">
-      <div className="min-w-0">
-        <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
+  <div className="min-w-0 space-y-2 rounded-xl border border-[var(--shell-border)] bg-white/85 p-2.5">
+    <div className="flex flex-wrap items-start justify-between gap-1.5">
+      <div className="min-w-0 flex-1">
+        <span className="font-industrial block truncate text-xs font-bold text-[var(--text-main)]">
           {label}
         </span>
-        <span className="block text-[10px] text-[var(--text-muted)]">
+        <span className="block text-[10px] leading-tight text-[var(--text-muted)]">
           {sublabel}
         </span>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+      {onPreview && (
+        <button
+          type="button"
+          data-testid={previewTestId}
+          onClick={onPreview}
+          className="cmf-btn-secondary inline-flex h-7 shrink-0 items-center gap-1 px-2.5 text-[11px] font-semibold"
+        >
+          <Eye className="h-3 w-3 shrink-0" />
+          <span>Vorschau</span>
+        </button>
+      )}
+    </div>
+
+    {/* Kompakte Zähler-Leiste mit Buttons (ohne Slider, niemals überbreit) */}
+    <div className="flex flex-wrap items-center justify-between gap-1 rounded-lg bg-[var(--module-sub)] p-1">
+      <div className="flex items-center gap-1">
         <button
           type="button"
           data-testid={minusTestId}
           disabled={disabled || valueMeters <= minMeters}
-          onClick={() =>
-            onChangeMeters(Math.max(minMeters, valueMeters - stepMeters))
-          }
-          className="cmf-btn-secondary flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-35"
-          aria-label={`${label} verringern`}
+          onClick={() => onChangeMeters(Math.max(minMeters, valueMeters - 25))}
+          aria-label={`${label} um 25 m verringern`}
+          className="cmf-btn-secondary h-7 px-2 text-[11px] font-semibold disabled:opacity-35"
         >
-          <Minus className="h-3.5 w-3.5" />
+          -25
         </button>
-        <span
-          data-testid={valueTestId}
-          className="font-dot min-w-[64px] text-center text-xs font-bold text-[var(--text-main)]"
-        >
-          {valueMeters} m
-        </span>
         <button
           type="button"
-          data-testid={plusTestId}
-          disabled={disabled || valueMeters >= maxMeters}
-          onClick={() =>
-            onChangeMeters(Math.min(maxMeters, valueMeters + stepMeters))
-          }
-          className="cmf-btn-secondary flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-35"
-          aria-label={`${label} erhöhen`}
+          disabled={disabled || valueMeters <= minMeters}
+          onClick={() => onChangeMeters(Math.max(minMeters, valueMeters - 5))}
+          aria-label={`${label} um 5 m verringern`}
+          className="cmf-btn-secondary flex h-7 w-7 shrink-0 items-center justify-center disabled:opacity-35"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Minus className="h-3 w-3" />
         </button>
       </div>
-    </div>
 
-    <div className="flex items-center gap-2 pt-0.5">
-      <input
-        type="range"
-        min={minMeters}
-        max={maxMeters}
-        step={5}
-        disabled={disabled}
-        aria-label={`${label} Regler`}
-        value={valueMeters}
-        onChange={(e) => onChangeMeters(Number(e.target.value))}
-        className="cmf-range flex-1"
-      />
-      <div className="relative w-20 shrink-0">
+      <div className="flex items-center justify-center gap-1 px-1">
+        <span data-testid={valueTestId} className="sr-only">
+          {valueMeters} m
+        </span>
         <input
           type="number"
           data-testid={inputTestId}
@@ -213,23 +207,34 @@ const DistanceRowWithPreview: React.FC<DistanceRowWithPreviewProps> = ({
               onChangeMeters(Math.min(maxMeters, parsed));
             }
           }}
-          className="cmf-input h-8 w-full pr-5 pl-2 text-right text-xs font-bold"
+          className="cmf-input font-dot h-7 w-16 px-1.5 text-center text-xs font-bold"
         />
-        <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-[var(--text-muted)]">
+        <span className="text-[11px] font-semibold text-[var(--text-muted)]">
           m
         </span>
       </div>
-      {onPreview && (
+
+      <div className="flex items-center gap-1">
         <button
           type="button"
-          data-testid={previewTestId}
-          onClick={onPreview}
-          className="cmf-btn-secondary inline-flex h-8 shrink-0 items-center gap-1 px-2.5 text-xs font-semibold"
+          disabled={disabled || valueMeters >= maxMeters}
+          onClick={() => onChangeMeters(Math.min(maxMeters, valueMeters + 5))}
+          aria-label={`${label} um 5 m erhöhen`}
+          className="cmf-btn-secondary flex h-7 w-7 shrink-0 items-center justify-center disabled:opacity-35"
         >
-          <Eye className="h-3.5 w-3.5" />
-          <span>Vorschau</span>
+          <Plus className="h-3 w-3" />
         </button>
-      )}
+        <button
+          type="button"
+          data-testid={plusTestId}
+          disabled={disabled || valueMeters >= maxMeters}
+          onClick={() => onChangeMeters(Math.min(maxMeters, valueMeters + 25))}
+          aria-label={`${label} um 25 m erhöhen`}
+          className="cmf-btn-secondary h-7 px-2 text-[11px] font-semibold disabled:opacity-35"
+        >
+          +25
+        </button>
+      </div>
     </div>
   </div>
 );
@@ -242,6 +247,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
   onOpenRulePreview,
 }) => {
   const cfg = resolveQuestionRulesConfig(questionConfig);
+  const transitDist = cfg.transitDistanceMeters ?? cfg.environmentDistanceMeters;
   const radarRadii = getRadiusRadarOptions(questionConfig);
   const isDefault = isDefaultQuestionRulesConfig(questionConfig);
 
@@ -268,7 +274,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
   return (
     <div
       data-testid="host-question-rules-editor"
-      className="space-y-3"
+      className="min-w-0 space-y-3"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -298,7 +304,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
         {/* KATEGORIE 1: Richtung & Warm/Kalt */}
         <div
           data-testid="question-rules-cat-1"
-          className="cmf-well space-y-2 p-3"
+          className="cmf-well min-w-0 space-y-2 p-3"
         >
           <button
             type="button"
@@ -307,9 +313,9 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
             onClick={() => toggleCategory(1)}
             className="flex w-full items-center justify-between gap-2 text-left"
           >
-            <span className="flex items-center gap-1.5 font-industrial text-xs font-bold text-[var(--text-main)]">
+            <span className="flex min-w-0 items-center gap-1.5 font-industrial text-xs font-bold text-[var(--text-main)]">
               <Compass className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
-              <span>1. Richtung &amp; Warm/Kalt</span>
+              <span className="truncate">1. Richtung &amp; Warm/Kalt</span>
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
               <span className="font-tech text-[10px] font-bold text-[var(--text-muted)]">
@@ -365,7 +371,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
                 }
               />
 
-              <DistanceRowWithPreview
+              <DistanceCounterRow
                 label="Thermometer (Distanz)"
                 sublabel="Stoppt automatisch nach Laufstrecke"
                 valueMeters={cfg.thermometerDistanceMeters}
@@ -393,7 +399,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
         {/* KATEGORIE 2: Abstand & Umkreis */}
         <div
           data-testid="question-rules-cat-2"
-          className="cmf-well space-y-2 p-3"
+          className="cmf-well min-w-0 space-y-2 p-3"
         >
           <button
             type="button"
@@ -402,9 +408,9 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
             onClick={() => toggleCategory(2)}
             className="flex w-full items-center justify-between gap-2 text-left"
           >
-            <span className="flex items-center gap-1.5 font-industrial text-xs font-bold text-[var(--text-main)]">
+            <span className="flex min-w-0 items-center gap-1.5 font-industrial text-xs font-bold text-[var(--text-main)]">
               <CircleDot className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-teal)]" />
-              <span>2. Abstand &amp; Umkreis</span>
+              <span className="truncate">2. Abstand &amp; Umkreis</span>
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
               <span className="font-tech text-[10px] font-bold text-[var(--text-muted)]">
@@ -443,10 +449,10 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
               />
 
               {/* Extra-Menü für Radar-Distanzen (Hinzufügen, Entfernen & Vorschau) */}
-              <div className="space-y-2 rounded-xl border border-[var(--shell-border)] bg-white/85 px-3 py-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
+              <div className="min-w-0 rounded-xl border border-[var(--shell-border)] bg-white/85 p-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-industrial block truncate text-xs font-bold text-[var(--text-main)]">
                       Radar-Distanzen ({radarRadii.length})
                     </span>
                     <span className="block truncate text-[10px] text-[var(--text-muted)]">
@@ -459,7 +465,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
                     data-testid="open-radar-distances-menu-btn"
                     disabled={disabled}
                     onClick={() => setRadarMenuOpen(true)}
-                    className="cmf-btn-secondary inline-flex min-h-[34px] shrink-0 items-center gap-1.5 px-3 py-1 text-xs font-semibold"
+                    className="cmf-btn-secondary inline-flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-xs font-semibold"
                   >
                     <Settings2 className="h-3.5 w-3.5" />
                     <span>Radar-Menü</span>
@@ -485,7 +491,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
                 }
               />
 
-              <DistanceRowWithPreview
+              <DistanceCounterRow
                 label="Entfernungs-Ring / Donut (Distanz)"
                 sublabel={`Ringbreite (z. B. 0–${cfg.donutRingStepMeters} m)`}
                 valueMeters={cfg.donutRingStepMeters}
@@ -513,7 +519,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
         {/* KATEGORIE 3: Umgebungs-Check */}
         <div
           data-testid="question-rules-cat-3"
-          className="cmf-well space-y-2 p-3"
+          className="cmf-well min-w-0 space-y-2 p-3"
         >
           <button
             type="button"
@@ -522,13 +528,13 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
             onClick={() => toggleCategory(3)}
             className="flex w-full items-center justify-between gap-2 text-left"
           >
-            <span className="flex items-center gap-1.5 font-industrial text-xs font-bold text-[var(--text-main)]">
+            <span className="flex min-w-0 items-center gap-1.5 font-industrial text-xs font-bold text-[var(--text-main)]">
               <Trees className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-amber)]" />
-              <span>3. Umgebungs-Check</span>
+              <span className="truncate">3. Umgebungs-Check</span>
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
               <span className="font-tech text-[10px] font-bold text-[var(--text-muted)]">
-                +{cfg.environmentPriceMinutes}m · {cfg.environmentDistanceMeters}m
+                +{cfg.environmentPriceMinutes}m · {transitDist}/{cfg.environmentDistanceMeters}m
               </span>
               {openCategories[3] ? (
                 <ChevronUp className="h-3.5 w-3.5 text-[var(--text-muted)]" />
@@ -562,9 +568,31 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
                 }
               />
 
-              <DistanceRowWithPreview
-                label="Wertstoffinsel & Haltestelle (Distanz)"
-                sublabel="Prüf-Umkreis um das Versteck"
+              <DistanceCounterRow
+                label="Haltestelle (Distanz)"
+                sublabel="Prüf-Umkreis um Bus & Bahn"
+                valueMeters={transitDist}
+                minMeters={10}
+                maxMeters={1000}
+                valueTestId="question-rule-transit-distance"
+                minusTestId="question-rule-transit-distance-minus"
+                plusTestId="question-rule-transit-distance-plus"
+                inputTestId="question-rule-transit-distance-input"
+                previewTestId="preview-rule-transit-btn"
+                disabled={disabled}
+                onChangeMeters={(nextMeters) =>
+                  patch({ transitDistanceMeters: nextMeters })
+                }
+                onPreview={
+                  onOpenRulePreview
+                    ? () => onOpenRulePreview('OSM_TRANSIT')
+                    : undefined
+                }
+              />
+
+              <DistanceCounterRow
+                label="Wertstoffinsel (Distanz)"
+                sublabel="Prüf-Umkreis um Wertstoffinseln"
                 valueMeters={cfg.environmentDistanceMeters}
                 minMeters={10}
                 maxMeters={1000}
@@ -583,6 +611,32 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
                     : undefined
                 }
               />
+
+              {/* Grünflächen-Kartenvorschau */}
+              <div className="min-w-0 rounded-xl border border-[var(--shell-border)] bg-white/85 p-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-industrial block truncate text-xs font-bold text-[var(--text-main)]">
+                      Grünflächen &amp; Parks
+                    </span>
+                    <span className="block text-[10px] text-[var(--text-muted)]">
+                      Alle Grünflächen im Gebiet (+20 m Rand)
+                    </span>
+                  </div>
+
+                  {onOpenRulePreview && (
+                    <button
+                      type="button"
+                      data-testid="preview-rule-green-btn"
+                      onClick={() => onOpenRulePreview('OSM_GREEN')}
+                      className="cmf-btn-secondary inline-flex h-7 shrink-0 items-center gap-1 px-2.5 text-[11px] font-semibold"
+                    >
+                      <Eye className="h-3 w-3 shrink-0" />
+                      <span>Vorschau</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -590,7 +644,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
         {/* KATEGORIE 4: Live-Fotos */}
         <div
           data-testid="question-rules-cat-4"
-          className="cmf-well space-y-2 p-3"
+          className="cmf-well min-w-0 space-y-2 p-3"
         >
           <button
             type="button"
@@ -599,9 +653,9 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
             onClick={() => toggleCategory(4)}
             className="flex w-full items-center justify-between gap-2 text-left"
           >
-            <span className="flex items-center gap-1.5 font-industrial text-xs font-bold text-[var(--text-main)]">
+            <span className="flex min-w-0 items-center gap-1.5 font-industrial text-xs font-bold text-[var(--text-main)]">
               <Camera className="h-3.5 w-3.5 shrink-0 text-[var(--cmf-orange)]" />
-              <span>4. Live-Foto anfordern</span>
+              <span className="truncate">4. Live-Foto anfordern</span>
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
               <span className="font-tech text-[10px] font-bold text-[var(--text-muted)]">

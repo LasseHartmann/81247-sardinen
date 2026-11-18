@@ -162,7 +162,7 @@ describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
 
   it('erlaubt dem Host das Bearbeiten der Preise und Distanzen jeder Frage-Kategorie', () => {
     let currentCfg: QuestionRulesConfig = { ...DEFAULT_QUESTION_RULES_CONFIG };
-    const { rerender } = render(
+    const { rerender, container } = render(
       <HostQuestionRulesEditor
         questionConfig={currentCfg}
         onChange={(next) => {
@@ -217,7 +217,7 @@ describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
       6 * 60_000
     );
 
-    // Exakte Meter-Eingabe & Lobby-Kartenvorschau für Wertstoffinsel, Donut & Thermometer
+    // Exakte Meter-Zähler (ohne Slider) & Lobby-Kartenvorschau für Haltestelle, Wertstoffinsel, Grünflächen, Donut & Thermometer
     const previewCalls: Array<{ target: string; radius?: number }> = [];
     rerender(
       <HostQuestionRulesEditor
@@ -230,17 +230,28 @@ describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
         }}
       />
     );
+    expect(container.querySelectorAll('input[type="range"]').length).toBe(0);
 
-    fireEvent.change(screen.getByTestId('question-rule-thermo-distance-input'), {
-      target: { value: '180' },
-    });
+    fireEvent.click(screen.getByTestId('question-rule-transit-distance-plus'));
+    expect(currentCfg.transitDistanceMeters).toBe(175);
+
+    fireEvent.change(
+      screen.getByTestId('question-rule-thermo-distance-input'),
+      {
+        target: { value: '180' },
+      }
+    );
     expect(currentCfg.thermometerDistanceMeters).toBe(180);
 
+    fireEvent.click(screen.getByTestId('preview-rule-transit-btn'));
     fireEvent.click(screen.getByTestId('preview-rule-recycling-btn'));
+    fireEvent.click(screen.getByTestId('preview-rule-green-btn'));
     fireEvent.click(screen.getByTestId('preview-rule-donut-btn'));
     fireEvent.click(screen.getByTestId('preview-rule-thermo-btn'));
     expect(previewCalls.map((p) => p.target)).toEqual([
+      'OSM_TRANSIT',
       'OSM_RECYCLING',
+      'OSM_GREEN',
       'DONUT_RING',
       'THERMOMETER',
     ]);

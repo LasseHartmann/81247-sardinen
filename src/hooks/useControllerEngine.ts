@@ -789,6 +789,9 @@ export async function executeControllerTick(
               thermometerDistanceMeters: qConfig.thermometerDistanceMeters,
               donutStepMeters: qConfig.donutRingStepMeters,
               environmentDistanceMeters: qConfig.environmentDistanceMeters,
+              transitDistanceMeters:
+                qConfig.transitDistanceMeters ??
+                qConfig.environmentDistanceMeters,
               radiusMeters: qConfig.radiusRadarDistanceMeters,
               ...claimed.params,
             };

@@ -236,9 +236,6 @@ export const App: React.FC = () => {
   const [circleEditorCollapsed, setCircleEditorCollapsed] = useState(false);
   const [lobbyRulePreview, setLobbyRulePreview] =
     useState<LobbyRulePreviewTarget | null>(null);
-  const [lobbyEnvSubMode, setLobbyEnvSubMode] = useState<
-    'OSM_RECYCLING' | 'OSM_TRANSIT'
-  >('OSM_RECYCLING');
   const [lobbyPreviewOrigin, setLobbyPreviewOrigin] = useState<LatLng | null>(
     null
   );
@@ -1537,17 +1534,10 @@ export const App: React.FC = () => {
     setKeepLobbyQuestionRulesOpen(true);
     setCirclePickError(null);
     setLobbyRulePreview(target);
-    const nextEnvMode =
-      target === 'OSM_RECYCLING' ? 'OSM_RECYCLING' : lobbyEnvSubMode;
-    if (target === 'OSM_RECYCLING') {
-      setLobbyEnvSubMode('OSM_RECYCLING');
-    }
     if (initialRadiusMeters !== undefined) {
       setSelectedRadius(initialRadiusMeters);
     }
-    setActivePreviewQuestion(
-      resolveLobbyPreviewQuestionType(target, nextEnvMode)
-    );
+    setActivePreviewQuestion(resolveLobbyPreviewQuestionType(target));
     setMapClickMode({
       kind: 'PICK_LOBBY_RULE_PREVIEW',
     });
@@ -1648,6 +1638,8 @@ export const App: React.FC = () => {
       thermometerDistanceMeters: qConfig.thermometerDistanceMeters,
       donutStepMeters: qConfig.donutRingStepMeters,
       environmentDistanceMeters: qConfig.environmentDistanceMeters,
+      transitDistanceMeters:
+        qConfig.transitDistanceMeters ?? qConfig.environmentDistanceMeters,
     };
     if (
       activePreviewQuestion === 'SPLIT_NS' ||
@@ -2282,20 +2274,10 @@ export const App: React.FC = () => {
                     lobbyRulePreview && (
                       <LobbyRulePreviewSheet
                         activeTarget={lobbyRulePreview}
-                        envSubMode={lobbyEnvSubMode}
-                        onChangeEnvSubMode={(nextEnv) => {
-                          setLobbyEnvSubMode(nextEnv);
-                          if (lobbyRulePreview === 'OSM_RECYCLING') {
-                            setActivePreviewQuestion(nextEnv);
-                          }
-                        }}
                         onChangeTarget={(nextTarget) => {
                           setLobbyRulePreview(nextTarget);
                           setActivePreviewQuestion(
-                            resolveLobbyPreviewQuestionType(
-                              nextTarget,
-                              lobbyEnvSubMode
-                            )
+                            resolveLobbyPreviewQuestionType(nextTarget)
                           );
                         }}
                         questionConfig={publicState.questionConfig}

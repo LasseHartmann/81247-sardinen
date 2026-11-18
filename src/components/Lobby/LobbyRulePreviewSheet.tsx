@@ -11,8 +11,6 @@ import type { LobbyRulePreviewTarget } from './HostQuestionRulesEditor';
 
 export interface LobbyRulePreviewSheetProps {
   activeTarget: LobbyRulePreviewTarget;
-  envSubMode: 'OSM_RECYCLING' | 'OSM_TRANSIT';
-  onChangeEnvSubMode: (mode: 'OSM_RECYCLING' | 'OSM_TRANSIT') => void;
   onChangeTarget: (target: LobbyRulePreviewTarget) => void;
   questionConfig?: Partial<QuestionRulesConfig> | null;
   selectedRadarMeters: number;
@@ -22,17 +20,13 @@ export interface LobbyRulePreviewSheetProps {
 }
 
 export function resolveLobbyPreviewQuestionType(
-  target: LobbyRulePreviewTarget,
-  envSubMode: 'OSM_RECYCLING' | 'OSM_TRANSIT'
+  target: LobbyRulePreviewTarget
 ): QuestionType {
-  if (target === 'OSM_RECYCLING') return envSubMode;
   return target;
 }
 
 export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
   activeTarget,
-  envSubMode,
-  onChangeEnvSubMode,
   onChangeTarget,
   questionConfig,
   selectedRadarMeters,
@@ -44,6 +38,7 @@ export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
   const [newRadarInput, setNewRadarInput] = useState('350');
 
   const cfg = resolveQuestionRulesConfig(questionConfig);
+  const transitDist = cfg.transitDistanceMeters ?? cfg.environmentDistanceMeters;
   const radarRadii = getRadiusRadarOptions(questionConfig);
 
   const patch = (partial: Partial<QuestionRulesConfig>) => {
@@ -51,95 +46,110 @@ export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
   };
 
   const titleText =
-    activeTarget === 'OSM_RECYCLING'
-      ? envSubMode === 'OSM_RECYCLING'
+    activeTarget === 'OSM_TRANSIT'
+      ? `Haltestellen-Umkreis (${transitDist} m)`
+      : activeTarget === 'OSM_RECYCLING'
         ? `Wertstoffinsel-Umkreis (${cfg.environmentDistanceMeters} m)`
-        : `Haltestellen-Umkreis (${cfg.environmentDistanceMeters} m)`
-      : activeTarget === 'DONUT_RING'
-        ? `Donut-Ringbreite (${cfg.donutRingStepMeters} m)`
-        : activeTarget === 'THERMOMETER'
-          ? `Thermometer-Distanz (${cfg.thermometerDistanceMeters} m)`
-          : `Radar-Distanzen (${selectedRadarMeters} m aktiv)`;
+        : activeTarget === 'OSM_GREEN'
+          ? 'Grünflächen & Parks'
+          : activeTarget === 'DONUT_RING'
+            ? `Donut-Ringbreite (${cfg.donutRingStepMeters} m)`
+            : activeTarget === 'THERMOMETER'
+              ? `Thermometer-Distanz (${cfg.thermometerDistanceMeters} m)`
+              : `Radar-Distanzen (${selectedRadarMeters} m aktiv)`;
 
   const subtitleText =
-    activeTarget === 'OSM_RECYCLING'
-      ? 'Alle Standorte im Spielgebiet mit exaktem Prüf-Radius'
-      : activeTarget === 'THERMOMETER'
-        ? 'Tippe auf die Karte, um Startpunkt A zu verschieben'
-        : 'Tippe auf die Karte, um Mittelpunkt P zu verschieben';
+    activeTarget === 'OSM_TRANSIT'
+      ? 'Alle Haltestellen im Gebiet mit exaktem Prüf-Radius'
+      : activeTarget === 'OSM_RECYCLING'
+        ? 'Alle Wertstoffinseln im Gebiet mit exaktem Prüf-Radius'
+        : activeTarget === 'OSM_GREEN'
+          ? 'Alle erkannten Grünflächen & Parks im Spielgebiet'
+          : activeTarget === 'THERMOMETER'
+            ? 'Tippe auf die Karte, um Startpunkt A zu verschieben'
+            : 'Tippe auf die Karte, um Mittelpunkt P zu verschieben';
 
-  const renderExactDistanceTuner = (opts: {
+  const renderCounterButtons = (opts: {
     value: number;
     min: number;
     max: number;
     testIdPrefix: string;
     onUpdate: (val: number) => void;
   }) => (
-    <div className="space-y-2">
-      <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-2xl bg-[var(--module-sub)] p-1.5">
+      <div className="flex items-center gap-1">
         <button
           type="button"
-          onClick={() => opts.onUpdate(Math.max(opts.min, opts.value - 25))}
-          className="cmf-btn-secondary min-h-[36px] px-2.5 text-xs font-semibold"
+          disabled={opts.value <= opts.min}
+          onClick={() => opts.onUpdate(Math.max(opts.min, opts.value - 50))}
+          className="cmf-btn-secondary h-8 px-2.5 text-xs font-semibold disabled:opacity-35"
         >
-          -25
+          -50
         </button>
         <button
           type="button"
-          onClick={() => opts.onUpdate(Math.max(opts.min, opts.value - 5))}
-          aria-label="5 Meter weniger"
-          className="cmf-btn-secondary flex h-9 w-9 shrink-0 items-center justify-center"
+          disabled={opts.value <= opts.min}
+          onClick={() => opts.onUpdate(Math.max(opts.min, opts.value - 10))}
+          className="cmf-btn-secondary h-8 px-2 text-xs font-semibold disabled:opacity-35"
+        >
+          -10
+        </button>
+        <button
+          type="button"
+          disabled={opts.value <= opts.min}
+          onClick={() => opts.onUpdate(Math.max(opts.min, opts.value - 1))}
+          aria-label="1 Meter weniger"
+          className="cmf-btn-secondary flex h-8 w-8 shrink-0 items-center justify-center disabled:opacity-35"
         >
           <Minus className="h-3.5 w-3.5" />
         </button>
+      </div>
 
-        <div className="relative flex-1">
-          <input
-            type="number"
-            data-testid={`${opts.testIdPrefix}-exact-input`}
-            min={opts.min}
-            max={opts.max}
-            value={opts.value}
-            onChange={(e) => {
-              const parsed = Math.round(Number(e.target.value));
-              if (Number.isFinite(parsed) && parsed >= opts.min) {
-                opts.onUpdate(Math.min(opts.max, parsed));
-              }
-            }}
-            className="cmf-input min-h-[36px] w-full pr-7 pl-3 text-center font-dot text-sm"
-          />
-          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-[var(--text-muted)]">
-            m
-          </span>
-        </div>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          data-testid={`${opts.testIdPrefix}-exact-input`}
+          min={opts.min}
+          max={opts.max}
+          value={opts.value}
+          onChange={(e) => {
+            const parsed = Math.round(Number(e.target.value));
+            if (Number.isFinite(parsed) && parsed >= opts.min) {
+              opts.onUpdate(Math.min(opts.max, parsed));
+            }
+          }}
+          className="cmf-input font-dot h-8 w-20 px-2 text-center text-sm font-bold"
+        />
+        <span className="text-xs font-semibold text-[var(--text-muted)]">m</span>
+      </div>
 
+      <div className="flex items-center gap-1">
         <button
           type="button"
-          onClick={() => opts.onUpdate(Math.min(opts.max, opts.value + 5))}
-          aria-label="5 Meter mehr"
-          className="cmf-btn-secondary flex h-9 w-9 shrink-0 items-center justify-center"
+          disabled={opts.value >= opts.max}
+          onClick={() => opts.onUpdate(Math.min(opts.max, opts.value + 1))}
+          aria-label="1 Meter mehr"
+          className="cmf-btn-secondary flex h-8 w-8 shrink-0 items-center justify-center disabled:opacity-35"
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"
-          onClick={() => opts.onUpdate(Math.min(opts.max, opts.value + 25))}
-          className="cmf-btn-secondary min-h-[36px] px-2.5 text-xs font-semibold"
+          disabled={opts.value >= opts.max}
+          onClick={() => opts.onUpdate(Math.min(opts.max, opts.value + 10))}
+          className="cmf-btn-secondary h-8 px-2 text-xs font-semibold disabled:opacity-35"
         >
-          +25
+          +10
+        </button>
+        <button
+          type="button"
+          disabled={opts.value >= opts.max}
+          onClick={() => opts.onUpdate(Math.min(opts.max, opts.value + 50))}
+          className="cmf-btn-secondary h-8 px-2.5 text-xs font-semibold disabled:opacity-35"
+        >
+          +50
         </button>
       </div>
-
-      <input
-        type="range"
-        data-testid={`${opts.testIdPrefix}-slider`}
-        min={opts.min}
-        max={opts.max}
-        step={5}
-        value={opts.value}
-        onChange={(e) => opts.onUpdate(Number(e.target.value))}
-        className="cmf-range w-full"
-      />
     </div>
   );
 
@@ -193,11 +203,13 @@ export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
         </div>
       }
     >
-      {/* Schnellwechsel zwischen den 4 Distanz-Vorschauen */}
-      <div className="grid grid-cols-4 gap-1 rounded-2xl bg-[var(--module-sub)] p-1">
+      {/* Schnellwechsel zwischen allen 6 Kartenvorschauen */}
+      <div className="grid grid-cols-3 gap-1 rounded-2xl bg-[var(--module-sub)] p-1 sm:grid-cols-6">
         {(
           [
+            { id: 'OSM_TRANSIT', label: 'Haltestelle' },
             { id: 'OSM_RECYCLING', label: 'Wertstoff' },
+            { id: 'OSM_GREEN', label: 'Grünfläche' },
             { id: 'DONUT_RING', label: 'Donut' },
             { id: 'THERMOMETER', label: 'Thermo' },
             { id: 'RADIUS_RADAR', label: 'Radar' },
@@ -210,7 +222,7 @@ export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
               type="button"
               data-testid={`preview-switch-${item.id}`}
               onClick={() => onChangeTarget(item.id)}
-              className={`min-h-[32px] rounded-xl px-1.5 py-1 text-[11px] font-semibold transition-colors ${
+              className={`min-h-[32px] truncate rounded-xl px-1.5 py-1 text-[11px] font-semibold transition-colors ${
                 active
                   ? 'bg-[var(--btn-primary-bg)] text-[var(--btn-primary-fg)]'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
@@ -222,42 +234,27 @@ export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
         })}
       </div>
 
-      {activeTarget === 'OSM_RECYCLING' && (
-        <div className="space-y-2.5">
-          <div className="grid grid-cols-2 gap-1.5">
-            <button
-              type="button"
-              data-testid="preview-env-mode-recycling"
-              onClick={() => onChangeEnvSubMode('OSM_RECYCLING')}
-              className={`min-h-[34px] rounded-xl px-2.5 py-1 text-xs font-semibold ${
-                envSubMode === 'OSM_RECYCLING'
-                  ? 'cmf-btn-active'
-                  : 'cmf-btn-secondary'
-              }`}
-            >
-              Wertstoffinseln
-            </button>
-            <button
-              type="button"
-              data-testid="preview-env-mode-transit"
-              onClick={() => onChangeEnvSubMode('OSM_TRANSIT')}
-              className={`min-h-[34px] rounded-xl px-2.5 py-1 text-xs font-semibold ${
-                envSubMode === 'OSM_TRANSIT'
-                  ? 'cmf-btn-active'
-                  : 'cmf-btn-secondary'
-              }`}
-            >
-              Haltestellen
-            </button>
-          </div>
+      {activeTarget === 'OSM_TRANSIT' &&
+        renderCounterButtons({
+          value: transitDist,
+          min: 10,
+          max: 1000,
+          testIdPrefix: 'map-preview-transit',
+          onUpdate: (nextVal) => patch({ transitDistanceMeters: nextVal }),
+        })}
 
-          {renderExactDistanceTuner({
-            value: cfg.environmentDistanceMeters,
-            min: 10,
-            max: 1000,
-            testIdPrefix: 'map-preview-env',
-            onUpdate: (nextVal) => patch({ environmentDistanceMeters: nextVal }),
-          })}
+      {activeTarget === 'OSM_RECYCLING' &&
+        renderCounterButtons({
+          value: cfg.environmentDistanceMeters,
+          min: 10,
+          max: 1000,
+          testIdPrefix: 'map-preview-env',
+          onUpdate: (nextVal) => patch({ environmentDistanceMeters: nextVal }),
+        })}
+
+      {activeTarget === 'OSM_GREEN' && (
+        <div className="cmf-well px-3 py-2.5 text-xs text-[var(--text-muted)]">
+          Grün markiert sind alle Parks, Wälder und Grünanlagen im aktuellen Spielgebiet (bei der Frage gilt zusätzlich eine <strong>20 m Randtoleranz</strong>).
         </div>
       )}
 
@@ -268,7 +265,7 @@ export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
             {cfg.donutRingStepMeters * 2} m, {cfg.donutRingStepMeters * 2}–
             {cfg.donutRingStepMeters * 3} m …
           </p>
-          {renderExactDistanceTuner({
+          {renderCounterButtons({
             value: cfg.donutRingStepMeters,
             min: 10,
             max: 2000,
@@ -279,7 +276,7 @@ export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
       )}
 
       {activeTarget === 'THERMOMETER' &&
-        renderExactDistanceTuner({
+        renderCounterButtons({
           value: cfg.thermometerDistanceMeters,
           min: 10,
           max: 2000,
@@ -295,7 +292,7 @@ export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
               return (
                 <div
                   key={r}
-                  className={`inline-flex items-center gap-1 rounded-full pl-3 pr-1.5 py-1 text-xs font-semibold ${
+                  className={`inline-flex items-center gap-1 rounded-full py-1 pr-1.5 pl-3 text-xs font-semibold ${
                     isSelected ? 'cmf-btn-active !rounded-full' : 'cmf-well !rounded-full'
                   }`}
                 >
@@ -350,6 +347,18 @@ export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
             }}
             className="flex items-center gap-1.5"
           >
+            <button
+              type="button"
+              onClick={() =>
+                setNewRadarInput(
+                  String(Math.max(10, (validNewRadar ?? 250) - 25))
+                )
+              }
+              aria-label="25 Meter weniger"
+              className="cmf-btn-secondary flex h-9 w-9 shrink-0 items-center justify-center"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
             <div className="relative flex-1">
               <input
                 type="number"
@@ -359,13 +368,25 @@ export const LobbyRulePreviewSheet: React.FC<LobbyRulePreviewSheetProps> = ({
                 step={5}
                 value={newRadarInput}
                 onChange={(e) => setNewRadarInput(e.target.value)}
-                placeholder="Neue Distanz (m)"
-                className="cmf-input min-h-[36px] w-full pr-7 pl-3 text-xs font-bold"
+                placeholder="Neue Distanz"
+                className="cmf-input min-h-[36px] w-full pr-7 pl-3 text-center font-dot text-xs font-bold"
               />
               <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-[11px] text-[var(--text-muted)]">
                 m
               </span>
             </div>
+            <button
+              type="button"
+              onClick={() =>
+                setNewRadarInput(
+                  String(Math.min(5000, (validNewRadar ?? 250) + 25))
+                )
+              }
+              aria-label="25 Meter mehr"
+              className="cmf-btn-secondary flex h-9 w-9 shrink-0 items-center justify-center"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
             <button
               type="submit"
               data-testid="map-radar-add-btn"

@@ -1174,7 +1174,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         <strong className="font-tech">+{radarPenaltyMin} Min.</strong>
                       </li>
                       <li className="flex items-center justify-between gap-2">
-                        <span>• Umgebungs-Check (ÖPNV &amp; Wertstoff {qConfig.environmentDistanceMeters}m, Grün)</span>
+                        <span>
+                          • Umgebungs-Check (Haltestelle{' '}
+                          {qConfig.transitDistanceMeters ??
+                            qConfig.environmentDistanceMeters}
+                          m, Wertstoff {qConfig.environmentDistanceMeters}m, Grün)
+                        </span>
                         <strong className="font-tech">+{osmPenaltyMin} Min.</strong>
                       </li>
                       <li className="flex items-center justify-between gap-2">

@@ -14,7 +14,6 @@ import {
   ChevronDown,
   ChevronUp,
   Users,
-  HelpCircle,
 } from 'lucide-react';
 import {
   ANCHOR_ACCURACY_WARNING_METERS,
@@ -230,7 +229,6 @@ export const App: React.FC = () => {
   const [hiderFilterTeamId, setHiderFilterTeamId] = useState<string>('NONE');
   const [circlePickError, setCirclePickError] = useState<string | null>(null);
   const [circleEditorCollapsed, setCircleEditorCollapsed] = useState(false);
-  const [showMapLegend, setShowMapLegend] = useState(false);
   const [buyingPreviewClue, setBuyingPreviewClue] = useState(false);
   const mapActionsRef = useRef<GameMapActions | null>(null);
   const [memberMarkerClockMs, setMemberMarkerClockMs] = useState<number>(() =>
@@ -1853,20 +1851,6 @@ export const App: React.FC = () => {
             <div className="flex shrink-0 flex-col gap-1.5">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                  <button
-                    type="button"
-                    data-testid="map-legend-toggle-btn"
-                    onClick={() => setShowMapLegend((v) => !v)}
-                    className={`pointer-events-auto inline-flex min-h-[38px] items-center gap-1 rounded-xl border px-2.5 py-1 font-tech text-[11px] font-bold shadow-md backdrop-blur-xs ${
-                      showMapLegend
-                        ? 'border-[var(--cmf-teal)] bg-[#14171A] text-white'
-                        : 'border-[var(--shell-border)] bg-white/94 text-[var(--text-main)]'
-                    }`}
-                  >
-                    <HelpCircle className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                    <span>Legende</span>
-                  </button>
-
                   {canUseMapClicks && (
                     <button
                       type="button"
@@ -1967,57 +1951,8 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Exklusive Sub-Zeile: Entweder geöffnete Legende ODER einzeilige Team-Tipp-Filterleiste */}
-              {showMapLegend ? (
-                <div
-                  data-testid="map-legend-card"
-                  className="cmf-module pointer-events-auto max-w-xs space-y-1.5 p-3 text-xs shadow-lg"
-                >
-                  <div className="flex items-center justify-between border-b cmf-divider pb-1.5">
-                    <span className="font-industrial font-bold text-[var(--text-main)]">
-                      Karten-Legende
-                    </span>
-                    <button
-                      type="button"
-                      aria-label="Legende schließen"
-                      onClick={() => setShowMapLegend(false)}
-                      className="rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text-main)]"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <div className="space-y-1 text-[11px]">
-                    <div className="flex items-center gap-2">
-                      <span className="h-0.5 w-4 shrink-0 bg-[#DC2626]" />
-                      <span>Rote Linie = Spielgrenze</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="h-3 w-4 shrink-0 rounded-xs bg-[#FF4D00]/45" />
-                      <span>Orange Fläche = Ausgeschlossen</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="h-3 w-3 shrink-0 rounded-full border-2 border-[#0D9488]" />
-                      <span>Türkiser Kreis = Versteck-Radius / Radar</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-4 shrink-0 rounded-full border border-amber-500 bg-amber-400/80" />
-                      <span>Fisch + Team = Letzte Position der Sucher</span>
-                    </div>
-                  </div>
-                  <div className="border-t cmf-divider pt-1 text-[10px] text-[var(--text-muted)]">
-                    Kartendaten ©{' '}
-                    <a
-                      href="https://www.openstreetmap.org/copyright"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline hover:text-[var(--text-main)]"
-                    >
-                      OpenStreetMap
-                    </a>
-                  </div>
-                </div>
-              ) : (
-                !isManhunt &&
+              {/* Einzeilige Team-Tipp-Filterleiste (Verstecker / Admin) */}
+              {!isManhunt &&
                 isOverviewOrSardineDashboard &&
                 publicState.status !== 'LOBBY' &&
                 roundSeekerTeamsForFilter.length > 0 && (
@@ -2028,9 +1963,9 @@ export const App: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setHiderFilterTeamId('NONE')}
-                      className={`shrink-0 rounded-xl px-2.5 py-1 font-tech text-[10px] font-bold uppercase transition-colors ${
+                      className={`shrink-0 rounded-xl px-2.5 py-1 text-xs font-semibold transition-colors ${
                         hiderFilterTeamId === 'NONE'
-                          ? 'bg-[#14171A] text-white'
+                          ? 'bg-[var(--btn-primary-bg)] text-[var(--btn-primary-fg)]'
                           : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
                       }`}
                     >
@@ -2047,9 +1982,9 @@ export const App: React.FC = () => {
                               prev === t.id ? 'NONE' : t.id
                             )
                           }
-                          className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1 font-tech text-[10px] font-bold uppercase transition-colors ${
+                          className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-semibold transition-colors ${
                             active
-                              ? 'bg-[#14171A] text-white'
+                              ? 'bg-[var(--btn-primary-bg)] text-[var(--btn-primary-fg)]'
                               : 'bg-white/75 text-[var(--text-main)]'
                           }`}
                         >
@@ -2063,8 +1998,7 @@ export const App: React.FC = () => {
                       );
                     })}
                   </div>
-                )
-              )}
+                )}
             </div>
 
             {/* GARANTIERT FREIE KARTENMITTE (flex-1 min-h-0) */}

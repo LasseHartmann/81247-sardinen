@@ -499,13 +499,13 @@ const GameMapInner: React.FC<GameMapProps> = ({
       }).addTo(group);
     }
 
-    // Dauerhafter roter Außenrand des gesamten Spielbereichs (81247)
+    // Dauerhafter roter Außenrand des gesamten Spielbereichs
     L.geoJSON(playArea, {
       style: {
         renderer,
         color: '#DC2626',
         weight: 3.5,
-        opacity: 0.95,
+        opacity: 0.96,
         fillOpacity: 0,
       },
       interactive: false,
@@ -532,7 +532,9 @@ const GameMapInner: React.FC<GameMapProps> = ({
         : 0;
     const isThermoValid =
       !isThermoPreview || thermoDist >= thermoTargetDistanceMeters;
-    const previewColor = isThermoValid ? '#00A896' : '#F59E0B';
+    const previewColor = isThermoValid ? '#0D9488' : '#F59E0B';
+    const refRingColor = '#64748B';
+    const refAccentColor = '#0D9488';
 
     if (liveConePreview) {
       L.geoJSON(liveConePreview, {
@@ -552,7 +554,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
       L.circle([effectiveThermoA.lat, effectiveThermoA.lng], {
         renderer,
         radius: thermoTargetDistanceMeters,
-        color: '#64748B',
+        color: refRingColor,
         weight: 1.5,
         dashArray: '5 5',
         fillOpacity: 0,
@@ -587,10 +589,10 @@ const GameMapInner: React.FC<GameMapProps> = ({
       L.circle([anchorPickLat, anchorPickLng], {
         renderer,
         radius: ANCHOR_MANUAL_ADJUST_MAX_METERS,
-        color: '#00A896',
+        color: refAccentColor,
         weight: 2,
         dashArray: '6 5',
-        fillColor: '#00A896',
+        fillColor: refAccentColor,
         fillOpacity: 0.1,
         interactive: false,
       }).addTo(group);
@@ -601,10 +603,10 @@ const GameMapInner: React.FC<GameMapProps> = ({
         L.geoJSON(official81247Boundary, {
           style: {
             renderer,
-            color: '#00A896',
+            color: refAccentColor,
             weight: 2.5,
             dashArray: '7 5',
-            fillColor: '#00A896',
+            fillColor: refAccentColor,
             fillOpacity: 0.04,
           },
           interactive: false,

@@ -71,6 +71,7 @@ import {
   formatPenaltyMinutes,
 } from '../../utils/formatting';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
+import { ThemeToggleButton } from '../Common/ThemeToggleButton';
 
 export interface ProfileViewProps {
   adapter: DatabaseAdapter;
@@ -371,13 +372,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             if (!label) return null;
             const badgeStyle =
               tier === 'OWNER'
-                ? 'bg-amber-400/20 text-amber-700 border-amber-500/40'
+                ? 'border-amber-500/50 bg-amber-500/15 text-amber-700 [html[data-theme=dark]_&]:text-amber-300'
                 : tier === 'DEVELOPER'
-                  ? 'bg-sky-400/20 text-sky-700 border-sky-500/40'
-                  : 'bg-[var(--cmf-orange)]/15 text-[var(--cmf-orange)] border-[var(--cmf-orange)]/35';
+                  ? 'border-sky-500/50 bg-sky-500/15 text-sky-700 [html[data-theme=dark]_&]:text-sky-300'
+                  : 'border-emerald-500/50 bg-emerald-500/15 text-emerald-700 [html[data-theme=dark]_&]:text-emerald-300';
             return (
               <span
-                className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.2 font-tech text-[8px] font-bold tracking-wider uppercase ${badgeStyle}`}
+                className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[8.5px] font-bold tracking-wider uppercase ${badgeStyle}`}
               >
                 {!unlocked && <Lock className="h-2.5 w-2.5" />}
                 {label}
@@ -486,9 +487,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     type="button"
                     data-testid={`avatar-tab-${tab.id.toLowerCase()}`}
                     onClick={() => setAvatarTab(tab.id)}
-                    className={`min-h-[36px] rounded-xl font-tech text-[11px] font-bold uppercase transition-all ${
+                    className={`min-h-[36px] rounded-xl text-xs font-semibold transition-all ${
                       avatarTab === tab.id
-                        ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
+                        ? 'cmf-btn-active'
                         : 'cmf-well hover:bg-white/80'
                     }`}
                   >
@@ -524,7 +525,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onClick={() => void applySardineConfig(previewCfg)}
                         className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
                           selected
-                            ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
+                            ? 'cmf-btn-active'
                             : unlocked
                               ? 'cmf-well hover:bg-white/80'
                               : 'cmf-well opacity-55 cursor-not-allowed'
@@ -567,7 +568,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onClick={() => void applySardineConfig(previewCfg)}
                         className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
                           selected
-                            ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
+                            ? 'cmf-btn-active'
                             : unlocked
                               ? 'cmf-well hover:bg-white/80'
                               : 'cmf-well opacity-55 cursor-not-allowed'
@@ -610,7 +611,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onClick={() => void applySardineConfig(previewCfg)}
                         className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
                           selected
-                            ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
+                            ? 'cmf-btn-active'
                             : unlocked
                               ? 'cmf-well hover:bg-white/80'
                               : 'cmf-well opacity-55 cursor-not-allowed'
@@ -653,7 +654,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onClick={() => void applySardineConfig(previewCfg)}
                         className={`flex flex-col items-center justify-between gap-1 rounded-xl p-2 text-center transition-all ${
                           selected
-                            ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
+                            ? 'cmf-btn-active'
                             : unlocked
                               ? 'cmf-well hover:bg-white/80'
                               : 'cmf-well opacity-55 cursor-not-allowed'
@@ -867,6 +868,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
 
           <div className="space-y-2.5">
+            {/* Erscheinungsbild: Hell / Dunkel */}
+            <div className="cmf-well flex items-center justify-between gap-3 p-3">
+              <div>
+                <p className="text-xs font-bold text-[var(--text-main)]">
+                  Darstellung (Light / Dark Mode)
+                </p>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Nutzt automatisch das Geräte-Design, bis du es einmal umstellst.
+                </p>
+              </div>
+              <ThemeToggleButton />
+            </div>
+
             {/* Soundeffekte */}
             <div className="cmf-well p-3 space-y-2.5">
               <div className="flex items-center justify-between gap-3">

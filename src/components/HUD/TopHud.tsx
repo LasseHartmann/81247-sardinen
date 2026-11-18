@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Crosshair,
-  Wifi,
   WifiOff,
   AlertTriangle,
   AlertOctagon,
@@ -22,6 +21,7 @@ import {
   formatDurationClock,
   formatPenaltyMinutes,
 } from '../../utils/formatting';
+import { ThemeToggleButton } from '../Common/ThemeToggleButton';
 
 export interface TopHudProps {
   publicState: PublicGameState;
@@ -86,16 +86,22 @@ export const TopHud: React.FC<TopHudProps> = ({
   return (
     <header
       data-emergency-active={hasActiveEmergency ? 'true' : 'false'}
-      className={`pointer-events-auto z-20 border-b pt-[max(0.4rem,env(safe-area-inset-top))] pr-[max(0.65rem,env(safe-area-inset-right))] pb-1.5 pl-[max(0.65rem,env(safe-area-inset-left))] transition-colors duration-200 ${
+      className={`pointer-events-auto z-20 border-b pt-[max(0.4rem,env(safe-area-inset-top))] pr-[max(0.65rem,env(safe-area-inset-right))] pb-1.5 pl-[max(0.65rem,env(safe-area-inset-left))] backdrop-blur-xl transition-colors duration-200 ${
         hasActiveEmergency
           ? 'border-[#FCA5A5] bg-[#B91C1C] text-white'
           : 'border-[var(--shell-border)] bg-[var(--shell-bg)]'
       }`}
     >
       <div className="mx-auto flex max-w-4xl items-center justify-between gap-2">
-        {/* Klare Status- & Spieluhr-Zeile ohne schwarze Cyber-Box */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:gap-3">
-          <div className="flex shrink-0 items-center gap-1.5">
+        {/* Nothing OS Status- & Spieluhr-Kapsel */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:gap-2.5">
+          <div
+            className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 ${
+              hasActiveEmergency
+                ? 'bg-black/30 text-white'
+                : 'bg-[var(--module-sub)] text-[var(--text-main)]'
+            }`}
+          >
             {!connected ? (
               <WifiOff
                 className="h-3.5 w-3.5 shrink-0 text-[var(--nothing-red)]"
@@ -106,12 +112,12 @@ export const TopHud: React.FC<TopHudProps> = ({
             ) : (
               <span
                 className={`inline-block h-2 w-2 shrink-0 rounded-full ${
-                  isPaused ? 'bg-[var(--cmf-amber)]' : 'bg-[var(--cmf-teal)]'
+                  isPaused ? 'bg-[var(--text-muted)]' : 'bg-[var(--text-main)]'
                 }`}
               />
             )}
             <span
-              className={`hidden text-xs font-medium min-[400px]:inline ${
+              className={`hidden text-[11px] font-medium min-[400px]:inline ${
                 hasActiveEmergency ? 'text-white/85' : 'text-[var(--text-muted)]'
               }`}
             >
@@ -119,7 +125,7 @@ export const TopHud: React.FC<TopHudProps> = ({
             </span>
             <span
               data-testid="hud-net-clock"
-              className={`font-mono-code text-sm leading-none font-bold sm:text-base ${
+              className={`font-dot text-sm leading-none sm:text-base ${
                 hasActiveEmergency ? 'text-white' : 'text-[var(--text-main)]'
               }`}
             >
@@ -128,25 +134,19 @@ export const TopHud: React.FC<TopHudProps> = ({
           </div>
 
           <div
-            className={`h-4 shrink-0 border-l ${
-              hasActiveEmergency ? 'border-white/30' : 'border-[var(--shell-border)]'
-            }`}
-          />
-
-          <div
             data-testid="hud-stage-countdown"
             title={timer.nextStageLabel}
-            className={`flex min-w-0 items-center gap-1 text-xs font-medium ${
+            className={`flex min-w-0 items-center gap-1.5 text-xs font-medium ${
               hasActiveEmergency ? 'text-white/90' : 'text-[var(--text-muted)]'
             }`}
           >
             {activePhase === 'LOBBY' ? (
-              <span className="truncate whitespace-nowrap">
+              <span className="truncate whitespace-nowrap text-xs">
                 {isManhunt ? 'Manhunt' : 'Bereit'}
               </span>
             ) : timer.nextStageRemainingMs !== null ? (
               <>
-                <span className="truncate whitespace-nowrap">
+                <span className="truncate whitespace-nowrap text-xs">
                   {isManhunt
                     ? activePhase === 'HIDING'
                       ? 'Jagd in'
@@ -156,7 +156,7 @@ export const TopHud: React.FC<TopHudProps> = ({
                       : 'Radar in'}
                 </span>
                 <span
-                  className={`font-mono-code shrink-0 whitespace-nowrap font-bold ${
+                  className={`font-dot shrink-0 whitespace-nowrap text-sm ${
                     hasActiveEmergency ? 'text-white' : 'text-[var(--text-main)]'
                   }`}
                 >
@@ -164,7 +164,7 @@ export const TopHud: React.FC<TopHudProps> = ({
                 </span>
               </>
             ) : (
-              <span className="truncate whitespace-nowrap font-semibold">
+              <span className="truncate whitespace-nowrap text-xs font-semibold">
                 {isManhunt ? '150 m Zone' : '100 m Radar'}
               </span>
             )}
@@ -224,16 +224,7 @@ export const TopHud: React.FC<TopHudProps> = ({
             )}
           </div>
 
-          <div
-            title={connected ? 'Online' : 'Offline'}
-            className="cmf-well hidden h-9 w-9 items-center justify-center sm:flex"
-          >
-            {connected ? (
-              <Wifi className="h-4 w-4 text-[var(--cmf-teal)]" />
-            ) : (
-              <WifiOff className="h-4 w-4 text-[var(--nothing-red)]" />
-            )}
-          </div>
+          <ThemeToggleButton compact />
 
           <button
             type="button"

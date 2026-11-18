@@ -90,14 +90,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     <nav
       aria-label="Hauptnavigation"
       data-emergency-active={hasActiveEmergency ? 'true' : 'false'}
-      className={`z-30 border-t pt-1 pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.45rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] transition-colors duration-200 ${
+      className={`z-30 border-t pt-1.5 pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] backdrop-blur-xl transition-colors duration-200 ${
         hasActiveEmergency
           ? 'border-[#FCA5A5] bg-[#B91C1C] text-white'
           : 'border-[var(--shell-border)] bg-[var(--shell-bg)]'
       }`}
     >
       <div
-        className="relative mx-auto grid max-w-xl items-center gap-0.5"
+        className="relative mx-auto grid max-w-xl items-center gap-1"
         style={{
           gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`,
         }}
@@ -110,28 +110,22 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               type="button"
               data-testid={`nav-tab-${item.id}`}
               onClick={() => onSelectTab(item.id)}
-              className={`relative flex min-h-[48px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1.5 py-1 text-[11px] font-medium transition-colors ${
+              className={`relative flex min-h-[46px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-full px-1.5 py-1 text-[11px] font-medium transition-colors ${
                 isActive
                   ? hasActiveEmergency
                     ? 'bg-white/20 font-semibold text-white'
-                    : 'bg-[var(--module-sub)] font-semibold text-[var(--text-main)]'
+                    : 'bg-[var(--btn-primary-bg)] font-semibold text-[var(--btn-primary-fg)]'
                   : hasActiveEmergency
                     ? 'text-[#FEE2E2] hover:text-white'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
               }`}
             >
-              <div
-                className={`relative ${
-                  isActive && !hasActiveEmergency
-                    ? 'text-[var(--cmf-orange)]'
-                    : ''
-                }`}
-              >
+              <div className="relative">
                 {item.icon}
                 {Boolean(item.badge && item.badge > 0) && (
                   <span
                     key={item.badge}
-                    className="absolute -top-1.5 -right-3 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--cmf-orange)] px-1 text-[9px] font-bold text-white"
+                    className="absolute -top-1.5 -right-3 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--nothing-red)] px-1 text-[9px] font-bold text-white"
                   >
                     {item.badge}
                   </span>

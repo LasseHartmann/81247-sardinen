@@ -312,7 +312,7 @@ export const LateJoinTeamPicker: React.FC<LateJoinTeamPickerProps> = ({
                     data-testid={`late-join-select-${team.id}`}
                     disabled={submittingChoice !== null}
                     onClick={() => void handleChoose(team.id)}
-                    className="cmf-btn-secondary font-dot flex min-h-[40px] w-full items-center justify-center gap-1.5 border-[var(--text-main)] bg-white px-3 py-2 text-xs font-bold text-[var(--text-main)] hover:bg-zinc-50 disabled:opacity-50"
+                    className="cmf-btn-secondary flex min-h-[40px] w-full items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold disabled:opacity-50"
                   >
                     <CheckCircle2
                       className="h-3.5 w-3.5"

@@ -8,6 +8,7 @@ import {
 } from '../src/components/Map/CustomMarkers';
 import {
   canPlayerUseExclusiveTier,
+  getExclusiveTierBadgeLabel,
   isMatrixAdminIdentity,
   parseSardineAvatar,
   serializeSardineAvatar,
@@ -21,20 +22,23 @@ describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
     cleanup();
   });
 
-  it('erzwingt Owner-, Developer- und Runde-1-Exklusivität exakt für die vorgesehenen Konten', () => {
-    // 1. Owner-Exklusiv: nur Lasse
+  it('erzwingt Owner-, Helper- und Runde-1-Exklusivität exakt für die vorgesehenen Konten', () => {
+    // 1. Owner-Exklusiv: Lasse & Linus
     expect(canPlayerUseExclusiveTier('OWNER', 'Lasse')).toBe(true);
-    expect(canPlayerUseExclusiveTier('OWNER', 'Linus')).toBe(false);
+    expect(canPlayerUseExclusiveTier('OWNER', 'Linus')).toBe(true);
     expect(canPlayerUseExclusiveTier('OWNER', 'Thomas')).toBe(false);
+    expect(canPlayerUseExclusiveTier('OWNER', 'Johna')).toBe(false);
     expect(canPlayerUseExclusiveTier('OWNER', 'Anna')).toBe(false);
 
-    // 2. Developer-Exklusiv: Lasse & Linus
+    // 2. Helper-Exklusiv (ehemals Dev): Lasse, Linus, Thomas & Johna
+    expect(getExclusiveTierBadgeLabel('DEVELOPER')).toBe('HELPER');
     expect(canPlayerUseExclusiveTier('DEVELOPER', 'Lasse')).toBe(true);
     expect(canPlayerUseExclusiveTier('DEVELOPER', 'Linus')).toBe(true);
-    expect(canPlayerUseExclusiveTier('DEVELOPER', 'Thomas')).toBe(false);
+    expect(canPlayerUseExclusiveTier('DEVELOPER', 'Thomas')).toBe(true);
+    expect(canPlayerUseExclusiveTier('DEVELOPER', 'Johna')).toBe(true);
     expect(canPlayerUseExclusiveTier('DEVELOPER', 'Anna')).toBe(false);
 
-    // 3. Runde-1-Exklusiv: alle 12 OG-Spieler
+    // 3. Runde-1-Exklusiv: alle OG-Spieler
     const firstRoundPlayers = [
       'Lasse',
       'Linus',
@@ -42,6 +46,7 @@ describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
       'Nick',
       'Robert',
       'Eric',
+      'Johna',
       'Jonah',
       'Lorenzo',
       'Louis',
@@ -64,14 +69,15 @@ describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
     };
     const ownerSerialized = serializeSardineAvatar(ownerLoadout);
     expect(parseSardineAvatar(ownerSerialized, 'lasse')).toEqual(ownerLoadout);
-    expect(parseSardineAvatar(ownerSerialized, 'linus')).toEqual({
+    expect(parseSardineAvatar(ownerSerialized, 'linus')).toEqual(ownerLoadout);
+    expect(parseSardineAvatar(ownerSerialized, 'thomas')).toEqual({
       color: 'silver',
       hat: 'none',
       glasses: 'none',
       extra: 'none',
     });
 
-    // 5. Sanitization für Developer-Items (Mitternacht, Ninja-Band, Sonnenbrille, Goldkette)
+    // 5. Sanitization für Helper-Items (Mitternacht, Ninja-Band, Sonnenbrille, Goldkette)
     const devLoadout: SardineAvatarConfig = {
       color: 'midnight',
       hat: 'ninja',
@@ -81,7 +87,9 @@ describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
     const devSerialized = serializeSardineAvatar(devLoadout);
     expect(parseSardineAvatar(devSerialized, 'lasse')).toEqual(devLoadout);
     expect(parseSardineAvatar(devSerialized, 'linus')).toEqual(devLoadout);
-    expect(parseSardineAvatar(devSerialized, 'thomas')).toEqual({
+    expect(parseSardineAvatar(devSerialized, 'thomas')).toEqual(devLoadout);
+    expect(parseSardineAvatar(devSerialized, 'johna')).toEqual(devLoadout);
+    expect(parseSardineAvatar(devSerialized, 'nick')).toEqual({
       color: 'silver',
       hat: 'none',
       glasses: 'none',

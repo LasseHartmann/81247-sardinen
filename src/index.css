@@ -1,32 +1,88 @@
 @import "tailwindcss";
 
-:root {
-  /* Warm Paper-Map Surfaces (Zero Dot-Grid, Zero Faux-Hardware Bezel) */
-  --bg-page: #F4F3EF;
+/* ==========================================================================
+   Nothing OS 4.0 Theme Tokens (Light & True OLED Dark)
+   Flat widget surfaces, zero skeuomorphic screws/coils, zero glow shadows
+   ========================================================================== */
+
+:root,
+[data-theme='light'] {
+  --bg-page: #F1F1F3;
   --shell-bg: #FFFFFF;
-  --shell-border: #E5E3DC;
+  --shell-border: #E4E4E7;
   --module-bg: #FFFFFF;
-  --module-sub: #F7F6F2;
-  --surface-inset: #F9F8F5;
+  --module-sub: #F4F4F6;
+  --surface-inset: #ECECEF;
+  --surface-chip: #FFFFFF;
 
-  /* Natural Ink Typography */
-  --text-main: #1C1917;
-  --text-muted: #6B665F;
+  --text-main: #0D0D0F;
+  --text-muted: #71717A;
 
-  /* Subtle UI Neutrals */
-  --hardware-ring: #DDDAD2;
-  --hardware-border: #C8C4BA;
+  --hardware-ring: #D4D4D8;
+  --hardware-border: #C4C4CC;
 
-  /* Grounded Outdoor Accents (No Neon) */
-  --cmf-orange: #E54813;
-  --cmf-teal: #0F766E;
-  --cmf-amber: #B45309;
-  --nothing-red: #DC2626;
+  --btn-primary-bg: #0D0D0F;
+  --btn-primary-fg: #FFFFFF;
+  --btn-primary-hover: #27272A;
 
-  /* Clean Motion Curves */
+  --btn-secondary-bg: #F4F4F6;
+  --btn-secondary-fg: #0D0D0F;
+  --btn-secondary-border: #E4E4E7;
+  --btn-secondary-hover: #E9E9EE;
+
+  --input-bg: #F8F8FA;
+  --input-border: #DCDCE2;
+
+  --oled-bg: #141416;
+  --oled-fg: #F5F5F7;
+  --oled-border: #27272A;
+
+  /* Nothing Recording Red + Monochrome Functional Accents */
+  --nothing-red: #D71921;
+  --cmf-orange: #D71921;
+  --cmf-teal: #18181B;
+  --cmf-amber: #52525B;
+
   --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-detent: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-detent: cubic-bezier(0.2, 0.9, 0.3, 1);
   --ease-mechanical: cubic-bezier(0.2, 0, 0, 1);
+}
+
+[data-theme='dark'] {
+  --bg-page: #000000;
+  --shell-bg: #161618;
+  --shell-border: #27272B;
+  --module-bg: #161618;
+  --module-sub: #222226;
+  --surface-inset: #1C1C20;
+  --surface-chip: #25252A;
+
+  --text-main: #F4F4F6;
+  --text-muted: #8E8E96;
+
+  --hardware-ring: #2E2E34;
+  --hardware-border: #3A3A42;
+
+  --btn-primary-bg: #F4F4F6;
+  --btn-primary-fg: #09090B;
+  --btn-primary-hover: #DCDCE0;
+
+  --btn-secondary-bg: #222226;
+  --btn-secondary-fg: #F4F4F6;
+  --btn-secondary-border: #303036;
+  --btn-secondary-hover: #2C2C32;
+
+  --input-bg: #0E0E10;
+  --input-border: #2E2E34;
+
+  --oled-bg: #222226;
+  --oled-fg: #F4F4F6;
+  --oled-border: #323238;
+
+  --nothing-red: #D71921;
+  --cmf-orange: #E02830;
+  --cmf-teal: #E4E4E7;
+  --cmf-amber: #A1A1AA;
 }
 
 html,
@@ -46,7 +102,7 @@ body {
   color: var(--text-main);
   font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
 button,
@@ -93,36 +149,39 @@ button,
 }
 
 /* ==========================================================================
-   Clean 2-Font Typography (Inter UI + Tabular Numerals, Zero Pixel/Cyber Caps)
+   Nothing OS 4.0 Typography: Clean Inter UI + Restrained NDot Widget Display
    ========================================================================== */
 
+/* Reserved for widget clocks, room codes & primary Nothing OS display titles */
 .font-dot {
-  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.015em;
+  font-family: 'DotGothic16', ui-monospace, monospace;
+  font-weight: 400;
+  letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
 }
 
+.font-mono-code {
+  font-family: 'DotGothic16', ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Clean Nothing OS 4.0 sans-serif for headings & labels (no monospace shouting) */
 .font-industrial {
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
 
 .font-tech {
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.005em;
   font-variant-numeric: tabular-nums;
 }
 
-.font-mono-code {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ==========================================================================
-   Flat Surfaces & Clean Hairlines (No Nested Box Clutter, No Dot Grid)
+   Flat Nothing OS Widget Cards & Quick-Tiles
    ========================================================================== */
 
 .cmf-drafting-bg {
@@ -132,71 +191,69 @@ button,
 .cmf-chassis {
   background: var(--shell-bg);
   border: 1px solid var(--shell-border);
-  border-radius: 1rem;
-  box-shadow: 0 1px 3px rgba(28, 25, 23, 0.05);
+  border-radius: 1.5rem;
 }
 
 .cmf-module {
   background: var(--module-bg);
   border: 1px solid var(--shell-border);
-  border-radius: 0.875rem;
-  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.04);
+  border-radius: 1.375rem;
 }
 
 .cmf-well {
   background: var(--module-sub);
   border: 1px solid transparent;
-  border-radius: 0.625rem;
+  border-radius: 1rem;
 }
 
 .cmf-divider {
-  border-color: #EAE8E1;
+  border-color: var(--shell-border);
   border-style: solid;
 }
 
 .cmf-oled {
-  background: #1C1917;
-  color: #FAFAF9;
-  border: 1px solid #292524;
-  border-radius: 0.75rem;
+  background: var(--oled-bg);
+  color: var(--oled-fg);
+  border: 1px solid var(--oled-border);
+  border-radius: 1.25rem;
 }
 
 /* ==========================================================================
-   Crisp Flat Buttons & Understated Tags (Zero Colored Glow Shadows)
+   Nothing OS Quick-Setting Pill Buttons & Inputs
    ========================================================================== */
 
 .cmf-btn-primary {
-  background: var(--cmf-orange);
-  color: #FFFFFF;
-  border: 1px solid transparent;
-  border-radius: 0.625rem;
-  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.08);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  border: 1px solid var(--btn-primary-bg);
+  border-radius: 9999px;
   transition:
     background-color 120ms ease,
+    border-color 120ms ease,
     transform 100ms var(--ease-detent),
     opacity 120ms ease;
   cursor: pointer;
 }
 
 .cmf-btn-primary:hover:not(:disabled) {
-  background: #CF3F0E;
+  background: var(--btn-primary-hover);
+  border-color: var(--btn-primary-hover);
 }
 
 .cmf-btn-primary:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.985);
 }
 
 .cmf-btn-primary:disabled {
-  opacity: 0.42;
-  box-shadow: none;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
 .cmf-btn-secondary {
-  background: #FFFFFF;
-  color: var(--text-main);
-  border: 1px solid #DDDAD0;
-  border-radius: 0.625rem;
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-fg);
+  border: 1px solid var(--btn-secondary-border);
+  border-radius: 9999px;
   transition:
     background-color 120ms ease,
     border-color 120ms ease,
@@ -205,49 +262,49 @@ button,
 }
 
 .cmf-btn-secondary:hover:not(:disabled) {
-  border-color: #C4C0B5;
-  background: #F7F6F2;
+  background: var(--btn-secondary-hover);
 }
 
 .cmf-btn-secondary:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.985);
 }
 
 .cmf-btn-secondary:disabled {
-  opacity: 0.42;
+  opacity: 0.38;
   cursor: not-allowed;
 }
 
 .cmf-btn-active {
-  background: #1C1917;
-  color: #FFFFFF;
-  border: 1px solid #1C1917;
-  border-radius: 0.625rem;
+  background: var(--surface-chip);
+  color: var(--text-main);
+  border: 2px solid var(--text-main);
+  border-radius: 1rem;
   transition:
     background-color 120ms ease,
+    border-color 120ms ease,
     transform 100ms var(--ease-detent);
   cursor: pointer;
 }
 
 .cmf-btn-active:hover:not(:disabled) {
-  background: #292524;
+  background: var(--btn-secondary-hover);
 }
 
 .cmf-btn-active:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.985);
 }
 
 .cmf-btn-active:disabled {
-  opacity: 0.45;
+  opacity: 0.42;
   cursor: not-allowed;
 }
 
 .cmf-input {
-  background: #FFFFFF;
+  background: var(--input-bg);
   color: var(--text-main);
-  border: 1px solid #D6D3C9;
-  border-radius: 0.625rem;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  border: 1px solid var(--input-border);
+  border-radius: 0.95rem;
+  transition: border-color 120ms ease;
 }
 
 .cmf-input::placeholder {
@@ -258,47 +315,62 @@ button,
 .cmf-input:focus {
   outline: none;
   border-color: var(--text-main);
-  box-shadow: 0 0 0 1px var(--text-main);
 }
 
 .cmf-input-orange:focus {
   outline: none;
-  border-color: var(--cmf-orange);
-  box-shadow: 0 0 0 1px var(--cmf-orange);
+  border-color: var(--nothing-red);
 }
 
-/* Flat, Borderless Status Tags instead of Outlined Translucent AI Pills */
+/* Flat Nothing OS Status Pills */
 .cmf-badge-teal {
-  background: #ECFDF5;
-  color: #065F46;
-  font-weight: 600;
+  background: var(--module-sub);
+  color: var(--text-main);
+  font-weight: 500;
 }
 
 .cmf-badge-amber {
-  background: #FEF3C7;
-  color: #92400E;
-  font-weight: 600;
+  background: var(--module-sub);
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 .cmf-badge-amber-oled {
-  background: rgba(245, 158, 11, 0.18);
-  color: #FCD34D;
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.1);
+  color: #F4F4F6;
+  font-weight: 500;
 }
 
 .cmf-badge-orange {
-  background: #FFF1EC;
-  color: #C2380A;
+  background: rgba(215, 25, 33, 0.12);
+  color: var(--cmf-orange);
   font-weight: 600;
 }
 
 .nothing-red-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 9999px;
-  background-color: #16A34A;
+  background-color: var(--nothing-red);
   display: inline-block;
   flex-shrink: 0;
+}
+
+/* Ensure legacy translucent white chips adapt cleanly in Dark Mode */
+[data-theme='dark'] .bg-white\/60,
+[data-theme='dark'] .bg-white\/70,
+[data-theme='dark'] .bg-white\/75,
+[data-theme='dark'] .bg-white\/80,
+[data-theme='dark'] .bg-white\/85,
+[data-theme='dark'] .bg-white\/90,
+[data-theme='dark'] .bg-white\/94,
+[data-theme='dark'] .bg-white\/95 {
+  background-color: var(--surface-chip) !important;
+  color: var(--text-main) !important;
+}
+
+[data-theme='dark'] .hover\:bg-white\/80:hover {
+  background-color: #2E2E34 !important;
 }
 
 /* Range Input */
@@ -307,32 +379,30 @@ input[type='range'].cmf-range {
   appearance: none;
   height: 6px;
   border-radius: 9999px;
-  background: #E5E3DC;
+  background: var(--hardware-ring);
   cursor: pointer;
 }
 
 input[type='range'].cmf-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 9999px;
-  background: var(--text-main);
-  border: 2px solid #FFFFFF;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--nothing-red);
+  border: 2.5px solid var(--shell-bg);
 }
 
 input[type='range'].cmf-range::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 9999px;
-  background: var(--text-main);
-  border: 2px solid #FFFFFF;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--nothing-red);
+  border: 2.5px solid var(--shell-bg);
 }
 
 /* ==========================================================================
-   Leaflet Natural Light Map Popups & Tooltips
+   Leaflet Nothing OS Map (Monochrome Light & OLED Matrix Dark)
    ========================================================================== */
 
 .sardinen-div-icon {
@@ -345,47 +415,46 @@ input[type='range'].cmf-range::-moz-range-thumb {
 }
 
 .leaflet-container {
-  background: var(--bg-page) !important;
+  background: #EAE8E3 !important;
   font-family: 'Inter', sans-serif;
 }
 
 .leaflet-popup-content-wrapper {
   background: #FFFFFF !important;
-  color: #1C1917 !important;
-  border: 1px solid #E5E3DC !important;
-  border-radius: 10px !important;
+  color: #0D0D0F !important;
+  border: 1px solid #E4E4E7 !important;
+  border-radius: 16px !important;
   font-family: 'Inter', sans-serif !important;
   font-size: 12px !important;
-  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.14) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16) !important;
 }
 
 .leaflet-popup-tip {
   background: #FFFFFF !important;
-  border: 1px solid #E5E3DC !important;
 }
 
 .leaflet-popup-close-button {
-  color: #6B665F !important;
+  color: #71717A !important;
 }
 
 .leaflet-tooltip {
-  background: #FFFFFF !important;
-  color: #1C1917 !important;
-  border: 1px solid #E5E3DC !important;
-  border-radius: 8px !important;
-  padding: 4px 8px !important;
+  background: var(--shell-bg) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--shell-border) !important;
+  border-radius: 9999px !important;
+  padding: 4px 10px !important;
   font-family: 'Inter', sans-serif !important;
   font-size: 11px !important;
-  font-weight: 600 !important;
-  box-shadow: 0 4px 12px rgba(28, 25, 23, 0.12) !important;
+  font-weight: 500 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14) !important;
 }
 
 .leaflet-tooltip-top:before {
-  border-top-color: #FFFFFF !important;
+  border-top-color: var(--shell-bg) !important;
 }
 
 /* ==========================================================================
-   Subtle, Natural Transitions (No Bouncy Gimmicks)
+   Clean, Snappy Transitions
    ========================================================================== */
 
 @keyframes cmfViewEnter {
@@ -483,7 +552,7 @@ input[type='range'].cmf-range::-moz-range-thumb {
 }
 
 .cmf-hq-glow {
-  box-shadow: 0 2px 8px rgba(28, 25, 23, 0.25);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
 }
 
 .cmf-sos-wave {
@@ -491,11 +560,11 @@ input[type='range'].cmf-range::-moz-range-thumb {
 }
 
 .cmf-emergency-frame {
-  box-shadow: inset 0 0 0 3px #DC2626;
+  box-shadow: inset 0 0 0 3px var(--nothing-red);
 }
 
 .cmf-winner-card {
-  background: #FFFBF8;
+  background: var(--module-bg);
 }
 
 .cmf-scan-line {

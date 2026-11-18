@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ThemeToggleButton } from '../Common/ThemeToggleButton';
 
 export interface LoginScreenProps {
   firebaseAvailable: boolean;
@@ -38,26 +39,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   return (
     <div className="cmf-drafting-bg cmf-scroll-area flex h-[100dvh] w-full flex-col items-center justify-start sm:justify-center pt-[max(1.25rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] text-[var(--text-main)]">
       <div className="cmf-chassis my-auto w-full max-w-sm space-y-5 p-6 sm:p-7">
-        <div className="flex items-center gap-3.5">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#1C1917] p-1">
-            <img
-              src="/logo.png"
-              alt="81247 Sardinen"
-              className="h-full w-full object-contain"
-            />
+        {/* Nothing OS Header-Widget mit Theme-Schnellumschalter */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[#111113] p-1.5">
+              <img
+                src="/logo.png"
+                alt="81247 Sardinen"
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="font-dot text-xl leading-none text-[var(--text-main)]">
+                  Sardinen
+                </h1>
+                <span className="nothing-red-dot" aria-hidden="true" />
+              </div>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                81247 · Verstecken mit Karte
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-[var(--text-main)]">
-              81247 Sardinen
-            </h1>
-            <p className="text-xs text-[var(--text-muted)]">
-              München · Verstecken mit Karte
-            </p>
-          </div>
+
+          <ThemeToggleButton compact />
         </div>
 
-        {/* Modus-Umschalter: Anmelden vs. Konto erstellen */}
-        <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--module-sub)] p-1">
+        {/* Segmented Pill Control */}
+        <div className="grid grid-cols-2 gap-1 rounded-full bg-[var(--module-sub)] p-1">
           <button
             type="button"
             data-testid="auth-mode-login-btn"
@@ -65,9 +74,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               setMode('LOGIN');
               onClearError();
             }}
-            className={`min-h-[38px] rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+            className={`min-h-[38px] rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
               mode === 'LOGIN'
-                ? 'bg-white text-[var(--text-main)] shadow-xs'
+                ? 'bg-[var(--btn-primary-bg)] text-[var(--btn-primary-fg)]'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
             }`}
           >
@@ -80,9 +89,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               setMode('REGISTER');
               onClearError();
             }}
-            className={`min-h-[38px] rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+            className={`min-h-[38px] rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
               mode === 'REGISTER'
-                ? 'bg-white text-[var(--text-main)] shadow-xs'
+                ? 'bg-[var(--btn-primary-bg)] text-[var(--btn-primary-fg)]'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
             }`}
           >
@@ -94,7 +103,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           <div>
             <label
               htmlFor="player-name-input"
-              className="mb-1 block text-xs font-medium text-[var(--text-main)]"
+              className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]"
             >
               Name
             </label>
@@ -112,15 +121,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 setTypedName(e.target.value);
               }}
               placeholder={mode === 'REGISTER' ? 'Name wählen' : 'Dein Name'}
-              className="cmf-input min-h-[44px] w-full px-3.5 py-2 text-base font-medium"
+              className="cmf-input min-h-[46px] w-full px-4 py-2 text-base font-medium"
             />
           </div>
 
           <div>
-            <div className="mb-1 flex items-center justify-between">
+            <div className="mb-1.5 flex items-center justify-between">
               <label
                 htmlFor="player-password-input"
-                className="text-xs font-medium text-[var(--text-main)]"
+                className="text-xs font-medium text-[var(--text-muted)]"
               >
                 Passwort
               </label>
@@ -149,12 +158,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               placeholder={
                 mode === 'REGISTER' ? 'Mind. 4 Zeichen' : 'Passwort'
               }
-              className="cmf-input min-h-[44px] w-full px-3.5 py-2 text-base font-medium"
+              className="cmf-input min-h-[46px] w-full px-4 py-2 text-base font-medium"
             />
           </div>
 
           {!firebaseAvailable && (
-            <div className="cmf-badge-amber rounded-lg px-3 py-2 text-xs">
+            <div className="cmf-badge-amber rounded-2xl px-3.5 py-2 text-xs">
               Lokaler Demo-Modus aktiv.
             </div>
           )}
@@ -163,7 +172,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <div
               role="alert"
               data-testid="login-error-banner"
-              className="cmf-badge-orange cmf-shake rounded-lg px-3 py-2 text-xs"
+              className="cmf-badge-orange cmf-shake rounded-2xl px-3.5 py-2.5 text-xs"
             >
               {loginError}
             </div>
@@ -173,7 +182,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             type="submit"
             data-testid="login-submit-btn"
             disabled={submitting || !typedName.trim() || !password.trim()}
-            className="cmf-btn-primary flex min-h-[46px] w-full items-center justify-center px-4 py-2.5 text-sm font-semibold"
+            className="cmf-btn-primary flex min-h-[46px] w-full items-center justify-center px-5 py-2.5 text-sm font-medium"
           >
             {submitting
               ? 'Bitte warten …'

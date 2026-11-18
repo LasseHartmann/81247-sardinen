@@ -17,21 +17,21 @@ function escapeHtml(text: string): string {
  * Eigene Position — Aktiver CMF-Signal-Orange Fokus-Punkt (#FF4D00).
  */
 export function createOwnPositionIcon(_isHider: boolean): L.DivIcon {
-  const coreColor = '#FF4D00';
+  const coreColor = '#D71921';
   return L.divIcon({
     className: 'sardinen-div-icon',
     iconSize: [20, 20],
     iconAnchor: [10, 10],
     html: `
       <div style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;">
-        <span style="width:15px;height:15px;border-radius:9999px;background:${coreColor};border:2.5px solid #FFFFFF;box-shadow:0 3px 10px rgba(20,25,30,0.35);"></span>
+        <span style="width:15px;height:15px;border-radius:9999px;background:${coreColor};border:2.5px solid #FFFFFF;box-shadow:0 3px 10px rgba(11,12,14,0.4);"></span>
       </div>
     `,
   });
 }
 
 /**
- * Geheimer Anchor-Point-Marker („Sardinen-Versteck") — Primärer Hardware-Pin in #FF4D00 mit sanftem HQ-Puls.
+ * Geheimer Anchor-Point-Marker („Sardinen-Versteck") — Nothing Crimson Red Pin (#D71921).
  */
 export function createAnchorPointIcon(): L.DivIcon {
   return L.divIcon({
@@ -39,8 +39,8 @@ export function createAnchorPointIcon(): L.DivIcon {
     iconSize: [42, 42],
     iconAnchor: [21, 21],
     html: `
-      <div class="cmf-hq-glow" style="width:40px;height:40px;margin:1px;border-radius:9999px;background:#FF4D00;border:2.5px solid #FFFFFF;display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:'Inter',sans-serif;font-weight:700;font-size:11px;letter-spacing:0.02em;">
-        Ziel
+      <div class="cmf-hq-glow" style="width:40px;height:40px;margin:1px;border-radius:9999px;background:#0B0C0E;border:2.5px solid #FFFFFF;display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;letter-spacing:0.04em;">
+        <span style="width:7px;height:7px;border-radius:9999px;background:#D71921;margin-right:3px;display:inline-block;"></span>ZIEL
       </div>
     `,
   });
@@ -150,14 +150,14 @@ export function createSelectionPinIcon(
 ): L.DivIcon {
   const safe = escapeHtml(label);
   const isPrimary = variant === 'primary';
-  const bg = isPrimary ? '#FF4D00' : '#171717';
-  const border = isPrimary ? '2.5px solid #FFFFFF' : '1.5px solid #FFFFFF';
+  const bg = isPrimary ? '#D71921' : '#0B0C0E';
+  const border = '2.5px solid #FFFFFF';
   return L.divIcon({
     className: 'sardinen-div-icon',
     iconSize: [30, 30],
     iconAnchor: [15, 15],
     html: `
-      <div style="width:30px;height:30px;border-radius:9999px;background:${bg};border:${border};color:#FFFFFF;font-family:'Inter',sans-serif;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(20,25,30,0.28);">
+      <div style="width:30px;height:30px;border-radius:9999px;background:${bg};border:${border};color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(11,12,14,0.32);">
         ${safe}
       </div>
     `,
@@ -195,8 +195,8 @@ export function createManhuntPingIcon(
   pingNumber: number,
   isFallbackSource = false
 ): L.DivIcon {
-  const badgeBg = isFallbackSource ? '#B45309' : '#FF4D00';
-  const dotBg = isFallbackSource ? '#F59E0B' : '#FF4D00';
+  const badgeBg = isFallbackSource ? '#52565E' : '#0B0C0E';
+  const dotBg = isFallbackSource ? '#52565E' : '#D71921';
   const label = isFallbackSource
     ? `Ping #${pingNumber} (Fallback)`
     : `Ping #${pingNumber}`;
@@ -206,8 +206,8 @@ export function createManhuntPingIcon(
     iconAnchor: [74, 36],
     html: `
       <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
-        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:9999px;background:${badgeBg};border:1.5px solid #FFFFFF;color:#FFFFFF;font-family:'Inter',sans-serif;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 4px 12px rgba(20,25,30,0.3);">
-          <span style="width:6px;height:6px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:9999px;background:${badgeBg};border:1.5px solid #FFFFFF;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 4px 12px rgba(11,12,14,0.32);">
+          <span style="width:6px;height:6px;border-radius:9999px;background:#D71921;display:inline-block;"></span>
           <span>${escapeHtml(label)}</span>
         </div>
         <div style="position:relative;width:20px;height:20px;margin-top:2px;display:flex;align-items:center;justify-content:center;">
@@ -252,11 +252,11 @@ export function createLiveHiderOverviewIcon(label = 'Verstecker'): L.DivIcon {
     iconAnchor: [60, 28],
     html: `
       <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
-        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:9999px;background:#FF4D00;border:1.5px solid #FFFFFF;color:#FFFFFF;font-family:'Inter',sans-serif;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 3px 10px rgba(20,25,30,0.28);">
-          <span style="width:6px;height:6px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:9999px;background:#0B0C0E;border:1.5px solid #FFFFFF;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 3px 10px rgba(11,12,14,0.32);">
+          <span style="width:6px;height:6px;border-radius:9999px;background:#D71921;display:inline-block;"></span>
           <span>${safe}</span>
         </div>
-        <div style="width:11px;height:11px;border-radius:9999px;background:#FF4D00;border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 6px rgba(0,0,0,0.28);"></div>
+        <div style="width:11px;height:11px;border-radius:9999px;background:#D71921;border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 6px rgba(0,0,0,0.28);"></div>
       </div>
     `,
   });

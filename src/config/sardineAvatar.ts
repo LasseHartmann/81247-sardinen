@@ -6,11 +6,17 @@ export type SardineExclusiveTier =
   | 'DEVELOPER'
   | 'OWNER';
 
-export const OWNER_EXCLUSIVE_IDS: ReadonlySet<string> = new Set(['lasse']);
+export const OWNER_EXCLUSIVE_IDS: ReadonlySet<string> = new Set([
+  'lasse',
+  'linus',
+]);
 
 export const DEVELOPER_EXCLUSIVE_IDS: ReadonlySet<string> = new Set([
   'lasse',
   'linus',
+  'thomas',
+  'johna',
+  'jonah',
 ]);
 
 export const FIRST_ROUND_EXCLUSIVE_IDS: ReadonlySet<string> = new Set([
@@ -20,6 +26,7 @@ export const FIRST_ROUND_EXCLUSIVE_IDS: ReadonlySet<string> = new Set([
   'nick',
   'robert',
   'eric',
+  'johna',
   'jonah',
   'lorenzo',
   'louis',
@@ -289,7 +296,7 @@ export function getExclusiveTierBadgeLabel(
     case 'OWNER':
       return 'OWNER';
     case 'DEVELOPER':
-      return 'DEV';
+      return 'HELPER';
     case 'FIRST_ROUND':
       return '1. RUNDE';
     default:
@@ -302,9 +309,9 @@ export function getExclusiveTierDescriptionDe(
 ): string {
   switch (tier) {
     case 'OWNER':
-      return 'Owner-Exklusiv (nur für Lasse)';
+      return 'Owner-Exklusiv (nur für Lasse & Linus)';
     case 'DEVELOPER':
-      return 'Developer-Exklusiv (nur für Lasse & Linus)';
+      return 'Helper-Exklusiv (Lasse, Linus, Thomas & Johna)';
     case 'FIRST_ROUND':
       return 'Runde-1-Exklusiv (OG-Spieler der ersten Runde)';
     default:

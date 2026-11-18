@@ -757,15 +757,18 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             )}
           </div>
 
-          <div className="flex flex-col gap-3 rounded-xl bg-[var(--module-sub)] p-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="cmf-well flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <span className="block text-xs font-medium text-[var(--text-muted)]">
-                Euer Code
-              </span>
-              <div className="mt-0.5 flex flex-wrap items-baseline gap-2.5">
+              <div className="flex items-center gap-2">
+                <span className="nothing-red-dot" aria-hidden="true" />
+                <span className="text-xs font-medium text-[var(--text-muted)]">
+                  Lobby-Code
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap items-baseline gap-3">
                 <span
                   data-testid="lobby-room-code"
-                  className="font-mono-code text-2xl font-bold tracking-[0.16em] text-[var(--text-main)] sm:text-3xl"
+                  className="font-dot text-2xl tracking-[0.18em] text-[var(--text-main)] sm:text-3xl"
                 >
                   {roomCode}
                 </span>
@@ -781,7 +784,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 type="button"
                 data-testid="lobby-copy-code-btn"
                 onClick={() => void handleCopyCode()}
-                className="cmf-btn-primary inline-flex min-h-[38px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold"
+                className="cmf-btn-primary inline-flex min-h-[38px] items-center gap-1.5 px-4 py-1.5 text-xs font-medium"
               >
                 {copiedKind === 'CODE' ? (
                   <>
@@ -799,11 +802,11 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 type="button"
                 data-testid="lobby-copy-link-btn"
                 onClick={() => void handleCopyLink()}
-                className="cmf-btn-secondary inline-flex min-h-[38px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-[var(--text-main)]"
+                className="cmf-btn-secondary inline-flex min-h-[38px] items-center gap-1.5 px-4 py-1.5 text-xs font-medium"
               >
                 {copiedKind === 'LINK' ? (
                   <>
-                    <CheckCircle2 className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                    <CheckCircle2 className="h-3.5 w-3.5" />
                     <span>Kopiert</span>
                   </>
                 ) : (
@@ -984,8 +987,8 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                       key={m.uid}
                       className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-semibold ${
                         ready
-                          ? 'border-[var(--cmf-teal)] bg-white text-[var(--text-main)]'
-                          : 'border-[var(--shell-border)] bg-white/85 text-[var(--text-main)]'
+                          ? 'border-[var(--text-main)] bg-[var(--surface-chip)] text-[var(--text-main)]'
+                          : 'border-[var(--shell-border)] bg-[var(--surface-chip)] text-[var(--text-main)]'
                       }`}
                     >
                       <span
@@ -1017,9 +1020,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 <div
                   key={team.id}
                   data-testid={`lobby-team-card-${team.id}`}
-                  className={`flex flex-col justify-between gap-2 rounded-2xl border-[1.5px] p-3 transition-all ${
+                  className={`flex flex-col justify-between gap-2 rounded-2xl border p-3 transition-all ${
                     isSelected
-                      ? 'border-[var(--cmf-teal)] bg-white shadow-sm ring-1 ring-[var(--cmf-teal)]/30'
+                      ? 'border-[var(--text-main)] bg-[var(--surface-chip)]'
                       : 'border-[var(--shell-border)] bg-[var(--surface-inset)]'
                   }`}
                 >
@@ -1095,10 +1098,10 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                           data-testid={`lobby-join-${team.id}-btn`}
                           disabled={changingRoleTo !== null || isSelected}
                           onClick={() => void handleChooseTeam(team.id)}
-                          className={`font-tech shrink-0 rounded-xl px-2.5 py-1.5 text-[11px] font-bold uppercase transition-all ${
+                          className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
                             isSelected
                               ? 'cmf-badge-teal cursor-default'
-                              : 'cmf-btn-secondary bg-white hover:bg-zinc-50'
+                              : 'cmf-btn-secondary'
                           } disabled:opacity-80`}
                         >
                           {isSelected
@@ -1258,19 +1261,13 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   data-testid="lobby-mode-classic-btn"
                   onClick={() => handleSelectGameMode('CLASSIC')}
                   className={`flex flex-col items-start gap-0.5 rounded-xl p-3 text-left transition-colors ${
-                    !isManhunt
-                      ? 'cmf-btn-active'
-                      : 'cmf-well hover:bg-[#EFECE6]'
+                    !isManhunt ? 'cmf-btn-active' : 'cmf-well'
                   }`}
                 >
-                  <span className="text-sm font-bold">
+                  <span className="text-sm font-bold text-[var(--text-main)]">
                     Klassisch (Sardinen)
                   </span>
-                  <span
-                    className={`text-xs ${
-                      !isManhunt ? 'text-white/75' : 'text-[var(--text-muted)]'
-                    }`}
-                  >
+                  <span className="text-xs text-[var(--text-muted)]">
                     Festes Versteck (50 m) · Tipps kaufen
                   </span>
                 </button>
@@ -1280,19 +1277,13 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   data-testid="lobby-mode-manhunt-btn"
                   onClick={() => handleSelectGameMode('MANHUNT')}
                   className={`flex flex-col items-start gap-0.5 rounded-xl p-3 text-left transition-colors ${
-                    isManhunt
-                      ? 'cmf-btn-active'
-                      : 'cmf-well hover:bg-[#EFECE6]'
+                    isManhunt ? 'cmf-btn-active' : 'cmf-well'
                   }`}
                 >
-                  <span className="text-sm font-bold">
+                  <span className="text-sm font-bold text-[var(--text-main)]">
                     Manhunt (Bewegung)
                   </span>
-                  <span
-                    className={`text-xs ${
-                      isManhunt ? 'text-white/75' : 'text-[var(--text-muted)]'
-                    }`}
-                  >
+                  <span className="text-xs text-[var(--text-muted)]">
                     Frei bewegen · Standort-Ping alle 10/5 Min.
                   </span>
                 </button>
@@ -1318,9 +1309,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                       type="button"
                       data-testid="lobby-zone-type-plz-btn"
                       onClick={handleSelectPlzZoneTab}
-                      className={`min-h-[38px] rounded-xl px-2 py-1.5 font-tech text-[11px] font-bold uppercase transition-all ${
+                      className={`min-h-[38px] rounded-xl px-2 py-1.5 text-xs font-semibold transition-all ${
                         !isCirclePlayArea && !isFullMunich
-                          ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
+                          ? 'cmf-btn-active'
                           : 'cmf-btn-secondary'
                       }`}
                     >
@@ -1330,9 +1321,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                       type="button"
                       data-testid="lobby-zone-type-munich-btn"
                       onClick={handleSelectFullMunichZoneTab}
-                      className={`min-h-[38px] rounded-xl px-2 py-1.5 font-tech text-[11px] font-bold uppercase transition-all ${
+                      className={`min-h-[38px] rounded-xl px-2 py-1.5 text-xs font-semibold transition-all ${
                         !isCirclePlayArea && isFullMunich
-                          ? 'cmf-btn-active ring-1 ring-[var(--cmf-teal)]'
+                          ? 'cmf-btn-active'
                           : 'cmf-btn-secondary'
                       }`}
                     >
@@ -1344,9 +1335,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                       onClick={() =>
                         handleSelectOrResizeCircleZone(circleRadiusMeters)
                       }
-                      className={`min-h-[38px] rounded-xl px-2 py-1.5 font-tech text-[11px] font-bold uppercase transition-all ${
+                      className={`min-h-[38px] rounded-xl px-2 py-1.5 text-xs font-semibold transition-all ${
                         isCirclePlayArea
-                          ? 'cmf-btn-active ring-1 ring-[var(--cmf-orange)]'
+                          ? 'cmf-btn-active'
                           : 'cmf-btn-secondary'
                       }`}
                     >
@@ -1424,7 +1415,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                         {activePlzEntries.map((entry) => (
                           <span
                             key={entry.postalCode}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-white px-2.5 py-1 font-tech text-[11px] font-bold text-[var(--text-main)]"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--shell-border)] bg-[var(--surface-chip)] px-2.5 py-1 text-xs font-semibold text-[var(--text-main)]"
                           >
                             <span>
                               {entry.postalCode} ({entry.district})

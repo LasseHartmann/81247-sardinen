@@ -83,7 +83,10 @@ import type {
 } from '../../types/game';
 import { formatMinutesHumanDe } from '../../utils/formatting';
 import { PlayerAvatar } from '../Common/PlayerAvatar';
-import { HostQuestionRulesEditor } from './HostQuestionRulesEditor';
+import {
+  HostQuestionRulesEditor,
+  type LobbyRulePreviewTarget,
+} from './HostQuestionRulesEditor';
 import { PlayerHostedLobbiesSection } from './PlayerHostedLobbiesSection';
 
 export interface LobbyScreenProps {
@@ -103,6 +106,11 @@ export interface LobbyScreenProps {
   onToggleOwnReady: (nextReady: boolean) => Promise<void>;
   onViewMap: () => void;
   onOpenCircleMapEditor: () => void;
+  onOpenRulePreview?: (
+    target: LobbyRulePreviewTarget,
+    initialRadiusMeters?: number
+  ) => void;
+  defaultQuestionRulesOpen?: boolean;
   onOpenHostConsole?: () => void;
   onLeaveRoom?: () => Promise<void>;
   recentRoomCodes?: string[];
@@ -126,6 +134,8 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   onToggleOwnReady,
   onViewMap,
   onOpenCircleMapEditor,
+  onOpenRulePreview,
+  defaultQuestionRulesOpen = false,
   onOpenHostConsole,
   onLeaveRoom,
   recentRoomCodes = [],
@@ -167,7 +177,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [teamNameDraft, setTeamNameDraft] = useState('');
   const [savingTeamName, setSavingTeamName] = useState(false);
-  const [showQuestionRules, setShowQuestionRules] = useState(false);
+  const [showQuestionRules, setShowQuestionRules] = useState(
+    defaultQuestionRulesOpen
+  );
 
   // Gebiets- & PLZ-Zustand
   const isCirclePlayArea = publicState.playArea.shapeType === 'CUSTOM_CIRCLE';
@@ -1752,6 +1764,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                       <div className="border-t cmf-divider pt-3">
                         <HostQuestionRulesEditor
                           questionConfig={publicState.questionConfig}
+                          onOpenRulePreview={onOpenRulePreview}
                           onChange={(nextQuestionConfig) => {
                             void adapter
                               .savePublicStateByHost({

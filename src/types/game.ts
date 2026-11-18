@@ -273,8 +273,10 @@ export interface QuestionRulesConfig {
   thermometerDistanceMeters: number;
   /** Kat. 2: Umkreis-Check (Radius-Radar) Preis in Minuten */
   radiusRadarPriceMinutes: number;
-  /** Kat. 2: Umkreis-Check Distanz in Metern (Standard: 250 m) */
+  /** Kat. 2: Umkreis-Check Standard-Distanz in Metern (Standard: 250 m) */
   radiusRadarDistanceMeters: number;
+  /** Kat. 2: Umkreis-Check frei konfigurierbare Liste erlaubter Radar-Radien in Metern */
+  radiusRadarOptionsMeters?: number[];
   /** Kat. 2: Entfernungs-Ring (Donut-Ring) Preis in Minuten */
   donutRingPriceMinutes: number;
   /** Kat. 2: Entfernungs-Ring Ringbreite in Metern (Standard: 200 m) */

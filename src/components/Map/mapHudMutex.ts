@@ -3,6 +3,7 @@ import type { MapClickInteractionMode } from './GameMap';
 export type MapBottomSlotKind =
   | 'PHOTO_REQUEST_MODAL'
   | 'CIRCLE_EDITOR'
+  | 'LOBBY_RULE_PREVIEW'
   | 'CLICK_PROMPT'
   | 'CLUE_PREVIEW'
   | 'HIDER_LOCK_ANCHOR'
@@ -14,6 +15,7 @@ export type MapBottomSlotKind =
 export interface ResolveMapBottomSlotInput {
   hasOpenHiderPhotoModal: boolean;
   isEditingCircleOnMap: boolean;
+  isEditingLobbyRuleOnMap?: boolean;
   clickModeKind: MapClickInteractionMode['kind'];
   hasCluePreviewOrThermo: boolean;
   showHiderAnchorPanel: boolean;
@@ -32,6 +34,7 @@ export function resolveActiveMapBottomSlotKind(
 ): MapBottomSlotKind {
   if (input.hasOpenHiderPhotoModal) return 'PHOTO_REQUEST_MODAL';
   if (input.isEditingCircleOnMap) return 'CIRCLE_EDITOR';
+  if (input.isEditingLobbyRuleOnMap) return 'LOBBY_RULE_PREVIEW';
   if (
     input.clickModeKind === 'TEST_LOCATION' ||
     input.clickModeKind === 'PICK_ANCHOR_POINT'

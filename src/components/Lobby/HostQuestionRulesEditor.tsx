@@ -5,23 +5,37 @@ import {
   ChevronUp,
   CircleDot,
   Compass,
+  Eye,
   Minus,
   Plus,
   RotateCcw,
+  Settings2,
   Trees,
 } from 'lucide-react';
 import {
   DEFAULT_QUESTION_RULES_CONFIG,
+  getRadiusRadarOptions,
   isDefaultQuestionRulesConfig,
   resolveQuestionRulesConfig,
 } from '../../config/gameConfig';
 import type { QuestionRulesConfig } from '../../types/game';
+import { RadarDistancesMenuModal } from './RadarDistancesMenuModal';
+
+export type LobbyRulePreviewTarget =
+  | 'OSM_RECYCLING'
+  | 'DONUT_RING'
+  | 'THERMOMETER'
+  | 'RADIUS_RADAR';
 
 export interface HostQuestionRulesEditorProps {
   questionConfig?: Partial<QuestionRulesConfig> | null;
   disabled?: boolean;
   defaultCategoriesExpanded?: boolean;
   onChange: (nextConfig: QuestionRulesConfig) => void;
+  onOpenRulePreview?: (
+    target: LobbyRulePreviewTarget,
+    initialRadiusMeters?: number
+  ) => void;
 }
 
 interface StepperRowProps {
@@ -94,13 +108,141 @@ const StepperRow: React.FC<StepperRowProps> = ({
   </div>
 );
 
+interface DistanceRowWithPreviewProps {
+  label: string;
+  sublabel: string;
+  valueMeters: number;
+  minMeters: number;
+  maxMeters: number;
+  stepMeters?: number;
+  valueTestId: string;
+  minusTestId: string;
+  plusTestId: string;
+  inputTestId: string;
+  previewTestId: string;
+  disabled?: boolean;
+  onChangeMeters: (nextMeters: number) => void;
+  onPreview?: () => void;
+}
+
+const DistanceRowWithPreview: React.FC<DistanceRowWithPreviewProps> = ({
+  label,
+  sublabel,
+  valueMeters,
+  minMeters,
+  maxMeters,
+  stepMeters = 25,
+  valueTestId,
+  minusTestId,
+  plusTestId,
+  inputTestId,
+  previewTestId,
+  disabled,
+  onChangeMeters,
+  onPreview,
+}) => (
+  <div className="space-y-2 rounded-xl border border-[var(--shell-border)] bg-white/85 px-3 py-2.5">
+    <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0">
+        <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
+          {label}
+        </span>
+        <span className="block text-[10px] text-[var(--text-muted)]">
+          {sublabel}
+        </span>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          data-testid={minusTestId}
+          disabled={disabled || valueMeters <= minMeters}
+          onClick={() =>
+            onChangeMeters(Math.max(minMeters, valueMeters - stepMeters))
+          }
+          className="cmf-btn-secondary flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-35"
+          aria-label={`${label} verringern`}
+        >
+          <Minus className="h-3.5 w-3.5" />
+        </button>
+        <span
+          data-testid={valueTestId}
+          className="font-dot min-w-[64px] text-center text-xs font-bold text-[var(--text-main)]"
+        >
+          {valueMeters} m
+        </span>
+        <button
+          type="button"
+          data-testid={plusTestId}
+          disabled={disabled || valueMeters >= maxMeters}
+          onClick={() =>
+            onChangeMeters(Math.min(maxMeters, valueMeters + stepMeters))
+          }
+          className="cmf-btn-secondary flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-35"
+          aria-label={`${label} erhöhen`}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+
+    <div className="flex items-center gap-2 pt-0.5">
+      <input
+        type="range"
+        min={minMeters}
+        max={maxMeters}
+        step={5}
+        disabled={disabled}
+        aria-label={`${label} Regler`}
+        value={valueMeters}
+        onChange={(e) => onChangeMeters(Number(e.target.value))}
+        className="cmf-range flex-1"
+      />
+      <div className="relative w-20 shrink-0">
+        <input
+          type="number"
+          data-testid={inputTestId}
+          min={minMeters}
+          max={maxMeters}
+          disabled={disabled}
+          aria-label={`${label} exakt in Metern`}
+          value={valueMeters}
+          onChange={(e) => {
+            const parsed = Math.round(Number(e.target.value));
+            if (Number.isFinite(parsed) && parsed >= minMeters) {
+              onChangeMeters(Math.min(maxMeters, parsed));
+            }
+          }}
+          className="cmf-input h-8 w-full pr-5 pl-2 text-right text-xs font-bold"
+        />
+        <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-[var(--text-muted)]">
+          m
+        </span>
+      </div>
+      {onPreview && (
+        <button
+          type="button"
+          data-testid={previewTestId}
+          onClick={onPreview}
+          className="cmf-btn-secondary inline-flex h-8 shrink-0 items-center gap-1 px-2.5 text-xs font-semibold"
+        >
+          <Eye className="h-3.5 w-3.5" />
+          <span>Vorschau</span>
+        </button>
+      )}
+    </div>
+  </div>
+);
+
 export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = ({
   questionConfig,
   disabled = false,
   defaultCategoriesExpanded = true,
   onChange,
+  onOpenRulePreview,
 }) => {
   const cfg = resolveQuestionRulesConfig(questionConfig);
+  const radarRadii = getRadiusRadarOptions(questionConfig);
   const isDefault = isDefaultQuestionRulesConfig(questionConfig);
 
   const [openCategories, setOpenCategories] = useState<Record<1 | 2 | 3 | 4, boolean>>({
@@ -109,6 +251,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
     3: defaultCategoriesExpanded,
     4: defaultCategoriesExpanded,
   });
+  const [radarMenuOpen, setRadarMenuOpen] = useState(false);
 
   const toggleCategory = (catId: 1 | 2 | 3 | 4) => {
     setOpenCategories((prev) => ({
@@ -133,7 +276,7 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
             Frage-Kategorien: Preise &amp; Distanzen
           </span>
           <span className="text-[11px] text-[var(--text-muted)]">
-            Tippe auf eine Kategorie zum Auf-/Zuklappen.
+            Tippe auf eine Kategorie zum Auf-/Zuklappen oder nutze die Kartenvorschau.
           </span>
         </div>
 
@@ -222,25 +365,25 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
                 }
               />
 
-              <StepperRow
+              <DistanceRowWithPreview
                 label="Thermometer (Distanz)"
                 sublabel="Stoppt automatisch nach Laufstrecke"
-                valueText={`${cfg.thermometerDistanceMeters} m`}
+                valueMeters={cfg.thermometerDistanceMeters}
+                minMeters={10}
+                maxMeters={2000}
                 valueTestId="question-rule-thermo-distance"
                 minusTestId="question-rule-thermo-distance-minus"
                 plusTestId="question-rule-thermo-distance-plus"
-                canDecrease={cfg.thermometerDistanceMeters > 25}
-                canIncrease={cfg.thermometerDistanceMeters < 2000}
+                inputTestId="question-rule-thermo-distance-input"
+                previewTestId="preview-rule-thermo-btn"
                 disabled={disabled}
-                onDecrease={() =>
-                  patch({
-                    thermometerDistanceMeters: cfg.thermometerDistanceMeters - 25,
-                  })
+                onChangeMeters={(nextMeters) =>
+                  patch({ thermometerDistanceMeters: nextMeters })
                 }
-                onIncrease={() =>
-                  patch({
-                    thermometerDistanceMeters: cfg.thermometerDistanceMeters + 25,
-                  })
+                onPreview={
+                  onOpenRulePreview
+                    ? () => onOpenRulePreview('THERMOMETER')
+                    : undefined
                 }
               />
             </div>
@@ -299,30 +442,30 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
                 }
               />
 
-              <StepperRow
-                label="Umkreis-Check (Distanz)"
-                sublabel="Standard-Radius in Metern"
-                valueText={`${cfg.radiusRadarDistanceMeters} m`}
-                valueTestId="question-rule-radius-distance"
-                minusTestId="question-rule-radius-distance-minus"
-                plusTestId="question-rule-radius-distance-plus"
-                canDecrease={cfg.radiusRadarDistanceMeters > 25}
-                canIncrease={cfg.radiusRadarDistanceMeters < 5000}
-                disabled={disabled}
-                onDecrease={() =>
-                  patch({
-                    radiusRadarDistanceMeters: Math.max(
-                      25,
-                      cfg.radiusRadarDistanceMeters - 50
-                    ),
-                  })
-                }
-                onIncrease={() =>
-                  patch({
-                    radiusRadarDistanceMeters: cfg.radiusRadarDistanceMeters + 50,
-                  })
-                }
-              />
+              {/* Extra-Menü für Radar-Distanzen (Hinzufügen, Entfernen & Vorschau) */}
+              <div className="space-y-2 rounded-xl border border-[var(--shell-border)] bg-white/85 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="font-industrial block text-xs font-bold text-[var(--text-main)]">
+                      Radar-Distanzen ({radarRadii.length})
+                    </span>
+                    <span className="block truncate text-[10px] text-[var(--text-muted)]">
+                      {radarRadii.map((r) => `${r} m`).join(' · ')}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    data-testid="open-radar-distances-menu-btn"
+                    disabled={disabled}
+                    onClick={() => setRadarMenuOpen(true)}
+                    className="cmf-btn-secondary inline-flex min-h-[34px] shrink-0 items-center gap-1.5 px-3 py-1 text-xs font-semibold"
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                    <span>Radar-Menü</span>
+                  </button>
+                </div>
+              </div>
 
               <StepperRow
                 label="Entfernungs-Ring (Preis)"
@@ -342,21 +485,25 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
                 }
               />
 
-              <StepperRow
-                label="Entfernungs-Ring (Distanz)"
+              <DistanceRowWithPreview
+                label="Entfernungs-Ring / Donut (Distanz)"
                 sublabel={`Ringbreite (z. B. 0–${cfg.donutRingStepMeters} m)`}
-                valueText={`${cfg.donutRingStepMeters} m`}
+                valueMeters={cfg.donutRingStepMeters}
+                minMeters={10}
+                maxMeters={2000}
                 valueTestId="question-rule-donut-distance"
                 minusTestId="question-rule-donut-distance-minus"
                 plusTestId="question-rule-donut-distance-plus"
-                canDecrease={cfg.donutRingStepMeters > 25}
-                canIncrease={cfg.donutRingStepMeters < 2000}
+                inputTestId="question-rule-donut-distance-input"
+                previewTestId="preview-rule-donut-btn"
                 disabled={disabled}
-                onDecrease={() =>
-                  patch({ donutRingStepMeters: cfg.donutRingStepMeters - 25 })
+                onChangeMeters={(nextMeters) =>
+                  patch({ donutRingStepMeters: nextMeters })
                 }
-                onIncrease={() =>
-                  patch({ donutRingStepMeters: cfg.donutRingStepMeters + 25 })
+                onPreview={
+                  onOpenRulePreview
+                    ? () => onOpenRulePreview('DONUT_RING')
+                    : undefined
                 }
               />
             </div>
@@ -415,25 +562,25 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
                 }
               />
 
-              <StepperRow
-                label="Haltestelle & Wertstoff (Distanz)"
+              <DistanceRowWithPreview
+                label="Wertstoffinsel & Haltestelle (Distanz)"
                 sublabel="Prüf-Umkreis um das Versteck"
-                valueText={`${cfg.environmentDistanceMeters} m`}
+                valueMeters={cfg.environmentDistanceMeters}
+                minMeters={10}
+                maxMeters={1000}
                 valueTestId="question-rule-env-distance"
                 minusTestId="question-rule-env-distance-minus"
                 plusTestId="question-rule-env-distance-plus"
-                canDecrease={cfg.environmentDistanceMeters > 25}
-                canIncrease={cfg.environmentDistanceMeters < 1000}
+                inputTestId="question-rule-env-distance-input"
+                previewTestId="preview-rule-recycling-btn"
                 disabled={disabled}
-                onDecrease={() =>
-                  patch({
-                    environmentDistanceMeters: cfg.environmentDistanceMeters - 25,
-                  })
+                onChangeMeters={(nextMeters) =>
+                  patch({ environmentDistanceMeters: nextMeters })
                 }
-                onIncrease={() =>
-                  patch({
-                    environmentDistanceMeters: cfg.environmentDistanceMeters + 25,
-                  })
+                onPreview={
+                  onOpenRulePreview
+                    ? () => onOpenRulePreview('OSM_RECYCLING')
+                    : undefined
                 }
               />
             </div>
@@ -491,6 +638,30 @@ export const HostQuestionRulesEditor: React.FC<HostQuestionRulesEditorProps> = (
           )}
         </div>
       </div>
+
+      <RadarDistancesMenuModal
+        open={radarMenuOpen}
+        questionConfig={questionConfig}
+        disabled={disabled}
+        onClose={() => setRadarMenuOpen(false)}
+        onChangeRadii={(nextRadii, preferredDefault) => {
+          const nextDefault =
+            preferredDefault !== undefined && nextRadii.includes(preferredDefault)
+              ? preferredDefault
+              : nextRadii.includes(cfg.radiusRadarDistanceMeters)
+                ? cfg.radiusRadarDistanceMeters
+                : nextRadii[Math.floor(nextRadii.length / 2)] ?? nextRadii[0] ?? 250;
+          patch({
+            radiusRadarOptionsMeters: nextRadii,
+            radiusRadarDistanceMeters: nextDefault,
+          });
+        }}
+        onPreviewRadius={
+          onOpenRulePreview
+            ? (radiusMeters) => onOpenRulePreview('RADIUS_RADAR', radiusMeters)
+            : undefined
+        }
+      />
     </div>
   );
 };

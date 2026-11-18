@@ -807,6 +807,7 @@ export const DEFAULT_QUESTION_RULES_CONFIG: QuestionRulesConfig = {
   thermometerDistanceMeters: THERMOMETER_MIN_DISTANCE_METERS,
   radiusRadarPriceMinutes: 15,
   radiusRadarDistanceMeters: DEFAULT_RADIUS_RADAR_DISTANCE_METERS,
+  radiusRadarOptionsMeters: [...DEFAULT_RADIUS_OPTIONS_METERS],
   donutRingPriceMinutes: 4,
   donutRingStepMeters: DEFAULT_DONUT_RING_STEP_METERS,
   environmentPriceMinutes: 3,
@@ -824,9 +825,58 @@ function clampInt(
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
+export function normalizeRadiusRadarOptions(
+  options?: readonly number[] | null,
+  legacySingleRadius?: number | null
+): RadiusOptionMeters[] {
+  if (Array.isArray(options)) {
+    const cleaned = Array.from(
+      new Set(
+        options
+          .filter((v) => typeof v === 'number' && Number.isFinite(v))
+          .map((v) => clampInt(v, DEFAULT_RADIUS_RADAR_DISTANCE_METERS, 10, 5000))
+      )
+    ).sort((a, b) => a - b);
+    if (cleaned.length > 0) {
+      return cleaned;
+    }
+  }
+  const fallbackSet = new Set<number>(DEFAULT_RADIUS_OPTIONS_METERS);
+  if (
+    typeof legacySingleRadius === 'number' &&
+    Number.isFinite(legacySingleRadius)
+  ) {
+    fallbackSet.add(
+      clampInt(
+        legacySingleRadius,
+        DEFAULT_RADIUS_RADAR_DISTANCE_METERS,
+        10,
+        5000
+      )
+    );
+  }
+  return Array.from(fallbackSet).sort((a, b) => a - b);
+}
+
 export function resolveQuestionRulesConfig(
   config?: Partial<QuestionRulesConfig> | null
 ): QuestionRulesConfig {
+  const radiusRadarOptionsMeters = normalizeRadiusRadarOptions(
+    config?.radiusRadarOptionsMeters,
+    config?.radiusRadarDistanceMeters
+  );
+  const rawRadarDefault = clampInt(
+    config?.radiusRadarDistanceMeters,
+    DEFAULT_QUESTION_RULES_CONFIG.radiusRadarDistanceMeters,
+    10,
+    5000
+  );
+  const radiusRadarDistanceMeters = radiusRadarOptionsMeters.includes(
+    rawRadarDefault
+  )
+    ? rawRadarDefault
+    : radiusRadarOptionsMeters[Math.floor(radiusRadarOptionsMeters.length / 2)];
+
   return {
     directionPriceMinutes: clampInt(
       config?.directionPriceMinutes,
@@ -843,7 +893,7 @@ export function resolveQuestionRulesConfig(
     thermometerDistanceMeters: clampInt(
       config?.thermometerDistanceMeters,
       DEFAULT_QUESTION_RULES_CONFIG.thermometerDistanceMeters,
-      25,
+      10,
       2000
     ),
     radiusRadarPriceMinutes: clampInt(
@@ -852,12 +902,8 @@ export function resolveQuestionRulesConfig(
       0,
       120
     ),
-    radiusRadarDistanceMeters: clampInt(
-      config?.radiusRadarDistanceMeters,
-      DEFAULT_QUESTION_RULES_CONFIG.radiusRadarDistanceMeters,
-      25,
-      5000
-    ),
+    radiusRadarDistanceMeters,
+    radiusRadarOptionsMeters,
     donutRingPriceMinutes: clampInt(
       config?.donutRingPriceMinutes,
       DEFAULT_QUESTION_RULES_CONFIG.donutRingPriceMinutes,
@@ -867,7 +913,7 @@ export function resolveQuestionRulesConfig(
     donutRingStepMeters: clampInt(
       config?.donutRingStepMeters,
       DEFAULT_QUESTION_RULES_CONFIG.donutRingStepMeters,
-      25,
+      10,
       2000
     ),
     environmentPriceMinutes: clampInt(
@@ -879,7 +925,7 @@ export function resolveQuestionRulesConfig(
     environmentDistanceMeters: clampInt(
       config?.environmentDistanceMeters,
       DEFAULT_QUESTION_RULES_CONFIG.environmentDistanceMeters,
-      25,
+      10,
       1000
     ),
     photoPriceMinutes: clampInt(
@@ -896,7 +942,15 @@ export function isDefaultQuestionRulesConfig(
 ): boolean {
   if (!config) return true;
   const resolved = resolveQuestionRulesConfig(config);
+  const optionsAreDefault =
+    Array.isArray(resolved.radiusRadarOptionsMeters) &&
+    resolved.radiusRadarOptionsMeters.length ===
+      DEFAULT_RADIUS_OPTIONS_METERS.length &&
+    resolved.radiusRadarOptionsMeters.every(
+      (v, idx) => v === DEFAULT_RADIUS_OPTIONS_METERS[idx]
+    );
   return (
+    optionsAreDefault &&
     resolved.directionPriceMinutes ===
       DEFAULT_QUESTION_RULES_CONFIG.directionPriceMinutes &&
     resolved.thermometerPriceMinutes ===
@@ -924,9 +978,7 @@ export function getRadiusRadarOptions(
   config?: Partial<QuestionRulesConfig> | null
 ): RadiusOptionMeters[] {
   const resolved = resolveQuestionRulesConfig(config);
-  const set = new Set<number>(DEFAULT_RADIUS_OPTIONS_METERS);
-  set.add(resolved.radiusRadarDistanceMeters);
-  return Array.from(set).sort((a, b) => a - b);
+  return resolved.radiusRadarOptionsMeters ?? [...DEFAULT_RADIUS_OPTIONS_METERS];
 }
 
 function scalePenaltyMinutes(

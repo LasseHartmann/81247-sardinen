@@ -3,11 +3,16 @@ import L from 'leaflet';
 import type { Feature, MultiPolygon, Polygon } from 'geojson';
 import {
   ANCHOR_MANUAL_ADJUST_MAX_METERS,
+  getRadiusRadarOptions,
   LEASH_RADIUS_METERS,
   MAP_DEFAULT_CENTER,
   MAP_DEFAULT_ZOOM,
   resolveQuestionRulesConfig,
 } from '../../config/gameConfig';
+import {
+  getRecyclingLatLngsForPlayArea,
+  getTransitLatLngsForPlayArea,
+} from '../../config/fallbackOsm81247';
 import { buildQuestionPreviewGeoJson } from '../../geo/clueGeometry';
 import { destinationPoint, distanceMeters } from '../../geo/distance';
 import {
@@ -43,7 +48,8 @@ export interface MapClickInteractionMode {
     | 'NONE'
     | 'TEST_LOCATION'
     | 'PICK_ANCHOR_POINT'
-    | 'PICK_PLAY_AREA_CIRCLE';
+    | 'PICK_PLAY_AREA_CIRCLE'
+    | 'PICK_LOBBY_RULE_PREVIEW';
   label?: string;
 }
 
@@ -124,6 +130,8 @@ export interface GameMapProps {
   official81247Boundary?: Feature<Polygon | MultiPolygon> | null;
   circlePlayAreaCenter?: LatLng | null;
   onChangeCirclePlayAreaCenter?: (pt: LatLng) => void;
+  lobbyPreviewOrigin?: LatLng | null;
+  onChangeLobbyPreviewOrigin?: (pt: LatLng) => void;
   ownFix: GeoFix | null;
   anchorGpsOrigin?: LatLng | null;
   isOwnSideHider: boolean;
@@ -158,6 +166,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
   official81247Boundary = null,
   circlePlayAreaCenter = null,
   onChangeCirclePlayAreaCenter,
+  lobbyPreviewOrigin = null,
+  onChangeLobbyPreviewOrigin,
   ownFix,
   anchorGpsOrigin = null,
   isOwnSideHider,
@@ -217,6 +227,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
   clickModeRef.current = clickMode;
   const onCircleCenterRef = useRef(onChangeCirclePlayAreaCenter);
   onCircleCenterRef.current = onChangeCirclePlayAreaCenter;
+  const onLobbyPreviewOriginRef = useRef(onChangeLobbyPreviewOrigin);
+  onLobbyPreviewOriginRef.current = onChangeLobbyPreviewOrigin;
 
   const cluesSignature = clues.map((c) => c.id).join('|');
   const hiddenSignature = Array.from(hiddenClueIds).sort().join('|');
@@ -241,8 +253,9 @@ const GameMapInner: React.FC<GameMapProps> = ({
     [possibleHidingArea]
   );
 
-  const previewOriginLat = anchorGpsOrigin?.lat ?? null;
-  const previewOriginLng = anchorGpsOrigin?.lng ?? null;
+  const effectivePreviewOriginSource = lobbyPreviewOrigin ?? anchorGpsOrigin;
+  const previewOriginLat = effectivePreviewOriginSource?.lat ?? null;
+  const previewOriginLng = effectivePreviewOriginSource?.lng ?? null;
 
   const effectiveThermoA = useMemo<LatLng | null>(() => {
     if (thermoPointA) return thermoPointA;
@@ -428,14 +441,20 @@ const GameMapInner: React.FC<GameMapProps> = ({
 
   const circlePickerFittedRef = useRef(false);
   useEffect(() => {
-    if (clickMode.kind !== 'PICK_PLAY_AREA_CIRCLE') {
+    if (
+      clickMode.kind !== 'PICK_PLAY_AREA_CIRCLE' &&
+      clickMode.kind !== 'PICK_LOBBY_RULE_PREVIEW'
+    ) {
       circlePickerFittedRef.current = false;
       return;
     }
     if (circlePickerFittedRef.current) return;
 
     const map = mapRef.current;
-    const refBoundary = official81247Boundary ?? playArea;
+    const refBoundary =
+      clickMode.kind === 'PICK_PLAY_AREA_CIRCLE'
+        ? (official81247Boundary ?? playArea)
+        : playArea;
     if (!map || !refBoundary) return;
 
     if (
@@ -575,14 +594,94 @@ const GameMapInner: React.FC<GameMapProps> = ({
             interactive: false,
           }
         ).addTo(group);
+
+        if (activePreviewQuestion === 'THERMOMETER' && !thermoPointA) {
+          L.marker([effectiveThermoB.lat, effectiveThermoB.lng], {
+            icon: createSelectionPinIcon('B', 'secondary'),
+            draggable: false,
+          })
+            .bindTooltip(`STOPP [B] (${thermoTargetDistanceMeters} m)`)
+            .addTo(group);
+        }
       }
 
-      L.marker([effectiveThermoA.lat, effectiveThermoA.lng], {
+      const isLobbyRuleMode = clickMode.kind === 'PICK_LOBBY_RULE_PREVIEW';
+      const markerA = L.marker([effectiveThermoA.lat, effectiveThermoA.lng], {
         icon: createSelectionPinIcon('A', 'primary'),
-        draggable: false,
+        draggable: isLobbyRuleMode && Boolean(onLobbyPreviewOriginRef.current),
       })
-        .bindTooltip('THERMOMETER START [A]')
+        .bindTooltip(
+          isLobbyRuleMode
+            ? 'START [A] — Karte antippen oder ziehen zum Verschieben'
+            : 'THERMOMETER START [A]'
+        )
         .addTo(group);
+
+      if (isLobbyRuleMode) {
+        markerA.on('dragend', () => {
+          const pos = markerA.getLatLng();
+          onLobbyPreviewOriginRef.current?.({ lat: pos.lat, lng: pos.lng });
+        });
+      }
+    }
+
+    // Lobby-Vorschau: Zusätzliche Hilfsringe für alle Radar-Distanzen + verschiebbarer Pin P + Wertstoff-/Haltestellen-Punkte
+    if (clickMode.kind === 'PICK_LOBBY_RULE_PREVIEW') {
+      if (
+        (activePreviewQuestion === 'DONUT_RING' ||
+          activePreviewQuestion === 'RADIUS_RADAR') &&
+        previewOriginLat !== null &&
+        previewOriginLng !== null
+      ) {
+        if (activePreviewQuestion === 'RADIUS_RADAR') {
+          const allRadii = getRadiusRadarOptions(questionConfig);
+          for (const r of allRadii) {
+            if (r === selectedRadius) continue;
+            L.circle([previewOriginLat, previewOriginLng], {
+              renderer,
+              radius: r,
+              color: refRingColor,
+              weight: 1.5,
+              dashArray: '5 4',
+              fillOpacity: 0,
+              interactive: false,
+            }).addTo(group);
+          }
+        }
+
+        const markerP = L.marker([previewOriginLat, previewOriginLng], {
+          icon: createSelectionPinIcon('P', 'primary'),
+          draggable: Boolean(onLobbyPreviewOriginRef.current),
+        })
+          .bindTooltip('MITTELPUNKT [P] — Karte antippen oder ziehen')
+          .addTo(group);
+
+        markerP.on('dragend', () => {
+          const pos = markerP.getLatLng();
+          onLobbyPreviewOriginRef.current?.({ lat: pos.lat, lng: pos.lng });
+        });
+      }
+
+      if (
+        activePreviewQuestion === 'OSM_RECYCLING' ||
+        activePreviewQuestion === 'OSM_TRANSIT'
+      ) {
+        const poiPoints =
+          activePreviewQuestion === 'OSM_RECYCLING'
+            ? getRecyclingLatLngsForPlayArea(playArea)
+            : getTransitLatLngsForPlayArea(playArea);
+        for (const pt of poiPoints) {
+          L.circleMarker([pt.lat, pt.lng], {
+            renderer,
+            radius: 4.5,
+            color: '#FFFFFF',
+            weight: 1.5,
+            fillColor: '#0F766E',
+            fillOpacity: 1,
+            interactive: false,
+          }).addTo(group);
+        }
+      }
     }
 
     if (anchorPickLat !== null && anchorPickLng !== null) {
@@ -644,6 +743,11 @@ const GameMapInner: React.FC<GameMapProps> = ({
     clickMode.kind,
     official81247Boundary,
     circlePlayAreaCenter,
+    previewOriginLat,
+    previewOriginLng,
+    playArea,
+    questionConfig,
+    selectedRadius,
   ]);
 
   // 3. Eigene Position, autorisierte Team-Beacons sowie Hider-Anchor (in-place aktualisiert ohne Flackern!)

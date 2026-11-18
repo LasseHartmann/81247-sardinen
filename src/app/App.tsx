@@ -106,8 +106,13 @@ import { LeashWarningBanner } from '../components/HUD/LeashWarningBanner';
 import { TopHud } from '../components/HUD/TopHud';
 import { LeaderboardView } from '../components/Leaderboard/LeaderboardView';
 import { HostControlPanel } from '../components/Lobby/HostControlPanel';
+import { type LobbyRulePreviewTarget } from '../components/Lobby/HostQuestionRulesEditor';
 import { GameHubScreen } from '../components/Lobby/GameHubScreen';
 import { LateJoinTeamPicker } from '../components/Lobby/LateJoinTeamPicker';
+import {
+  LobbyRulePreviewSheet,
+  resolveLobbyPreviewQuestionType,
+} from '../components/Lobby/LobbyRulePreviewSheet';
 import { LobbyScreen } from '../components/Lobby/LobbyScreen';
 import { LoginScreen } from '../components/Lobby/LobbyView';
 import {
@@ -229,6 +234,16 @@ export const App: React.FC = () => {
   const [hiderFilterTeamId, setHiderFilterTeamId] = useState<string>('NONE');
   const [circlePickError, setCirclePickError] = useState<string | null>(null);
   const [circleEditorCollapsed, setCircleEditorCollapsed] = useState(false);
+  const [lobbyRulePreview, setLobbyRulePreview] =
+    useState<LobbyRulePreviewTarget | null>(null);
+  const [lobbyEnvSubMode, setLobbyEnvSubMode] = useState<
+    'OSM_RECYCLING' | 'OSM_TRANSIT'
+  >('OSM_RECYCLING');
+  const [lobbyPreviewOrigin, setLobbyPreviewOrigin] = useState<LatLng | null>(
+    null
+  );
+  const [keepLobbyQuestionRulesOpen, setKeepLobbyQuestionRulesOpen] =
+    useState(false);
   const [buyingPreviewClue, setBuyingPreviewClue] = useState(false);
   const mapActionsRef = useRef<GameMapActions | null>(null);
   const [memberMarkerClockMs, setMemberMarkerClockMs] = useState<number>(() =>
@@ -247,9 +262,15 @@ export const App: React.FC = () => {
   latestPublicStateRef.current = publicState;
 
   useEffect(() => {
-    if (activeTab !== 'MAP' && mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE') {
-      setMapClickMode({ kind: 'NONE' });
-      setCirclePickError(null);
+    if (activeTab !== 'MAP') {
+      if (mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE') {
+        setMapClickMode({ kind: 'NONE' });
+        setCirclePickError(null);
+      } else if (mapClickMode.kind === 'PICK_LOBBY_RULE_PREVIEW') {
+        setMapClickMode({ kind: 'NONE' });
+        setLobbyRulePreview(null);
+        setActivePreviewQuestion(null);
+      }
     }
   }, [activeTab, mapClickMode.kind]);
 
@@ -259,12 +280,16 @@ export const App: React.FC = () => {
     setThermoPointA(null);
   }, [publicState?.sessionId]);
 
-  const hostRadiusDefault = resolveQuestionRulesConfig(
+  const resolvedRuleCfg = resolveQuestionRulesConfig(
     publicState?.questionConfig
-  ).radiusRadarDistanceMeters;
+  );
+  const hostRadiusDefault = resolvedRuleCfg.radiusRadarDistanceMeters;
+  const availableRadarRadii = getRadiusRadarOptions(publicState?.questionConfig);
   useEffect(() => {
-    setSelectedRadius(hostRadiusDefault);
-  }, [hostRadiusDefault]);
+    setSelectedRadius((prev) =>
+      availableRadarRadii.includes(prev) ? prev : hostRadiusDefault
+    );
+  }, [hostRadiusDefault, availableRadarRadii]);
 
   // Thermometer stoppt automatisch, sobald die Mindestdistanz ab Startpunkt A zurückgelegt wurde
   useEffect(() => {
@@ -1192,6 +1217,10 @@ export const App: React.FC = () => {
       void updateCirclePlayArea(pt, latestRadius, detectedPlz);
       return;
     }
+    if (mapClickMode.kind === 'PICK_LOBBY_RULE_PREVIEW') {
+      setLobbyPreviewOrigin(pt);
+      return;
+    }
     if (mapClickMode.kind === 'PICK_ANCHOR_POINT') {
       const check = validateManualAnchorSelection({
         candidate: pt,
@@ -1487,6 +1516,43 @@ export const App: React.FC = () => {
 
   const isEditingCircleOnMap =
     mapClickMode.kind === 'PICK_PLAY_AREA_CIRCLE' && isRoomHost;
+  const isEditingLobbyRuleOnMap =
+    mapClickMode.kind === 'PICK_LOBBY_RULE_PREVIEW' &&
+    lobbyRulePreview !== null &&
+    isRoomHost;
+
+  const effectiveLobbyPreviewOrigin: LatLng =
+    lobbyPreviewOrigin &&
+    isPointInPlayArea(lobbyPreviewOrigin, publicState.playArea.polygon)
+      ? lobbyPreviewOrigin
+      : geo.currentFix &&
+          isPointInPlayArea(geo.currentFix, publicState.playArea.polygon)
+        ? { lat: geo.currentFix.lat, lng: geo.currentFix.lng }
+        : currentCircleCenter;
+
+  const handleOpenLobbyRulePreview = (
+    target: LobbyRulePreviewTarget,
+    initialRadiusMeters?: number
+  ) => {
+    setKeepLobbyQuestionRulesOpen(true);
+    setCirclePickError(null);
+    setLobbyRulePreview(target);
+    const nextEnvMode =
+      target === 'OSM_RECYCLING' ? 'OSM_RECYCLING' : lobbyEnvSubMode;
+    if (target === 'OSM_RECYCLING') {
+      setLobbyEnvSubMode('OSM_RECYCLING');
+    }
+    if (initialRadiusMeters !== undefined) {
+      setSelectedRadius(initialRadiusMeters);
+    }
+    setActivePreviewQuestion(
+      resolveLobbyPreviewQuestionType(target, nextEnvMode)
+    );
+    setMapClickMode({
+      kind: 'PICK_LOBBY_RULE_PREVIEW',
+    });
+    setActiveTab('MAP');
+  };
 
   const handleOpenCircleMapEditor = () => {
     if (publicState.playArea.shapeType !== 'CUSTOM_CIRCLE') {
@@ -1667,6 +1733,7 @@ export const App: React.FC = () => {
   const activeMapBottomSlot = resolveActiveMapBottomSlotKind({
     hasOpenHiderPhotoModal,
     isEditingCircleOnMap,
+    isEditingLobbyRuleOnMap,
     clickModeKind: mapClickMode.kind,
     hasCluePreviewOrThermo: Boolean(
       !isManhunt && (activePreviewQuestion || thermoPointA)
@@ -1759,6 +1826,8 @@ export const App: React.FC = () => {
               onToggleOwnReady={handleToggleOwnReady}
               onViewMap={() => setActiveTab('MAP')}
               onOpenCircleMapEditor={handleOpenCircleMapEditor}
+              onOpenRulePreview={handleOpenLobbyRulePreview}
+              defaultQuestionRulesOpen={keepLobbyQuestionRulesOpen}
               onOpenHostConsole={
                 isOverviewAccount ? () => setActiveTab('HOST') : undefined
               }
@@ -1802,6 +1871,12 @@ export const App: React.FC = () => {
                 latestRadius,
                 detectedPlz ?? activePostalCodes
               );
+            }}
+            lobbyPreviewOrigin={
+              isEditingLobbyRuleOnMap ? effectiveLobbyPreviewOrigin : null
+            }
+            onChangeLobbyPreviewOrigin={(pt) => {
+              setLobbyPreviewOrigin(pt);
             }}
             ownFix={
               isOverviewAccount && !canUseMapClicks
@@ -2202,6 +2277,48 @@ export const App: React.FC = () => {
                       </div>
                     </PhysicsBottomSheet>
                   )}
+
+                  {activeMapBottomSlot === 'LOBBY_RULE_PREVIEW' &&
+                    lobbyRulePreview && (
+                      <LobbyRulePreviewSheet
+                        activeTarget={lobbyRulePreview}
+                        envSubMode={lobbyEnvSubMode}
+                        onChangeEnvSubMode={(nextEnv) => {
+                          setLobbyEnvSubMode(nextEnv);
+                          if (lobbyRulePreview === 'OSM_RECYCLING') {
+                            setActivePreviewQuestion(nextEnv);
+                          }
+                        }}
+                        onChangeTarget={(nextTarget) => {
+                          setLobbyRulePreview(nextTarget);
+                          setActivePreviewQuestion(
+                            resolveLobbyPreviewQuestionType(
+                              nextTarget,
+                              lobbyEnvSubMode
+                            )
+                          );
+                        }}
+                        questionConfig={publicState.questionConfig}
+                        selectedRadarMeters={selectedRadius}
+                        onSelectRadarMeters={setSelectedRadius}
+                        onChangeQuestionConfig={(nextQuestionConfig) => {
+                          const latest =
+                            latestPublicStateRef.current ?? publicState;
+                          void adapter
+                            .savePublicStateByHost({
+                              ...latest,
+                              questionConfig: nextQuestionConfig,
+                            })
+                            .catch(() => {});
+                        }}
+                        onDone={() => {
+                          setLobbyRulePreview(null);
+                          setActivePreviewQuestion(null);
+                          setMapClickMode({ kind: 'NONE' });
+                          setActiveTab(isOverviewAccount ? 'HOST' : 'LOBBY');
+                        }}
+                      />
+                    )}
 
                   {activeMapBottomSlot === 'CLICK_PROMPT' && (
                     <div

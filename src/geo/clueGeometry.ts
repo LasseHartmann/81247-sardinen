@@ -198,7 +198,7 @@ export function evaluateThermometer(
   }
 
   const targetMeters = Math.max(
-    25,
+    10,
     Math.round(distanceMeters(pointA, pointB))
   );
   return {
@@ -281,7 +281,7 @@ export function evaluateOsmTransit(
   playArea: Feature<Polygon | MultiPolygon>,
   radiusMeters = 150
 ): EvaluatedClueResult {
-  const safeRadius = Math.max(25, Math.round(radiusMeters));
+  const safeRadius = Math.max(10, Math.round(radiusMeters));
   const isWithinRadius = transitStops.some(
     (stop) => distanceMeters(anchorPoint, stop) <= safeRadius
   );
@@ -344,7 +344,7 @@ export function evaluateOsmRecycling(
   playArea: Feature<Polygon | MultiPolygon>,
   radiusMeters = 150
 ): EvaluatedClueResult {
-  const safeRadius = Math.max(25, Math.round(radiusMeters));
+  const safeRadius = Math.max(10, Math.round(radiusMeters));
   const isWithinRadius = recyclingPoints.some(
     (pt) => distanceMeters(anchorPoint, pt) <= safeRadius
   );
@@ -495,7 +495,7 @@ export function classifyDonutBand(
   innerRadiusMeters: number;
   outerRadiusMeters: number | null;
 } {
-  const step = Math.max(25, Math.round(stepMeters));
+  const step = Math.max(10, Math.round(stepMeters));
   for (let i = 0; i < 5; i++) {
     const inner = i * step;
     const outer = (i + 1) * step;
@@ -526,7 +526,7 @@ export function evaluateDonutRing(
   stepMeters = 200
 ): EvaluatedClueResult {
   const dist = distanceMeters(seekerOrigin, anchorPoint);
-  const safeStep = Math.max(25, Math.round(stepMeters));
+  const safeStep = Math.max(10, Math.round(stepMeters));
   const band = classifyDonutBand(dist, safeStep);
 
   let bandGeometry: Feature<Polygon | MultiPolygon> | null = null;
@@ -750,7 +750,7 @@ export function buildQuestionPreviewGeoJson(
 
     case 'OSM_TRANSIT': {
       const transitStops = getTransitLatLngsForPlayArea(playArea);
-      const envRadius = Math.max(25, Math.round(params.environmentDistanceMeters ?? 150));
+      const envRadius = Math.max(10, Math.round(params.environmentDistanceMeters ?? 150));
       const circles: Feature<Polygon | MultiPolygon>[] = [];
       for (const stop of transitStops) {
         circles.push(
@@ -782,7 +782,7 @@ export function buildQuestionPreviewGeoJson(
 
     case 'OSM_RECYCLING': {
       const recyclingPts = getRecyclingLatLngsForPlayArea(playArea);
-      const envRadius = Math.max(25, Math.round(params.environmentDistanceMeters ?? 150));
+      const envRadius = Math.max(10, Math.round(params.environmentDistanceMeters ?? 150));
       const circles: Feature<Polygon | MultiPolygon>[] = [];
       for (const pt of recyclingPts) {
         circles.push(
@@ -839,7 +839,7 @@ export function buildQuestionPreviewGeoJson(
 
     case 'DONUT_RING': {
       if (!origin) return null;
-      const step = Math.max(25, Math.round(params.donutStepMeters ?? 200));
+      const step = Math.max(10, Math.round(params.donutStepMeters ?? 200));
       const bands: Array<[number, number]> = [
         [0, step],
         [2 * step, 3 * step],

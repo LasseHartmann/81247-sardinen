@@ -7,6 +7,7 @@ import { HiderMediaResponseModal } from '../src/components/Questions/HiderMediaR
 import {
   DEFAULT_QUESTION_RULES_CONFIG,
   getQuestionPenaltyMs,
+  getRadiusRadarOptions,
 } from '../src/config/gameConfig';
 import { createDemoStore } from '../src/demo/demoStore';
 import { classifyDonutBand } from '../src/geo/clueGeometry';
@@ -215,12 +216,84 @@ describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
     expect(getQuestionPenaltyMs('MEDIA_SKY', 45 * 60_000, currentCfg)).toBe(
       6 * 60_000
     );
+
+    // Exakte Meter-Eingabe & Lobby-Kartenvorschau für Wertstoffinsel, Donut & Thermometer
+    const previewCalls: Array<{ target: string; radius?: number }> = [];
+    rerender(
+      <HostQuestionRulesEditor
+        questionConfig={currentCfg}
+        onChange={(next) => {
+          currentCfg = next;
+        }}
+        onOpenRulePreview={(target, radius) => {
+          previewCalls.push({ target, radius });
+        }}
+      />
+    );
+
+    fireEvent.change(screen.getByTestId('question-rule-thermo-distance-input'), {
+      target: { value: '180' },
+    });
+    expect(currentCfg.thermometerDistanceMeters).toBe(180);
+
+    fireEvent.click(screen.getByTestId('preview-rule-recycling-btn'));
+    fireEvent.click(screen.getByTestId('preview-rule-donut-btn'));
+    fireEvent.click(screen.getByTestId('preview-rule-thermo-btn'));
+    expect(previewCalls.map((p) => p.target)).toEqual([
+      'OSM_RECYCLING',
+      'DONUT_RING',
+      'THERMOMETER',
+    ]);
+
+    // Extra-Menü für Radar-Distanzen: Hinzufügen, Entfernen & Vorschau
+    fireEvent.click(screen.getByTestId('open-radar-distances-menu-btn'));
+    expect(screen.getByTestId('radar-distances-menu')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('remove-radar-distance-50'));
+    rerender(
+      <HostQuestionRulesEditor
+        questionConfig={currentCfg}
+        onChange={(next) => {
+          currentCfg = next;
+        }}
+        onOpenRulePreview={(target, radius) => {
+          previewCalls.push({ target, radius });
+        }}
+      />
+    );
+    expect(getRadiusRadarOptions(currentCfg)).toEqual([100, 250, 500, 1000]);
+
+    fireEvent.change(screen.getByTestId('new-radar-distance-input'), {
+      target: { value: '350' },
+    });
+    fireEvent.click(screen.getByTestId('add-radar-distance-btn'));
+    expect(getRadiusRadarOptions(currentCfg)).toEqual([
+      100, 250, 350, 500, 1000,
+    ]);
+
+    rerender(
+      <HostQuestionRulesEditor
+        questionConfig={currentCfg}
+        onChange={(next) => {
+          currentCfg = next;
+        }}
+        onOpenRulePreview={(target, radius) => {
+          previewCalls.push({ target, radius });
+        }}
+      />
+    );
+    fireEvent.click(screen.getByTestId('preview-radar-distance-350'));
+    expect(previewCalls[previewCalls.length - 1]).toEqual({
+      target: 'RADIUS_RADAR',
+      radius: 350,
+    });
   });
 
   it('erzwingt im Karten-Bottom-Slot per Single-Owner-Mutex maximal 1 aktives Overlay ohne Überlappung', () => {
     const base = {
       hasOpenHiderPhotoModal: false,
       isEditingCircleOnMap: false,
+      isEditingLobbyRuleOnMap: false,
       clickModeKind: 'NONE' as const,
       hasCluePreviewOrThermo: false,
       showHiderAnchorPanel: false,
@@ -230,6 +303,16 @@ describe('GameHubScreen: Lobby-Auswahl ohne Schnellauswahl', () => {
     };
 
     expect(resolveActiveMapBottomSlotKind(base)).toBe('NONE');
+
+    // Lobby-Distanz-Vorschau ersetzt die reguläre Lobby-Leiste und CLUE_PREVIEW ohne Überlappung
+    expect(
+      resolveActiveMapBottomSlotKind({
+        ...base,
+        isLobbyStatus: true,
+        isEditingLobbyRuleOnMap: true,
+        hasCluePreviewOrThermo: true,
+      })
+    ).toBe('LOBBY_RULE_PREVIEW');
 
     // Offene Foto-Anfrage hat höchste Priorität und unterdrückt alle anderen Bottom-Leisten
     expect(

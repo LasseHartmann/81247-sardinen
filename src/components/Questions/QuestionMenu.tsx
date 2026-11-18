@@ -404,6 +404,13 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
               <div className="border-t cmf-divider pt-3">
                 <HostQuestionRulesEditor
                   questionConfig={publicState.questionConfig}
+                  onOpenRulePreview={(target, initialRadius) => {
+                    if (initialRadius !== undefined) {
+                      onChangeSelectedRadius(initialRadius);
+                    }
+                    onChangePreviewQuestion(target);
+                    onNavigateToMap();
+                  }}
                   onChange={(nextQuestionConfig) => {
                     void adapter
                       .savePublicStateByHost({
@@ -569,6 +576,13 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
             <div className="border-t cmf-divider pt-3">
               <HostQuestionRulesEditor
                 questionConfig={publicState.questionConfig}
+                onOpenRulePreview={(target, initialRadius) => {
+                  if (initialRadius !== undefined) {
+                    onChangeSelectedRadius(initialRadius);
+                  }
+                  onChangePreviewQuestion(target);
+                  onNavigateToMap();
+                }}
                 onChange={(nextQuestionConfig) => {
                   void adapter
                     .savePublicStateByHost({

@@ -196,6 +196,57 @@ const inFlightGreenLoads = new Map<
   Promise<Feature<Polygon | MultiPolygon>[]>
 >();
 
+let munichAllGreenPreviewCache: Feature<Polygon | MultiPolygon>[] | null = null;
+let inFlightMunichAllGreenLoad: Promise<
+  Feature<Polygon | MultiPolygon>[]
+> | null = null;
+
+/**
+ * Lädt einmalig die vorab vereinfachte Gesamt-München-Grünflächen-Vorschau
+ * (`/osm-green/munich-all-preview.json`), damit Multi-PLZ / Ganz München ohne 75 Einzel-Requests
+ * und ohne Turf-Intersection sofort flüssig gezeichnet werden kann.
+ */
+export async function preloadMunichAllGreenPreview(): Promise<
+  Feature<Polygon | MultiPolygon>[]
+> {
+  if (munichAllGreenPreviewCache) {
+    return munichAllGreenPreviewCache;
+  }
+  if (inFlightMunichAllGreenLoad) {
+    return inFlightMunichAllGreenLoad;
+  }
+
+  inFlightMunichAllGreenLoad = (async (): Promise<
+    Feature<Polygon | MultiPolygon>[]
+  > => {
+    try {
+      if (typeof fetch !== 'function') {
+        return FALLBACK_GREEN_POLYGONS_81247;
+      }
+      const res = await fetch('/osm-green/munich-all-preview.json');
+      if (!res.ok) {
+        return FALLBACK_GREEN_POLYGONS_81247;
+      }
+      const data = (await res.json()) as FeatureCollection<
+        Polygon | MultiPolygon
+      >;
+      if (data?.type === 'FeatureCollection' && Array.isArray(data.features)) {
+        munichAllGreenPreviewCache = data.features;
+        return data.features;
+      }
+    } catch {
+      // Offline-Fallback
+    }
+    return FALLBACK_GREEN_POLYGONS_81247;
+  })();
+
+  try {
+    return await inFlightMunichAllGreenLoad;
+  } finally {
+    inFlightMunichAllGreenLoad = null;
+  }
+}
+
 /**
  * Ermittelt die zum Spielfeld gehörende(n) Münchner PLZ(s).
  */
@@ -329,4 +380,30 @@ export function getLoadedGreenPolygonsForPlayArea(
     }
   }
   return collected.length > 0 ? collected : FALLBACK_GREEN_POLYGONS_81247;
+}
+
+/**
+ * Schnelle Grünflächen-Abfrage speziell für die Live-Kartenvorschau:
+ * - Bis 4 PLZs: volle Detail-Polygone der gewählten PLZs.
+ * - Ab 5 PLZs (z. B. Ganz München): vorab vereinfachter Gesamt-Layer ohne teures Turf-Clipping.
+ */
+export function getPreviewGreenPolygonsForPlayArea(
+  playArea: Feature<Polygon | MultiPolygon>
+): Feature<Polygon | MultiPolygon>[] {
+  const codes = resolvePlayAreaPostalCodes(playArea);
+  if (codes.length > 4) {
+    if (!munichAllGreenPreviewCache) {
+      void preloadMunichAllGreenPreview();
+      return FALLBACK_GREEN_POLYGONS_81247;
+    }
+    const codeSet = new Set(codes);
+    const matched = munichAllGreenPreviewCache.filter((f) => {
+      const plz = String(
+        (f.properties as { plz?: string } | undefined)?.plz ?? ''
+      );
+      return !plz || codeSet.has(plz);
+    });
+    return matched.length > 0 ? matched : munichAllGreenPreviewCache;
+  }
+  return getLoadedGreenPolygonsForPlayArea(playArea, codes);
 }

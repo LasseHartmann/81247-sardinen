@@ -11,11 +11,12 @@ import {
   resolveQuestionRulesConfig,
 } from '../../config/gameConfig';
 import {
+  getPreviewGreenPolygonsForPlayArea,
   getRecyclingLatLngsForPlayArea,
   getTransitLatLngsForPlayArea,
   preloadGreenPolygonsForPostalCode,
+  preloadMunichAllGreenPreview,
 } from '../../config/fallbackOsm81247';
-import { buildQuestionPreviewGeoJson } from '../../geo/clueGeometry';
 import { destinationPoint, distanceMeters } from '../../geo/distance';
 import {
   buildExcludedOrangeMask,
@@ -69,6 +70,102 @@ function hasUsableMapViewport(map: L.Map): boolean {
       size.x >= 32 &&
       size.y >= 32
   );
+}
+
+const METERS_PER_DEG_LAT = 111132;
+
+function metersPerDegLngAt(latDeg: number): number {
+  return 111320 * Math.cos((latDeg * Math.PI) / 180);
+}
+
+function buildLatLngCircleRing(
+  center: LatLng,
+  radiusMeters: number,
+  steps = 64
+): L.LatLngExpression[] {
+  const ring: L.LatLngExpression[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const angle = (i * 360) / steps;
+    const pt = destinationPoint(center, radiusMeters, angle);
+    ring.push([pt.lat, pt.lng]);
+  }
+  return ring;
+}
+
+interface InternalLeafletCanvas {
+  _ctx?: CanvasRenderingContext2D;
+  _map?: L.Map;
+  _redrawBounds?: L.Bounds | null;
+  _drawing?: boolean;
+  _drawFirst?: {
+    layer: L.Path & { _pxBounds?: L.Bounds; _updatePath: () => void };
+    next?: unknown;
+  } | null;
+}
+
+/**
+ * Erzeugt einen hardware-geclippten Leaflet-Canvas-Renderer, der alle Vorschau-Formen
+ * direkt auf der GPU per `ctx.clip('evenodd')` exakt auf den erlaubten Spiel-/Versteckbereich
+ * zuschneidet — komplett ohne teures `turf.union` oder `turf.intersect` auf dem Main-Thread.
+ */
+function createPlayAreaClippedCanvas(
+  pane: string,
+  getClipFeature: () => Feature<Polygon | MultiPolygon> | null
+): L.Canvas {
+  const ClippedCanvasClass = L.Canvas.extend({
+    _draw(this: InternalLeafletCanvas) {
+      const ctx = this._ctx;
+      const map = this._map;
+      if (!ctx || !map) return;
+
+      const bounds = this._redrawBounds;
+      ctx.save();
+      if (bounds && bounds.min) {
+        const size = bounds.getSize();
+        ctx.beginPath();
+        ctx.rect(bounds.min.x, bounds.min.y, size.x, size.y);
+        ctx.clip();
+      }
+
+      const clipFeature = getClipFeature();
+      if (clipFeature?.geometry) {
+        ctx.beginPath();
+        const polys =
+          clipFeature.geometry.type === 'Polygon'
+            ? [clipFeature.geometry.coordinates]
+            : clipFeature.geometry.coordinates;
+        for (const rings of polys) {
+          for (const ring of rings) {
+            for (let i = 0; i < ring.length; i++) {
+              const pt = map.latLngToLayerPoint([ring[i][1], ring[i][0]]);
+              if (i === 0) ctx.moveTo(pt.x, pt.y);
+              else ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.closePath();
+          }
+        }
+        ctx.clip('evenodd');
+      }
+
+      this._drawing = true;
+      for (
+        let order = this._drawFirst;
+        order;
+        order = order.next as typeof order
+      ) {
+        const layer = order.layer;
+        if (!bounds || (layer._pxBounds && layer._pxBounds.intersects(bounds))) {
+          layer._updatePath();
+        }
+      }
+      this._drawing = false;
+      ctx.restore();
+    },
+  });
+
+  return new (ClippedCanvasClass as unknown as new (
+    opts: L.RendererOptions
+  ) => L.Canvas)({ padding: 0.35, pane });
 }
 
 export function safeFitGeoJsonBounds(
@@ -197,9 +294,12 @@ const GameMapInner: React.FC<GameMapProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const canvasRendererRef = useRef<L.Canvas | null>(null);
+  const previewFillRendererRef = useRef<L.Canvas | null>(null);
+  const previewStrokeRendererRef = useRef<L.Canvas | null>(null);
 
   const hidingZoneLayerRef = useRef<L.LayerGroup | null>(null);
   const previewLayerRef = useRef<L.LayerGroup | null>(null);
+  const previewPoiDotsLayerRef = useRef<L.LayerGroup | null>(null);
   const actorsLayerRef = useRef<L.LayerGroup | null>(null);
 
   const anchorMarkerRef = useRef<L.Marker | null>(null);
@@ -255,6 +355,11 @@ const GameMapInner: React.FC<GameMapProps> = ({
     [possibleHidingArea]
   );
 
+  const clipFeatureRef = useRef<Feature<Polygon | MultiPolygon> | null>(
+    possibleHidingArea ?? playArea
+  );
+  clipFeatureRef.current = possibleHidingArea ?? playArea;
+
   const effectivePreviewOriginSource = lobbyPreviewOrigin ?? anchorGpsOrigin;
   const previewOriginLat = effectivePreviewOriginSource?.lat ?? null;
   const previewOriginLng = effectivePreviewOriginSource?.lng ?? null;
@@ -302,6 +407,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
   ]);
 
   const [greenDataRev, setGreenDataRev] = useState(0);
+  const [viewportRev, setViewportRev] = useState(0);
 
   useEffect(() => {
     if (activePreviewQuestion !== 'OSM_GREEN') return;
@@ -311,9 +417,13 @@ const GameMapInner: React.FC<GameMapProps> = ({
         ? [String(playArea.properties.postalCode)]
         : getActivePostalCodes(null));
     let cancelled = false;
-    void Promise.all(
-      rawCodes.slice(0, 12).map((code) => preloadGreenPolygonsForPostalCode(code))
-    ).then(() => {
+    const loader =
+      rawCodes.length > 4
+        ? preloadMunichAllGreenPreview()
+        : Promise.all(
+            rawCodes.map((code) => preloadGreenPolygonsForPostalCode(code))
+          );
+    void loader.then(() => {
       if (!cancelled) {
         setGreenDataRev((v) => v + 1);
       }
@@ -323,49 +433,9 @@ const GameMapInner: React.FC<GameMapProps> = ({
     };
   }, [activePreviewQuestion, playArea]);
 
-  const liveConePreview = useMemo(() => {
-    if (!activePreviewQuestion) return null;
-    void greenDataRev;
-    const originPt =
-      previewOriginLat !== null && previewOriginLng !== null
-        ? { lat: previewOriginLat, lng: previewOriginLng }
-        : null;
-    return buildQuestionPreviewGeoJson(
-      activePreviewQuestion,
-      {
-        bearingDeg: coneBearingDeg,
-        radiusMeters: selectedRadius,
-        pointA: effectiveThermoA ?? undefined,
-        pointB: effectiveThermoB ?? undefined,
-        thermometerDistanceMeters: qConfig.thermometerDistanceMeters,
-        donutStepMeters: qConfig.donutRingStepMeters,
-        environmentDistanceMeters: qConfig.environmentDistanceMeters,
-        transitDistanceMeters:
-          qConfig.transitDistanceMeters ?? qConfig.environmentDistanceMeters,
-      },
-      originPt,
-      possibleHidingArea ?? playArea
-    );
-  }, [
-    activePreviewQuestion,
-    coneBearingDeg,
-    selectedRadius,
-    effectiveThermoA,
-    effectiveThermoB,
-    previewOriginLat,
-    previewOriginLng,
-    possibleHidingArea,
-    playArea,
-    qConfig,
-    greenDataRev,
-  ]);
-
   useEffect(() => {
     const el = containerRef.current;
     if (!el || mapRef.current) return;
-
-    const canvasRenderer = L.canvas({ padding: 0.35 });
-    canvasRendererRef.current = canvasRenderer;
 
     const map = L.map(el, {
       center: MAP_DEFAULT_CENTER,
@@ -373,9 +443,40 @@ const GameMapInner: React.FC<GameMapProps> = ({
       zoomControl: false,
       attributionControl: false,
       preferCanvas: true,
-      renderer: canvasRenderer,
       fadeAnimation: false,
     });
+
+    // Dedizierte Panes für Option 1:
+    // 1. Preview-Fill-Pane mit Pane-weiter CSS-Deckkraft (verschmilzt tausende Kreise ohne turf.union!)
+    const previewFillPane = map.createPane('sardinenPreviewFillPane');
+    previewFillPane.style.zIndex = '404';
+    previewFillPane.style.opacity = '0.26';
+    previewFillPane.style.pointerEvents = 'none';
+
+    // 2. Preview-Stroke-Pane (geclippt auf das Spielfeld)
+    const previewStrokePane = map.createPane('sardinenPreviewStrokePane');
+    previewStrokePane.style.zIndex = '406';
+    previewStrokePane.style.pointerEvents = 'none';
+
+    // 3. Masken- & Spielfeldrand-Pane oberhalb der Vorschau
+    const hidingMaskPane = map.createPane('sardinenHidingMaskPane');
+    hidingMaskPane.style.zIndex = '410';
+    hidingMaskPane.style.pointerEvents = 'none';
+
+    const canvasRenderer = L.canvas({
+      padding: 0.35,
+      pane: 'sardinenHidingMaskPane',
+    }).addTo(map);
+    canvasRendererRef.current = canvasRenderer;
+
+    previewFillRendererRef.current = createPlayAreaClippedCanvas(
+      'sardinenPreviewFillPane',
+      () => clipFeatureRef.current
+    ).addTo(map);
+    previewStrokeRendererRef.current = createPlayAreaClippedCanvas(
+      'sardinenPreviewStrokePane',
+      () => clipFeatureRef.current
+    ).addTo(map);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -388,7 +489,12 @@ const GameMapInner: React.FC<GameMapProps> = ({
 
     hidingZoneLayerRef.current = L.layerGroup().addTo(map);
     previewLayerRef.current = L.layerGroup().addTo(map);
+    previewPoiDotsLayerRef.current = L.layerGroup().addTo(map);
     actorsLayerRef.current = L.layerGroup().addTo(map);
+
+    map.on('moveend', () => {
+      setViewportRev((v) => v + 1);
+    });
 
     map.on('click', (ev: L.LeafletMouseEvent) => {
       const pt = {
@@ -427,6 +533,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
       memberFishMarkersRef.current.clear();
       emergencyMarkersRef.current.clear();
       canvasRendererRef.current = null;
+      previewFillRendererRef.current = null;
+      previewStrokeRendererRef.current = null;
       map.remove();
       mapRef.current = null;
     };
@@ -557,6 +665,17 @@ const GameMapInner: React.FC<GameMapProps> = ({
       },
       interactive: false,
     }).addTo(group);
+
+    // Clip-Pfad der Vorschau-Renderer bei Gebietswechsel sicher aktualisieren
+    for (const r of [
+      previewFillRendererRef.current,
+      previewStrokeRendererRef.current,
+    ]) {
+      const internal = r as (InternalLeafletCanvas & { _redraw?: () => void }) | null;
+      if (internal && internal._ctx && internal._map) {
+        internal._redraw?.();
+      }
+    }
   }, [playArea, possibleHidingArea, excludedOrangeMask]);
 
   const anchorPickLat =
@@ -564,12 +683,15 @@ const GameMapInner: React.FC<GameMapProps> = ({
   const anchorPickLng =
     clickMode.kind === 'PICK_ANCHOR_POINT' ? (anchorGpsOrigin?.lng ?? null) : null;
 
-  // 2. Optionale Live-Vorschau (nur wenn aktiv im Hinweis-Menü eingeschaltet) + Thermometer-Pins A/B
+  // 2. Optionale Live-Vorschau per GPU-geclippten Canvas-Panes (ohne turf.union / turf.intersect!)
   useEffect(() => {
     const group = previewLayerRef.current;
     if (!group) return;
     group.clearLayers();
-    const renderer = canvasRendererRef.current ?? undefined;
+
+    const fillRenderer = previewFillRendererRef.current ?? undefined;
+    const strokeRenderer = previewStrokeRendererRef.current ?? undefined;
+    const maskRenderer = canvasRendererRef.current ?? undefined;
 
     const isThermoPreview =
       activePreviewQuestion === 'THERMOMETER' || Boolean(thermoPointA);
@@ -588,23 +710,224 @@ const GameMapInner: React.FC<GameMapProps> = ({
     const refRingColor = '#64748B';
     const refAccentColor = '#0D9488';
 
-    if (liveConePreview) {
-      L.geoJSON(liveConePreview, {
-        style: {
-          renderer,
-          color: previewColor,
-          weight: 2.2,
+    const originPt =
+      previewOriginLat !== null && previewOriginLng !== null
+        ? { lat: previewOriginLat, lng: previewOriginLng }
+        : null;
+
+    // 2a. Schnelle native Canvas-Vorschau je Fragetyp (0 Polygon-Unions!)
+    if (activePreviewQuestion === 'OSM_TRANSIT' || activePreviewQuestion === 'OSM_RECYCLING') {
+      const pts =
+        activePreviewQuestion === 'OSM_TRANSIT'
+          ? getTransitLatLngsForPlayArea(playArea)
+          : getRecyclingLatLngsForPlayArea(playArea);
+      const radiusM = Math.max(
+        10,
+        Math.round(
+          activePreviewQuestion === 'OSM_TRANSIT'
+            ? (qConfig.transitDistanceMeters ?? qConfig.environmentDistanceMeters)
+            : qConfig.environmentDistanceMeters
+        )
+      );
+      for (const pt of pts) {
+        L.circle([pt.lat, pt.lng], {
+          renderer: fillRenderer,
+          radius: radiusM,
+          stroke: false,
           fillColor: previewColor,
-          fillOpacity: 0.2,
-        },
+          fillOpacity: 1,
+          interactive: false,
+        }).addTo(group);
+      }
+    } else if (activePreviewQuestion === 'OSM_GREEN') {
+      void greenDataRev;
+      const greenFeatures = getPreviewGreenPolygonsForPlayArea(playArea);
+      for (const feat of greenFeatures) {
+        L.geoJSON(feat, {
+          style: {
+            renderer: fillRenderer,
+            stroke: false,
+            fillColor: previewColor,
+            fillOpacity: 1,
+          },
+          interactive: false,
+        }).addTo(group);
+      }
+    } else if (activePreviewQuestion === 'RADIUS_RADAR' && originPt) {
+      L.circle([originPt.lat, originPt.lng], {
+        renderer: fillRenderer,
+        radius: selectedRadius,
+        stroke: false,
+        fillColor: previewColor,
+        fillOpacity: 1,
         interactive: false,
       }).addTo(group);
+      L.circle([originPt.lat, originPt.lng], {
+        renderer: strokeRenderer,
+        radius: selectedRadius,
+        color: previewColor,
+        weight: 2.2,
+        fill: false,
+        interactive: false,
+      }).addTo(group);
+    } else if (activePreviewQuestion === 'DONUT_RING' && originPt) {
+      const step = Math.max(10, Math.round(qConfig.donutRingStepMeters));
+      L.circle([originPt.lat, originPt.lng], {
+        renderer: fillRenderer,
+        radius: step,
+        stroke: false,
+        fillColor: previewColor,
+        fillOpacity: 1,
+        interactive: false,
+      }).addTo(group);
+
+      for (const [innerMul, outerMul] of [
+        [2, 3],
+        [4, 5],
+      ] as const) {
+        const outerRing = buildLatLngCircleRing(originPt, outerMul * step, 64);
+        const innerRing = buildLatLngCircleRing(originPt, innerMul * step, 64).reverse();
+        L.polygon([outerRing, innerRing], {
+          renderer: fillRenderer,
+          stroke: false,
+          fillColor: previewColor,
+          fillOpacity: 1,
+          fillRule: 'evenodd',
+          interactive: false,
+        }).addTo(group);
+      }
+
+      for (let k = 1; k <= 5; k++) {
+        L.circle([originPt.lat, originPt.lng], {
+          renderer: strokeRenderer,
+          radius: k * step,
+          color: previewColor,
+          weight: 1.8,
+          fill: false,
+          interactive: false,
+        }).addTo(group);
+      }
+    } else if (activePreviewQuestion === 'CONE_45' && originPt) {
+      const steps = 48;
+      const startBearing = coneBearingDeg - 22.5;
+      const conePts: L.LatLngExpression[] = [[originPt.lat, originPt.lng]];
+      for (let i = 0; i <= steps; i++) {
+        const angle = (((startBearing + (i * 45) / steps) % 360) + 360) % 360;
+        const pt = destinationPoint(originPt, 25_000, angle);
+        conePts.push([pt.lat, pt.lng]);
+      }
+      L.polygon(conePts, {
+        renderer: fillRenderer,
+        stroke: false,
+        fillColor: previewColor,
+        fillOpacity: 1,
+        interactive: false,
+      }).addTo(group);
+      L.polygon(conePts, {
+        renderer: strokeRenderer,
+        color: previewColor,
+        weight: 2.2,
+        fill: false,
+        interactive: false,
+      }).addTo(group);
+    } else if (activePreviewQuestion === 'SPLIT_NS' && originPt) {
+      const halfPts: L.LatLngExpression[] = [
+        [originPt.lat, originPt.lng - 0.6],
+        [originPt.lat, originPt.lng + 0.6],
+        [originPt.lat + 0.45, originPt.lng + 0.6],
+        [originPt.lat + 0.45, originPt.lng - 0.6],
+      ];
+      L.polygon(halfPts, {
+        renderer: fillRenderer,
+        stroke: false,
+        fillColor: previewColor,
+        fillOpacity: 1,
+        interactive: false,
+      }).addTo(group);
+      L.polyline(
+        [
+          [originPt.lat, originPt.lng - 0.6],
+          [originPt.lat, originPt.lng + 0.6],
+        ],
+        {
+          renderer: strokeRenderer,
+          color: previewColor,
+          weight: 2.2,
+          interactive: false,
+        }
+      ).addTo(group);
+    } else if (activePreviewQuestion === 'SPLIT_EW' && originPt) {
+      const halfPts: L.LatLngExpression[] = [
+        [originPt.lat - 0.45, originPt.lng],
+        [originPt.lat + 0.45, originPt.lng],
+        [originPt.lat + 0.45, originPt.lng + 0.6],
+        [originPt.lat - 0.45, originPt.lng + 0.6],
+      ];
+      L.polygon(halfPts, {
+        renderer: fillRenderer,
+        stroke: false,
+        fillColor: previewColor,
+        fillOpacity: 1,
+        interactive: false,
+      }).addTo(group);
+      L.polyline(
+        [
+          [originPt.lat - 0.45, originPt.lng],
+          [originPt.lat + 0.45, originPt.lng],
+        ],
+        {
+          renderer: strokeRenderer,
+          color: previewColor,
+          weight: 2.2,
+          interactive: false,
+        }
+      ).addTo(group);
+    } else if (isThermoPreview && effectiveThermoA && effectiveThermoB) {
+      const midLat = (effectiveThermoA.lat + effectiveThermoB.lat) / 2;
+      const midLng = (effectiveThermoA.lng + effectiveThermoB.lng) / 2;
+      const mPerLng = metersPerDegLngAt(midLat);
+      const ax = (effectiveThermoA.lng - midLng) * mPerLng;
+      const ay = (effectiveThermoA.lat - midLat) * METERS_PER_DEG_LAT;
+      const bx = (effectiveThermoB.lng - midLng) * mPerLng;
+      const by = (effectiveThermoB.lat - midLat) * METERS_PER_DEG_LAT;
+      const vx = bx - ax;
+      const vy = by - ay;
+      const len = Math.hypot(vx, vy) || 1;
+      const ux = vx / len;
+      const uy = vy / len;
+      const nx = -uy;
+      const ny = ux;
+      const span = 25_000;
+      const toLL = (x: number, y: number): [number, number] => [
+        midLat + y / METERS_PER_DEG_LAT,
+        midLng + x / mPerLng,
+      ];
+      const p1 = toLL(nx * span, ny * span);
+      const p2 = toLL(-nx * span, -ny * span);
+      const p3 = toLL(-nx * span + ux * span, -ny * span + uy * span);
+      const p4 = toLL(nx * span + ux * span, ny * span + uy * span);
+
+      if (activePreviewQuestion === 'THERMOMETER') {
+        L.polygon([p1, p2, p3, p4], {
+          renderer: fillRenderer,
+          stroke: false,
+          fillColor: previewColor,
+          fillOpacity: 1,
+          interactive: false,
+        }).addTo(group);
+        L.polyline([p1, p2], {
+          renderer: strokeRenderer,
+          color: previewColor,
+          weight: 2.2,
+          interactive: false,
+        }).addTo(group);
+      }
     }
 
     if (isThermoPreview && effectiveThermoA) {
       // Zielkreis um Startpunkt A
       L.circle([effectiveThermoA.lat, effectiveThermoA.lng], {
-        renderer,
+        renderer: strokeRenderer,
         radius: thermoTargetDistanceMeters,
         color: refRingColor,
         weight: 1.5,
@@ -620,7 +943,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
             [effectiveThermoB.lat, effectiveThermoB.lng],
           ],
           {
-            renderer,
+            renderer: strokeRenderer,
             color: previewColor,
             weight: 2.5,
             dashArray: '6 4',
@@ -658,7 +981,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
       }
     }
 
-    // Lobby-Vorschau: Zusätzliche Hilfsringe für alle Radar-Distanzen + verschiebbarer Pin P + Wertstoff-/Haltestellen-Punkte
+    // Lobby-Vorschau: Zusätzliche Hilfsringe für alle Radar-Distanzen + verschiebbarer Pin P
     if (clickMode.kind === 'PICK_LOBBY_RULE_PREVIEW') {
       if (
         (activePreviewQuestion === 'DONUT_RING' ||
@@ -671,7 +994,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
           for (const r of allRadii) {
             if (r === selectedRadius) continue;
             L.circle([previewOriginLat, previewOriginLng], {
-              renderer,
+              renderer: strokeRenderer,
               radius: r,
               color: refRingColor,
               weight: 1.5,
@@ -694,32 +1017,11 @@ const GameMapInner: React.FC<GameMapProps> = ({
           onLobbyPreviewOriginRef.current?.({ lat: pos.lat, lng: pos.lng });
         });
       }
-
-      if (
-        activePreviewQuestion === 'OSM_RECYCLING' ||
-        activePreviewQuestion === 'OSM_TRANSIT'
-      ) {
-        const poiPoints =
-          activePreviewQuestion === 'OSM_RECYCLING'
-            ? getRecyclingLatLngsForPlayArea(playArea)
-            : getTransitLatLngsForPlayArea(playArea);
-        for (const pt of poiPoints) {
-          L.circleMarker([pt.lat, pt.lng], {
-            renderer,
-            radius: 4.5,
-            color: '#FFFFFF',
-            weight: 1.5,
-            fillColor: '#0F766E',
-            fillOpacity: 1,
-            interactive: false,
-          }).addTo(group);
-        }
-      }
     }
 
     if (anchorPickLat !== null && anchorPickLng !== null) {
       L.circle([anchorPickLat, anchorPickLng], {
-        renderer,
+        renderer: maskRenderer,
         radius: ANCHOR_MANUAL_ADJUST_MAX_METERS,
         color: refAccentColor,
         weight: 2,
@@ -734,7 +1036,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
       if (official81247Boundary) {
         L.geoJSON(official81247Boundary, {
           style: {
-            renderer,
+            renderer: maskRenderer,
             color: refAccentColor,
             weight: 2.5,
             dashArray: '7 5',
@@ -765,8 +1067,8 @@ const GameMapInner: React.FC<GameMapProps> = ({
       }
     }
   }, [
-    liveConePreview,
     activePreviewQuestion,
+    coneBearingDeg,
     effectiveThermoA,
     effectiveThermoB,
     thermoPointA,
@@ -779,8 +1081,64 @@ const GameMapInner: React.FC<GameMapProps> = ({
     previewOriginLat,
     previewOriginLng,
     playArea,
+    possibleHidingArea,
+    qConfig,
     questionConfig,
     selectedRadius,
+    greenDataRev,
+  ]);
+
+  // 2b. Viewport-gefilterte Standort-Punkte für Haltestellen/Wertstoffinseln beim Hineinzoomen
+  useEffect(() => {
+    const dotsGroup = previewPoiDotsLayerRef.current;
+    const map = mapRef.current;
+    if (!dotsGroup || !map) return;
+    dotsGroup.clearLayers();
+
+    if (
+      clickMode.kind !== 'PICK_LOBBY_RULE_PREVIEW' ||
+      (activePreviewQuestion !== 'OSM_RECYCLING' &&
+        activePreviewQuestion !== 'OSM_TRANSIT')
+    ) {
+      return;
+    }
+
+    const strokeRenderer = previewStrokeRendererRef.current ?? undefined;
+    const allPts =
+      activePreviewQuestion === 'OSM_RECYCLING'
+        ? getRecyclingLatLngsForPlayArea(playArea)
+        : getTransitLatLngsForPlayArea(playArea);
+
+    let visiblePts = allPts;
+    if (allPts.length > 300) {
+      if (!hasUsableMapViewport(map) || map.getZoom() < 13) {
+        return;
+      }
+      const viewBounds = map.getBounds().pad(0.15);
+      visiblePts = allPts.filter((pt) =>
+        viewBounds.contains([pt.lat, pt.lng])
+      );
+      if (visiblePts.length > 450) {
+        return;
+      }
+    }
+
+    for (const pt of visiblePts) {
+      L.circleMarker([pt.lat, pt.lng], {
+        renderer: strokeRenderer,
+        radius: 4,
+        color: '#FFFFFF',
+        weight: 1.5,
+        fillColor: '#0F766E',
+        fillOpacity: 1,
+        interactive: false,
+      }).addTo(dotsGroup);
+    }
+  }, [
+    clickMode.kind,
+    activePreviewQuestion,
+    playArea,
+    viewportRev,
   ]);
 
   // 3. Eigene Position, autorisierte Team-Beacons sowie Hider-Anchor (in-place aktualisiert ohne Flackern!)

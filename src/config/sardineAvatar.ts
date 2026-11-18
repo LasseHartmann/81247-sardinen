@@ -296,7 +296,7 @@ export function getExclusiveTierBadgeLabel(
     case 'OWNER':
       return 'OWNER';
     case 'DEVELOPER':
-      return 'HELPER';
+      return 'HELFER';
     case 'FIRST_ROUND':
       return '1. RUNDE';
     default:
@@ -311,7 +311,7 @@ export function getExclusiveTierDescriptionDe(
     case 'OWNER':
       return 'Owner-Exklusiv (nur für Lasse & Linus)';
     case 'DEVELOPER':
-      return 'Helper-Exklusiv (Lasse, Linus, Thomas & Johna)';
+      return 'Helfer-Exklusiv (Lasse, Linus, Thomas & Johna)';
     case 'FIRST_ROUND':
       return 'Runde-1-Exklusiv (OG-Spieler der ersten Runde)';
     default:

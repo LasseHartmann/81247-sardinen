@@ -22,7 +22,7 @@ describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
     cleanup();
   });
 
-  it('erzwingt Owner-, Helper- und Runde-1-Exklusivität exakt für die vorgesehenen Konten', () => {
+  it('erzwingt Owner-, Helfer- und Runde-1-Exklusivität exakt für die vorgesehenen Konten', () => {
     // 1. Owner-Exklusiv: Lasse & Linus
     expect(canPlayerUseExclusiveTier('OWNER', 'Lasse')).toBe(true);
     expect(canPlayerUseExclusiveTier('OWNER', 'Linus')).toBe(true);
@@ -30,8 +30,8 @@ describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
     expect(canPlayerUseExclusiveTier('OWNER', 'Johna')).toBe(false);
     expect(canPlayerUseExclusiveTier('OWNER', 'Anna')).toBe(false);
 
-    // 2. Helper-Exklusiv (ehemals Dev): Lasse, Linus, Thomas & Johna
-    expect(getExclusiveTierBadgeLabel('DEVELOPER')).toBe('HELPER');
+    // 2. Helfer-Exklusiv (ehemals Dev): Lasse, Linus, Thomas & Johna
+    expect(getExclusiveTierBadgeLabel('DEVELOPER')).toBe('HELFER');
     expect(canPlayerUseExclusiveTier('DEVELOPER', 'Lasse')).toBe(true);
     expect(canPlayerUseExclusiveTier('DEVELOPER', 'Linus')).toBe(true);
     expect(canPlayerUseExclusiveTier('DEVELOPER', 'Thomas')).toBe(true);
@@ -77,7 +77,7 @@ describe('Sardinen-Avatar, Exklusiv-Stufen & Karten-Sardinenbüchse', () => {
       extra: 'none',
     });
 
-    // 5. Sanitization für Helper-Items (Mitternacht, Ninja-Band, Sonnenbrille, Goldkette)
+    // 5. Sanitization für Helfer-Items (Mitternacht, Ninja-Band, Sonnenbrille, Goldkette)
     const devLoadout: SardineAvatarConfig = {
       color: 'midnight',
       hat: 'ninja',

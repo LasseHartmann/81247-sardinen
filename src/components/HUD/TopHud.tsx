@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Crosshair,
-  Radar,
   Wifi,
   WifiOff,
   AlertTriangle,
@@ -87,15 +86,15 @@ export const TopHud: React.FC<TopHudProps> = ({
   return (
     <header
       data-emergency-active={hasActiveEmergency ? 'true' : 'false'}
-      className={`pointer-events-auto z-20 border-b-[1.5px] pt-[max(0.4rem,env(safe-area-inset-top))] pr-[max(0.65rem,env(safe-area-inset-right))] pb-1.5 pl-[max(0.65rem,env(safe-area-inset-left))] transition-colors duration-300 ${
+      className={`pointer-events-auto z-20 border-b pt-[max(0.4rem,env(safe-area-inset-top))] pr-[max(0.65rem,env(safe-area-inset-right))] pb-1.5 pl-[max(0.65rem,env(safe-area-inset-left))] transition-colors duration-200 ${
         hasActiveEmergency
-          ? 'border-[#FCA5A5] bg-[#B91C1C] text-white shadow-[0_6px_24px_rgba(220,38,38,0.45)]'
-          : 'border-[var(--shell-border)] bg-[var(--shell-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]'
+          ? 'border-[#FCA5A5] bg-[#B91C1C] text-white'
+          : 'border-[var(--shell-border)] bg-[var(--shell-bg)]'
       }`}
     >
-      <div className="mx-auto flex max-w-4xl items-center justify-between gap-1.5 sm:gap-2">
-        {/* Schwarze OLED-Anzeige: Phase + Spieluhr + Nächstes Radar */}
-        <div className="cmf-oled flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 sm:flex-initial sm:gap-2.5 sm:px-3">
+      <div className="mx-auto flex max-w-4xl items-center justify-between gap-2">
+        {/* Klare Status- & Spieluhr-Zeile ohne schwarze Cyber-Box */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:gap-3">
           <div className="flex shrink-0 items-center gap-1.5">
             {!connected ? (
               <WifiOff
@@ -111,28 +110,39 @@ export const TopHud: React.FC<TopHudProps> = ({
                 }`}
               />
             )}
-            <span className="hidden font-tech text-[9px] font-bold tracking-wider text-[#9AA4AE] uppercase min-[400px]:inline sm:text-[10px]">
+            <span
+              className={`hidden text-xs font-medium min-[400px]:inline ${
+                hasActiveEmergency ? 'text-white/85' : 'text-[var(--text-muted)]'
+              }`}
+            >
               {phaseShortLabel}
             </span>
             <span
               data-testid="hud-net-clock"
-              className="font-dot text-sm leading-none text-[#F8FAFC] sm:text-lg"
+              className={`font-mono-code text-sm leading-none font-bold sm:text-base ${
+                hasActiveEmergency ? 'text-white' : 'text-[var(--text-main)]'
+              }`}
             >
               {formatDurationClock(timer.netElapsedMs)}
             </span>
           </div>
 
-          <div className="h-5 shrink-0 border-l border-dashed border-[#27272A] sm:h-6" />
+          <div
+            className={`h-4 shrink-0 border-l ${
+              hasActiveEmergency ? 'border-white/30' : 'border-[var(--shell-border)]'
+            }`}
+          />
 
           <div
             data-testid="hud-stage-countdown"
             title={timer.nextStageLabel}
-            className="flex min-w-0 items-center gap-1 font-tech text-[10px] font-bold tracking-wide text-[var(--cmf-amber)] sm:text-xs"
+            className={`flex min-w-0 items-center gap-1 text-xs font-medium ${
+              hasActiveEmergency ? 'text-white/90' : 'text-[var(--text-muted)]'
+            }`}
           >
-            <Radar className="hidden h-3 w-3 shrink-0 text-[var(--cmf-teal)] min-[375px]:inline-block sm:h-3.5 sm:w-3.5" />
             {activePhase === 'LOBBY' ? (
               <span className="truncate whitespace-nowrap">
-                {isManhunt ? 'Lobby • Manhunt' : 'Lobby'}
+                {isManhunt ? 'Manhunt' : 'Bereit'}
               </span>
             ) : timer.nextStageRemainingMs !== null ? (
               <>
@@ -145,13 +155,17 @@ export const TopHud: React.FC<TopHudProps> = ({
                       ? 'Suche in'
                       : 'Radar in'}
                 </span>
-                <span className="shrink-0 whitespace-nowrap font-dot text-[11px] leading-none text-[#FBBF24] sm:text-xs">
+                <span
+                  className={`font-mono-code shrink-0 whitespace-nowrap font-bold ${
+                    hasActiveEmergency ? 'text-white' : 'text-[var(--text-main)]'
+                  }`}
+                >
                   {formatDurationClock(timer.nextStageRemainingMs)}
                 </span>
               </>
             ) : (
-              <span className="truncate whitespace-nowrap">
-                {isManhunt ? '150m Zone' : '100m Radar'}
+              <span className="truncate whitespace-nowrap font-semibold">
+                {isManhunt ? '150 m Zone' : '100 m Radar'}
               </span>
             )}
           </div>

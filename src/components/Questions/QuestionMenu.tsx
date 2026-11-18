@@ -13,7 +13,6 @@ import {
   Lock,
   Eye,
   X,
-  Filter,
   Map as MapIcon,
   Settings2,
 } from 'lucide-react';
@@ -383,15 +382,9 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
         <div className="mx-auto max-w-2xl space-y-4 pb-10">
           <div className="cmf-chassis p-4 sm:p-5 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="font-dot flex items-center gap-2 text-lg sm:text-xl text-[var(--text-main)]">
-                  <Filter className="h-4 w-4 text-[var(--cmf-teal)]" />
-                  Gekaufte Tipps der Teams
-                </h2>
-                <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                  Tippe auf ein Team, um dessen Tipps zu sehen.
-                </p>
-              </div>
+              <h2 className="font-dot text-lg sm:text-xl text-[var(--text-main)]">
+                Gekaufte Tipps der Teams
+              </h2>
               {isHostOrAdmin && (
                 <button
                   type="button"
@@ -539,14 +532,9 @@ export const QuestionMenu: React.FC<QuestionMenuProps> = ({
       <div className="mx-auto max-w-2xl space-y-4 pb-12">
         <div className="cmf-chassis p-4 sm:p-5 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="font-dot text-lg sm:text-xl text-[var(--text-main)]">
-                Tipps kaufen
-              </h2>
-              <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                Jeder Tipp grenzt das Versteck auf eurer Karte ein (kostet Strafminuten).
-              </p>
-            </div>
+            <h2 className="font-dot text-lg sm:text-xl text-[var(--text-main)]">
+              Tipps kaufen
+            </h2>
 
             <div className="flex flex-wrap items-center gap-2">
               {isHostOrAdmin && (

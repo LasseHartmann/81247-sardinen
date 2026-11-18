@@ -920,12 +920,12 @@ export const App: React.FC = () => {
   if (!publicState) {
     return (
       <div className="cmf-drafting-bg flex h-[100dvh] flex-col overflow-hidden text-sm text-[var(--text-main)]">
-        <header className="border-b-[1.5px] border-[var(--shell-border)] bg-[var(--shell-bg)] pt-[max(0.45rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-2 pl-[max(0.75rem,env(safe-area-inset-left))] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[18px]">
+        <header className="border-b border-[var(--shell-border)] bg-[var(--shell-bg)] pt-[max(0.45rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-2 pl-[max(0.75rem,env(safe-area-inset-left))]">
           <div className="mx-auto flex max-w-4xl items-center justify-between gap-2">
-            <div className="cmf-oled flex items-center gap-2 px-3 py-1.5">
+            <div className="flex items-center gap-2 py-1">
               <span className="h-2 w-2 rounded-full bg-[var(--cmf-amber)]" />
-              <span className="font-dot text-xs text-[#F8FAFC]">
-                81247 SARDINEN // INITIALISIERUNG
+              <span className="text-xs font-semibold text-[var(--text-main)]">
+                Lade Spiel …
               </span>
             </div>
           </div>

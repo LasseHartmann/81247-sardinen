@@ -86,45 +86,22 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     });
   }
 
-  const activeIndex = Math.max(
-    0,
-    items.findIndex((i) => i.id === activeTab)
-  );
-
   return (
     <nav
       aria-label="Hauptnavigation"
       data-emergency-active={hasActiveEmergency ? 'true' : 'false'}
-      className={`z-30 border-t-[1.5px] pt-1.5 pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.45rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] transition-colors duration-300 ${
+      className={`z-30 border-t pt-1 pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.45rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] transition-colors duration-200 ${
         hasActiveEmergency
-          ? 'border-[#FCA5A5] bg-[#B91C1C] text-white shadow-[0_-12px_32px_rgba(220,38,38,0.45)]'
-          : 'border-[var(--shell-border)] bg-[var(--shell-bg)] shadow-[0_-12px_32px_rgba(20,25,30,0.08),inset_0_1px_0_rgba(255,255,255,0.75)]'
+          ? 'border-[#FCA5A5] bg-[#B91C1C] text-white'
+          : 'border-[var(--shell-border)] bg-[var(--shell-bg)]'
       }`}
     >
       <div
-        className="relative mx-auto grid max-w-xl items-center"
+        className="relative mx-auto grid max-w-xl items-center gap-0.5"
         style={{
           gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`,
         }}
       >
-        {/* Gleitender Hardware-Auswahlschlitten (Spring-Animation beim Tabwechsel) */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute top-0 bottom-0 left-0 px-0.5 transition-transform duration-250 ease-[var(--ease-spring)]"
-          style={{
-            width: `${100 / items.length}%`,
-            transform: `translate3d(${activeIndex * 100}%, 0, 0)`,
-          }}
-        >
-          <div
-            className={`h-full w-full rounded-xl shadow-sm transition-colors duration-250 ${
-              hasActiveEmergency
-                ? 'bg-[#450A0A] ring-1 ring-[#FCA5A5]'
-                : 'bg-[#14171A]'
-            }`}
-          />
-        </div>
-
         {items.map((item) => {
           const isActive = activeTab === item.id;
           return (
@@ -133,27 +110,28 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               type="button"
               data-testid={`nav-tab-${item.id}`}
               onClick={() => onSelectTab(item.id)}
-              className={`relative z-10 flex min-h-[50px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 font-tech text-[10px] font-bold tracking-wide uppercase transition-all duration-200 active:scale-95 ${
+              className={`relative flex min-h-[48px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1.5 py-1 text-[11px] font-medium transition-colors ${
                 isActive
-                  ? 'text-white'
+                  ? hasActiveEmergency
+                    ? 'bg-white/20 font-semibold text-white'
+                    : 'bg-[var(--module-sub)] font-semibold text-[var(--text-main)]'
                   : hasActiveEmergency
                     ? 'text-[#FEE2E2] hover:text-white'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
               }`}
             >
-              {isActive && (
-                <span className="cmf-pop-in absolute top-1.5 right-2.5 h-1.5 w-1.5 rounded-full bg-[var(--cmf-orange)]" />
-              )}
               <div
-                className={`relative transition-transform duration-200 ease-[var(--ease-detent)] ${
-                  isActive ? '-translate-y-0.5 scale-105' : ''
+                className={`relative ${
+                  isActive && !hasActiveEmergency
+                    ? 'text-[var(--cmf-orange)]'
+                    : ''
                 }`}
               >
                 {item.icon}
                 {Boolean(item.badge && item.badge > 0) && (
                   <span
                     key={item.badge}
-                    className="cmf-pop-in absolute -top-1.5 -right-3 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--cmf-orange)] px-1 font-tech text-[9px] font-bold text-white shadow"
+                    className="absolute -top-1.5 -right-3 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--cmf-orange)] px-1 text-[9px] font-bold text-white"
                   >
                     {item.badge}
                   </span>

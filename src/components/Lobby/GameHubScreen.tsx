@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { ArrowRight, Hash, LogOut, PlusCircle } from 'lucide-react';
 import { isAdminAccountId } from '../../config/players';
 import type {
   RecentRoomEntry,
@@ -52,34 +51,32 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
       className="cmf-drafting-bg cmf-scroll-area flex h-[100dvh] w-full flex-col items-center justify-start sm:justify-center pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] text-[var(--text-main)]"
     >
       <div
-        className={`cmf-chassis cmf-sheet-up my-auto w-full space-y-4 p-5 sm:p-6 ${
-          isAdmin ? 'max-w-2xl' : 'max-w-lg'
+        className={`cmf-chassis my-auto w-full space-y-5 p-5 sm:p-6 ${
+          isAdmin ? 'max-w-2xl' : 'max-w-md'
         }`}
       >
         {/* Kopfzeile mit Spielerkonto & Abmelden */}
         <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#27272A] bg-black p-1 shadow-sm">
-              <img
-                src="/logo.png"
-                alt="81247 Sardinen Logo"
-                className="h-full w-full bg-black object-contain"
-              />
-            </div>
-            <div className="flex min-w-0 items-center gap-2">
-              <PlayerAvatar
-                avatar={account.avatar}
-                playerId={account}
-                size="sm"
-              />
-              <h1 className="font-dot truncate text-lg font-bold text-[var(--text-main)]">
-                {account.name}
-              </h1>
-              {isAdmin && (
-                <span className="cmf-badge-teal shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase">
-                  ADMIN
-                </span>
-              )}
+          <div className="flex min-w-0 items-center gap-2.5">
+            <PlayerAvatar
+              avatar={account.avatar}
+              playerId={account}
+              size="md"
+            />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-base font-bold text-[var(--text-main)]">
+                  {account.name}
+                </h1>
+                {isAdmin && (
+                  <span className="cmf-badge-teal shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold">
+                    Admin
+                  </span>
+                )}
+              </div>
+              <span className="block text-xs text-[var(--text-muted)]">
+                81247 Sardinen
+              </span>
             </div>
           </div>
 
@@ -88,17 +85,17 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
             data-testid="hub-logout-btn"
             onClick={() => void onLogout()}
             disabled={busy}
-            className="cmf-btn-secondary font-tech inline-flex min-h-[40px] shrink-0 items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase disabled:opacity-50"
+            className="cmf-btn-secondary min-h-[36px] shrink-0 px-3 py-1.5 text-xs font-medium disabled:opacity-50"
           >
-            <LogOut className="h-3.5 w-3.5" />
-            <span>Abmelden</span>
+            Abmelden
           </button>
         </div>
 
         {!firebaseAvailable && (
-          <div className="cmf-badge-amber rounded-xl px-3 py-2 text-xs font-medium">
-            Demo-Modus aktiv – erstelle eine Lobby oder gib den Demo-Code{' '}
-            <strong className="font-dot">81247</strong> ein.
+          <div className="cmf-badge-amber rounded-lg px-3 py-2 text-xs">
+            Demo-Modus aktiv · Code{' '}
+            <strong className="font-mono-code">81247</strong> eingeben oder
+            Lobby erstellen.
           </div>
         )}
 
@@ -106,29 +103,27 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
           <div
             role="alert"
             data-testid="hub-room-error"
-            className="cmf-badge-orange cmf-shake rounded-xl px-3.5 py-2.5 text-xs font-semibold"
+            className="cmf-badge-orange cmf-shake rounded-lg px-3 py-2 text-xs"
           >
             {roomError}
           </div>
         )}
 
-        {/* Option 1 (Häufigster Fall): Mit Lobby-Code beitreten */}
-        <section className="cmf-oled space-y-3 p-4">
-          <div>
-            <h2 className="font-industrial flex items-center gap-1.5 text-base font-bold text-[#F8FAFC]">
-              <Hash className="h-4 w-4 text-[var(--cmf-orange)]" />
-              Lobby beitreten
-            </h2>
-            <p className="mt-0.5 text-xs text-[#9AA4AE]">
-              Gib den 6-stelligen Code eures Hosts ein.
-            </p>
-          </div>
+        {/* Mit Lobby-Code beitreten */}
+        <section className="space-y-2 border-t cmf-divider pt-4">
+          <label
+            htmlFor="hub-join-code-field"
+            className="block text-sm font-semibold text-[var(--text-main)]"
+          >
+            Mit Code beitreten
+          </label>
 
           <form
             onSubmit={(e) => void handleJoinSubmit(e)}
             className="flex flex-col gap-2 sm:flex-row"
           >
             <input
+              id="hub-join-code-field"
               type="text"
               data-testid="hub-join-code-input"
               aria-label="Lobby-Code eingeben"
@@ -146,41 +141,34 @@ export const GameHubScreen: React.FC<GameHubScreenProps> = ({
                   setJoinInput(raw.toUpperCase());
                 }
               }}
-              placeholder="CODE (Z. B. K7M4P2)"
-              className="cmf-input font-dot min-h-[48px] flex-1 bg-white px-4 py-2.5 text-center text-base font-bold tracking-widest text-[var(--text-main)] uppercase sm:text-left"
+              placeholder="6-stelliger Code"
+              className="cmf-input font-mono-code min-h-[44px] flex-1 px-3.5 py-2 text-base font-bold tracking-widest text-[var(--text-main)] uppercase placeholder:font-sans placeholder:text-sm placeholder:font-normal placeholder:tracking-normal placeholder:normal-case"
             />
             <button
               type="submit"
               data-testid="hub-join-game-btn"
               disabled={busy || !normalizeRoomCode(joinInput)}
-              className="cmf-btn-primary font-dot inline-flex min-h-[48px] shrink-0 items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold uppercase disabled:opacity-40"
+              className="cmf-btn-primary min-h-[44px] shrink-0 px-5 py-2 text-sm font-semibold disabled:opacity-40"
             >
-              <span>{busy ? 'Prüfe ...' : 'Beitreten'}</span>
-              <ArrowRight className="h-4 w-4" />
+              {busy ? 'Prüfe …' : 'Beitreten'}
             </button>
           </form>
         </section>
 
-        {/* Option 2: Eigene Lobby erstellen */}
-        <section className="cmf-well flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="font-industrial text-sm font-bold text-[var(--text-main)] sm:text-base">
-              Neue Lobby erstellen
-            </h2>
-            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-              Du erhältst einen eigenen 6-stelligen Code zum Teilen.
-            </p>
-          </div>
+        {/* Eigene Lobby erstellen */}
+        <section className="flex items-center justify-between gap-3 border-t cmf-divider pt-4">
+          <span className="text-sm font-medium text-[var(--text-muted)]">
+            Oder eigene Runde starten
+          </span>
 
           <button
             type="button"
             data-testid="hub-host-game-btn"
             disabled={busy}
             onClick={() => void onHostNewGame()}
-            className="cmf-btn-secondary font-dot inline-flex min-h-[46px] shrink-0 items-center justify-center gap-2 bg-white px-4 py-2.5 text-xs font-bold text-[var(--text-main)] uppercase hover:bg-zinc-50 disabled:opacity-50"
+            className="cmf-btn-secondary min-h-[40px] shrink-0 px-4 py-2 text-xs font-semibold disabled:opacity-50"
           >
-            <PlusCircle className="h-4 w-4 text-[var(--cmf-teal)]" />
-            <span>{busy ? 'Erstelle ...' : 'Lobby erstellen'}</span>
+            {busy ? 'Erstelle …' : 'Neue Lobby'}
           </button>
         </section>
 

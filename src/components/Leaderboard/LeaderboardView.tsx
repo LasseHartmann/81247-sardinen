@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trophy, Clock, AlertCircle, Users, RotateCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import type {
   GameMode,
   GameStatus,
@@ -52,20 +52,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     <div className="cmf-drafting-bg cmf-scroll-area cmf-view-enter h-full px-3 py-3.5 sm:p-4 text-[var(--text-main)]">
       <div className="mx-auto max-w-2xl space-y-4 pb-10">
         <div className="cmf-chassis cmf-card-enter flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
-          <div className="flex items-center gap-3">
-            <div className="cmf-oled flex h-11 w-11 shrink-0 items-center justify-center text-[var(--cmf-amber)]">
-              <Trophy className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="font-dot text-lg text-[var(--text-main)] sm:text-xl">
-                Rangliste
-              </h2>
-              <p className="text-xs text-[var(--text-muted)]">
-                {isManhunt
-                  ? 'Schnellste Fangzeit gewinnt'
-                  : 'Kürzeste Gesamtzeit (Suchzeit + Tipp-Strafe) gewinnt'}
-              </p>
-            </div>
+          <div>
+            <h2 className="font-dot text-lg text-[var(--text-main)] sm:text-xl">
+              Rangliste
+            </h2>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+              {isManhunt
+                ? 'Schnellste Fangzeit gewinnt'
+                : 'Kürzeste Gesamtzeit (Suchzeit + Tipp-Strafe) gewinnt'}
+            </p>
           </div>
 
           {onReturnToLobbyByHost && gameStatus === 'FINISHED' && (
@@ -136,19 +131,19 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                             {entry.teamName}
                           </span>
                         </div>
-                        <span className="font-tech text-[11px] font-medium text-[var(--cmf-teal)] uppercase">
+                        <span className="text-[11px] font-medium text-[var(--cmf-teal)]">
                           {isManhunt
-                            ? 'Gefunden!'
-                            : `Gefunden • ${entry.clueCount} Tipps`}
+                            ? 'Gefunden'
+                            : `Gefunden · ${entry.clueCount} Tipps`}
                         </span>
                       </div>
                     </div>
 
-                    <div className="cmf-oled px-3.5 py-2 text-right">
-                      <span className="font-tech block text-[9px] font-bold tracking-wider text-[#9AA4AE] uppercase">
-                        {isManhunt ? 'FANGZEIT' : 'GESAMTZEIT'}
+                    <div className="text-right">
+                      <span className="block text-[10px] font-medium text-[var(--text-muted)]">
+                        {isManhunt ? 'Fangzeit' : 'Gesamtzeit'}
                       </span>
-                      <span className="font-dot text-lg text-[#F8FAFC]">
+                      <span className="font-mono-code text-lg font-bold text-[var(--text-main)]">
                         {formatDurationClock(entry.totalTimeMs)}
                       </span>
                     </div>
@@ -157,27 +152,19 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                   {!isManhunt && (
                     <div className="mt-3 grid grid-cols-2 gap-2 border-t cmf-divider pt-3 text-xs">
                       <div className="cmf-well flex items-center justify-between px-3 py-1.5">
-                        <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
-                          <Clock className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                          Suchzeit:
+                        <span className="text-[var(--text-muted)]">
+                          Suchzeit
                         </span>
-                        <strong className="font-tech text-[var(--text-main)]">
+                        <strong className="font-mono-code text-[var(--text-main)]">
                           {formatDurationClock(entry.searchTimeMs)}
                         </strong>
                       </div>
                       <div className="cmf-well flex items-center justify-between px-3 py-1.5">
-                        <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
-                          <AlertCircle
-                            className={`h-3.5 w-3.5 ${
-                              entry.penaltyMs < 0
-                                ? 'text-[var(--cmf-teal)]'
-                                : 'text-[var(--cmf-orange)]'
-                            }`}
-                          />
-                          {entry.penaltyMs < 0 ? 'Zeitgutschrift:' : 'Tipp-Strafe:'}
+                        <span className="text-[var(--text-muted)]">
+                          {entry.penaltyMs < 0 ? 'Zeitgutschrift' : 'Tipp-Strafe'}
                         </span>
                         <strong
-                          className={`font-tech ${
+                          className={`font-mono-code ${
                             entry.penaltyMs < 0
                               ? 'text-[var(--cmf-teal)]'
                               : 'text-[var(--cmf-orange)]'
@@ -196,9 +183,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
         {stillSearching.length > 0 && (
           <div className="space-y-2">
-            <h3 className="flex items-center gap-2 px-1 font-tech text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              <span className="nothing-red-dot" />
-              <Users className="h-3.5 w-3.5" />
+            <h3 className="px-1 text-xs font-semibold text-[var(--text-muted)]">
               Noch auf der Suche ({stillSearching.length})
             </h3>
             {stillSearching.map((team) => (

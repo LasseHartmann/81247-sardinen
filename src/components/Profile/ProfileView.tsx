@@ -293,7 +293,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             <span
-              className={`rounded-full px-3 py-1 font-tech text-[10px] font-bold tracking-wider uppercase ${
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
                 isOverviewAccount
                   ? 'cmf-badge-teal'
                   : ownMember.side === 'HIDER'
@@ -304,12 +304,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               }`}
             >
               {isOverviewAccount
-                ? 'SPIELLEITER (ADMIN)'
+                ? 'Spielleiter (Admin)'
                 : ownMember.side === 'HIDER'
-                  ? 'VERSTECKER (DIE SARDINEN)'
+                  ? 'Verstecker (Die Sardinen)'
                   : ownMember.side === 'SEEKER' && ownTeam
-                    ? `SUCHER // ${ownTeam.name}`
-                    : 'KEIN TEAM'}
+                    ? `Sucher · ${ownTeam.name}`
+                    : 'Kein Team'}
             </span>
           </div>
         </div>
@@ -322,29 +322,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           >
             <div className="flex items-center justify-between gap-2 border-b cmf-divider pb-3">
               <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-emerald-500" />
+                <Shield className="h-4 w-4 text-emerald-600" />
                 <h3 className="font-industrial text-base text-[var(--text-main)]">
-                  Matrix-System-Avatar (Admin)
+                  System-Avatar (Admin)
                 </h3>
               </div>
-              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-0.5 font-tech text-[10px] font-bold tracking-wider text-emerald-700 uppercase">
-                ERZWUNGEN // MATRIX-ICON
+              <span className="cmf-badge-teal rounded-md px-2.5 py-0.5 text-xs font-semibold">
+                Festes Icon
               </span>
             </div>
 
-            <div className="cmf-oled flex items-center gap-4 rounded-2xl border border-emerald-500/40 p-4">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-black p-1">
+            <div className="cmf-well flex items-center gap-4 p-4">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-[#111315] p-1">
                 <PlayerAvatar playerId={ownMember} size="xl" />
               </div>
               <div className="space-y-1">
-                <span className="font-tech block text-[10px] font-bold tracking-wider text-emerald-400 uppercase">
-                  ROOT // MATRIX-SARDINE
+                <span className="block text-xs font-semibold text-[var(--cmf-teal)]">
+                  Admin-Sardine
                 </span>
-                <p className="font-industrial text-sm font-bold text-[#F8FAFC]">
+                <p className="font-industrial text-sm font-bold text-[var(--text-main)]">
                   Feste System-Identität für das Admin-Konto
                 </p>
-                <p className="text-xs text-slate-300">
-                  Das Admin-Konto trägt dauerhaft das exklusive Matrix-Cyber-Icon.
+                <p className="text-xs text-[var(--text-muted)]">
+                  Das Admin-Konto trägt dauerhaft das Matrix-Icon.
                 </p>
               </div>
             </div>
@@ -1186,8 +1186,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               ) : (
                 <div className="space-y-2.5">
                   <div className="cmf-well p-3 space-y-1.5">
-                    <p className="font-tech text-[10px] font-bold text-[var(--cmf-orange)] uppercase">
-                      MANHUNT // DAUERHAFT IN BEWEGUNG
+                    <p className="text-xs font-bold text-[var(--cmf-orange)]">
+                      Manhunt · Dauerhaft in Bewegung
                     </p>
                     <p className="leading-relaxed text-[var(--text-main)]">
                       Die Verstecker haben <strong>kein festes Versteck</strong>, sondern bleiben in der aktiven Zone in Bewegung. Es gibt keine kaufbaren Hinweis-Fragen.

@@ -39,8 +39,8 @@ export function createAnchorPointIcon(): L.DivIcon {
     iconSize: [42, 42],
     iconAnchor: [21, 21],
     html: `
-      <div class="cmf-hq-glow" style="width:40px;height:40px;margin:1px;border-radius:9999px;background:#FF4D00;border:2.5px solid #FFFFFF;display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;letter-spacing:0.04em;">
-        HQ
+      <div class="cmf-hq-glow" style="width:40px;height:40px;margin:1px;border-radius:9999px;background:#FF4D00;border:2.5px solid #FFFFFF;display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-family:'Inter',sans-serif;font-weight:700;font-size:11px;letter-spacing:0.02em;">
+        Ziel
       </div>
     `,
   });
@@ -89,20 +89,20 @@ export function createTeamMemberFishIcon(
     html: `
       <div style="width:${iconWidth}px;height:${iconHeight}px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;pointer-events:auto;opacity:${opacityStyle};">
         <!-- Spielername + Team-Abzeichen -->
-        <div style="display:inline-flex;align-items:center;gap:4px;padding:1.5px 7px;margin-bottom:2px;border-radius:9999px;background:#14171A;border:1.5px solid ${color};color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;letter-spacing:0.03em;white-space:nowrap;box-shadow:0 3px 8px rgba(15,23,42,0.34);">
+        <div style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;margin-bottom:2px;border-radius:9999px;background:#FFFFFF;border:1.5px solid ${color};color:#171717;font-family:'Inter',sans-serif;font-size:9.5px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(15,23,42,0.18);">
           <span style="width:6px;height:6px;border-radius:9999px;background:${color};display:inline-block;flex-shrink:0;"></span>
           <span>${safePlayer}</span>
-          <span style="opacity:0.55;">·</span>
-          <span style="color:${color};filter:brightness(1.22);">${shortTeam}</span>
+          <span style="opacity:0.45;">·</span>
+          <span style="color:${color};font-weight:800;">${shortTeam}</span>
         </div>
 
         <!-- Eigener Fisch des Teammitglieds im Teamfarben-Rahmen -->
-        <div title="${safePlayer} (${shortTeam})" style="height:32px;padding:1px 6px;border-radius:9999px;background:rgba(15,23,42,0.88);border:2px solid ${color};box-shadow:0 4px 12px rgba(15,23,42,0.38);display:inline-flex;align-items:center;justify-content:center;">
+        <div title="${safePlayer} (${shortTeam})" style="height:32px;padding:1px 6px;border-radius:9999px;background:#FFFFFF;border:2px solid ${color};box-shadow:0 3px 10px rgba(15,23,42,0.22);display:inline-flex;align-items:center;justify-content:center;">
           ${fishSvg}
         </div>
 
         <!-- Präziser GPS-Ankerpunkt in Teamfarbe -->
-        <div style="width:9px;height:9px;border-radius:9999px;background:${color};border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 5px rgba(15,23,42,0.4);"></div>
+        <div style="width:9px;height:9px;border-radius:9999px;background:${color};border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 5px rgba(15,23,42,0.3);"></div>
       </div>
     `,
   });
@@ -150,14 +150,14 @@ export function createSelectionPinIcon(
 ): L.DivIcon {
   const safe = escapeHtml(label);
   const isPrimary = variant === 'primary';
-  const bg = isPrimary ? '#FF4D00' : '#14171A';
-  const border = isPrimary ? '2.5px solid #FFFFFF' : '1.5px solid #9AA4AE';
+  const bg = isPrimary ? '#FF4D00' : '#171717';
+  const border = isPrimary ? '2.5px solid #FFFFFF' : '1.5px solid #FFFFFF';
   return L.divIcon({
     className: 'sardinen-div-icon',
     iconSize: [30, 30],
     iconAnchor: [15, 15],
     html: `
-      <div style="width:30px;height:30px;border-radius:9999px;background:${bg};border:${border};color:#F8FAFC;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(20,25,30,0.32);">
+      <div style="width:30px;height:30px;border-radius:9999px;background:${bg};border:${border};color:#FFFFFF;font-family:'Inter',sans-serif;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(20,25,30,0.28);">
         ${safe}
       </div>
     `,
@@ -168,20 +168,20 @@ export function createSelectionPinIcon(
  * Hochsichtbarer Notfall-SOS-Marker (#DC2626 / #991B1B) mit konzentrischer Alarmwelle.
  */
 export function createEmergencyBeaconIcon(senderName: string): L.DivIcon {
-  const safeName = escapeHtml(senderName.toUpperCase());
+  const safeName = escapeHtml(senderName);
   return L.divIcon({
     className: 'sardinen-div-icon',
     iconSize: [132, 52],
     iconAnchor: [66, 38],
     html: `
       <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
-        <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:9999px;background:#991B1B;border:2px solid #FCA5A5;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;letter-spacing:0.06em;white-space:nowrap;box-shadow:0 6px 18px rgba(220,38,38,0.55);">
+        <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:9999px;background:#991B1B;border:2px solid #FCA5A5;color:#FFFFFF;font-family:'Inter',sans-serif;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 4px 14px rgba(220,38,38,0.45);">
           <span style="width:7px;height:7px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
-          <span>SOS // ${safeName}</span>
+          <span>Notfall · ${safeName}</span>
         </div>
         <div style="position:relative;width:22px;height:22px;margin-top:1px;display:flex;align-items:center;justify-content:center;">
           <span class="cmf-sos-wave" style="position:absolute;inset:0;border-radius:9999px;background:rgba(220,38,38,0.58);pointer-events:none;"></span>
-          <span style="position:relative;width:14px;height:14px;border-radius:9999px;background:#DC2626;border:2.5px solid #FFFFFF;box-shadow:0 0 14px rgba(220,38,38,0.85);"></span>
+          <span style="position:relative;width:14px;height:14px;border-radius:9999px;background:#DC2626;border:2.5px solid #FFFFFF;box-shadow:0 0 12px rgba(220,38,38,0.7);"></span>
         </div>
       </div>
     `,
@@ -198,20 +198,20 @@ export function createManhuntPingIcon(
   const badgeBg = isFallbackSource ? '#B45309' : '#FF4D00';
   const dotBg = isFallbackSource ? '#F59E0B' : '#FF4D00';
   const label = isFallbackSource
-    ? `PING #${pingNumber} (FALLBACK)`
-    : `VERSTECKER-PING #${pingNumber}`;
+    ? `Ping #${pingNumber} (Fallback)`
+    : `Ping #${pingNumber}`;
   return L.divIcon({
     className: 'sardinen-div-icon',
     iconSize: [148, 48],
     iconAnchor: [74, 36],
     html: `
       <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
-        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:9999px;background:${badgeBg};border:1.5px solid #FFFFFF;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;letter-spacing:0.05em;white-space:nowrap;box-shadow:0 5px 14px rgba(20,25,30,0.38);">
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:9999px;background:${badgeBg};border:1.5px solid #FFFFFF;color:#FFFFFF;font-family:'Inter',sans-serif;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 4px 12px rgba(20,25,30,0.3);">
           <span style="width:6px;height:6px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
           <span>${escapeHtml(label)}</span>
         </div>
         <div style="position:relative;width:20px;height:20px;margin-top:2px;display:flex;align-items:center;justify-content:center;">
-          <span style="width:13px;height:13px;border-radius:9999px;background:${dotBg};border:2.5px solid #FFFFFF;box-shadow:0 0 12px rgba(255,77,0,0.75);"></span>
+          <span style="width:13px;height:13px;border-radius:9999px;background:${dotBg};border:2.5px solid #FFFFFF;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></span>
         </div>
       </div>
     `,
@@ -228,13 +228,13 @@ export function createExposedHiderIcon(): L.DivIcon {
     iconAnchor: [88, 38],
     html: `
       <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
-        <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:9999px;background:#DC2626;border:2px solid #FFFFFF;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;letter-spacing:0.05em;white-space:nowrap;box-shadow:0 6px 18px rgba(220,38,38,0.55);">
+        <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:9999px;background:#DC2626;border:2px solid #FFFFFF;color:#FFFFFF;font-family:'Inter',sans-serif;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 4px 14px rgba(220,38,38,0.45);">
           <span style="width:7px;height:7px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
-          <span>LIVE // VERSTECKER</span>
+          <span>Verstecker (Live)</span>
         </div>
         <div style="position:relative;width:22px;height:22px;margin-top:1px;display:flex;align-items:center;justify-content:center;">
           <span class="cmf-sos-wave" style="position:absolute;inset:0;border-radius:9999px;background:rgba(220,38,38,0.58);pointer-events:none;"></span>
-          <span style="position:relative;width:14px;height:14px;border-radius:9999px;background:#DC2626;border:2.5px solid #FFFFFF;box-shadow:0 0 14px rgba(220,38,38,0.85);"></span>
+          <span style="position:relative;width:14px;height:14px;border-radius:9999px;background:#DC2626;border:2.5px solid #FFFFFF;box-shadow:0 0 12px rgba(220,38,38,0.7);"></span>
         </div>
       </div>
     `,
@@ -244,19 +244,19 @@ export function createExposedHiderIcon(): L.DivIcon {
 /**
  * Live-Verstecker-Pin für Overview-Account & Sardinen-Rudel im Manhunt-Modus (#FF4D00).
  */
-export function createLiveHiderOverviewIcon(label = 'VERSTECKER'): L.DivIcon {
-  const safe = escapeHtml(label.toUpperCase());
+export function createLiveHiderOverviewIcon(label = 'Verstecker'): L.DivIcon {
+  const safe = escapeHtml(label);
   return L.divIcon({
     className: 'sardinen-div-icon',
     iconSize: [120, 40],
     iconAnchor: [60, 28],
     html: `
       <div style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;">
-        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:9999px;background:#FF4D00;border:1.5px solid #FFFFFF;color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;letter-spacing:0.05em;white-space:nowrap;box-shadow:0 4px 12px rgba(20,25,30,0.32);">
+        <div style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:9999px;background:#FF4D00;border:1.5px solid #FFFFFF;color:#FFFFFF;font-family:'Inter',sans-serif;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 3px 10px rgba(20,25,30,0.28);">
           <span style="width:6px;height:6px;border-radius:9999px;background:#FFFFFF;display:inline-block;"></span>
           <span>${safe}</span>
         </div>
-        <div style="width:11px;height:11px;border-radius:9999px;background:#FF4D00;border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 6px rgba(255,77,0,0.5);"></div>
+        <div style="width:11px;height:11px;border-radius:9999px;background:#FF4D00;border:2px solid #FFFFFF;margin-top:2px;box-shadow:0 2px 6px rgba(0,0,0,0.28);"></div>
       </div>
     `,
   });

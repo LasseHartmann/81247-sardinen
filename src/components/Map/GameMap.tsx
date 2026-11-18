@@ -651,7 +651,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
 
     // 3a. Hider-Anchor Marker
     if (showAnchorAndLeash && anchorPoint) {
-      const popupHtml = `<strong>SARDINEN-VERSTECK // HQ</strong><br/>RADIUS: ${LEASH_RADIUS_METERS}M (±${anchorPoint.accuracy}M)`;
+      const popupHtml = `<strong>Versteck</strong><br/>Radius: ${LEASH_RADIUS_METERS} m (±${anchorPoint.accuracy} m)`;
       if (!anchorMarkerRef.current) {
         anchorMarkerRef.current = L.marker(
           [anchorPoint.lat, anchorPoint.lng],
@@ -736,7 +736,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
       Number.isFinite(exposedHiderLocation.lat) &&
       Number.isFinite(exposedHiderLocation.lng)
     ) {
-      const exposedPopup = `<strong>LIVE // VERSTECKER-STANDORT FREIGEGEBEN</strong><br/>Zonen-/Bereichsverstoß > 2 Min.${
+      const exposedPopup = `<strong>Verstecker-Standort freigegeben</strong><br/>Zonenverstoß > 2 Min.${
         typeof exposedHiderLocation.accuracy === 'number'
           ? `<br/>GPS: ±${Math.round(exposedHiderLocation.accuracy)} m`
           : ''
@@ -769,7 +769,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
       for (const [uidKey, hLoc] of Object.entries(liveHiderLocations)) {
         if (!hLoc || !Number.isFinite(hLoc.lat) || !Number.isFinite(hLoc.lng)) continue;
         seenLiveHiders.add(uidKey);
-        const hPopup = `<strong>VERSTECKER // ${hLoc.label.toUpperCase()}</strong><br/>GPS: ±${Math.round(hLoc.accuracy)}M`;
+        const hPopup = `<strong>Verstecker · ${hLoc.label}</strong><br/>GPS: ±${Math.round(hLoc.accuracy)} m`;
         const existingH = liveHiderMarkersRef.current.get(uidKey);
         if (!existingH) {
           const marker = L.marker([hLoc.lat, hLoc.lng], {
@@ -862,7 +862,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
 
     // 3c. Eigene Position (wird ausgeblendet, wenn der eigene Sucher-Fisch bereits exakt dort gezeichnet wird)
     if (ownFix && !ownSeekerFishRendered) {
-      const tooltipText = `POS // ±${Math.round(ownFix.accuracy)}M`;
+      const tooltipText = `Genauigkeit ±${Math.round(ownFix.accuracy)} m`;
       if (!ownMarkerRef.current) {
         ownMarkerRef.current = L.marker([ownFix.lat, ownFix.lng], {
           icon: createOwnPositionIcon(isOwnSideHider),
@@ -889,7 +889,7 @@ const GameMapInner: React.FC<GameMapProps> = ({
       ) {
         const sosKey = msg.uid || msg.senderName;
         seenSosIds.add(sosKey);
-        const popupHtml = `<strong>NOTFALL // ${msg.senderName.toUpperCase()}</strong><br/>${msg.text}<br/>POS: ${msg.lat.toFixed(5)}, ${msg.lng.toFixed(5)}${typeof msg.accuracy === 'number' ? ` (±${Math.round(msg.accuracy)}M)` : ''}`;
+        const popupHtml = `<strong>Notfall · ${msg.senderName}</strong><br/>${msg.text}<br/>Standort: ${msg.lat.toFixed(5)}, ${msg.lng.toFixed(5)}${typeof msg.accuracy === 'number' ? ` (±${Math.round(msg.accuracy)} m)` : ''}`;
         const existingSos = emergencyMarkersRef.current.get(sosKey);
         if (!existingSos) {
           const marker = L.marker([msg.lat, msg.lng], {

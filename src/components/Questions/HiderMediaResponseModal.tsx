@@ -350,15 +350,15 @@ export const HiderMediaResponseModal: React.FC<HiderMediaResponseModalProps> = (
           header={
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <span className="font-tech block truncate text-[10px] font-bold tracking-wider text-[var(--cmf-orange)] uppercase">
-                  FOTO-ANFRAGE // {team?.name ?? req.teamId}
+                <span className="block truncate text-[11px] font-semibold text-[var(--cmf-orange)]">
+                  Foto-Anfrage von {team?.name ?? req.teamId}
                 </span>
                 <h3 className="font-industrial truncate text-base text-[var(--text-main)]">
                   {getQuestionLabelDe(req.questionType)}
                 </h3>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <div className="cmf-oled flex items-center gap-1.5 px-3 py-1.5 font-dot text-sm text-[var(--cmf-amber)]">
+                <div className="cmf-well font-mono-code flex items-center gap-1.5 px-2.5 py-1 text-sm font-semibold text-[var(--text-main)]">
                   <Clock className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
                   {formatDurationClock(remainingMs)}
                 </div>

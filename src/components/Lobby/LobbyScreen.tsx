@@ -6,20 +6,17 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Clock,
   Compass,
   Copy,
   Crosshair,
   EyeOff,
   Link2,
   LocateFixed,
-  MapPin,
   Minus,
   Pencil,
   Play,
   Plus,
   RotateCcw,
-  Settings2,
   Shield,
   Trash2,
   Users,
@@ -760,21 +757,21 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             )}
           </div>
 
-          <div className="cmf-oled flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-xl bg-[var(--module-sub)] p-3.5 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <span className="font-tech block text-[10px] font-bold tracking-wider text-[#9AA4AE] uppercase">
-                LOBBY-CODE ZUM EINLADEN
+              <span className="block text-xs font-medium text-[var(--text-muted)]">
+                Euer Code
               </span>
               <div className="mt-0.5 flex flex-wrap items-baseline gap-2.5">
                 <span
                   data-testid="lobby-room-code"
-                  className="font-dot text-2xl font-bold tracking-[0.2em] text-[#F8FAFC] sm:text-3xl"
+                  className="font-mono-code text-2xl font-bold tracking-[0.16em] text-[var(--text-main)] sm:text-3xl"
                 >
                   {roomCode}
                 </span>
-                <span className="font-tech text-[11px] text-[#9AA4AE]">
-                  {publicState.hostName ? `Host: ${publicState.hostName} • ` : ''}
-                  {onlineMemberList.length} Online
+                <span className="text-xs text-[var(--text-muted)]">
+                  {publicState.hostName ? `Host: ${publicState.hostName} · ` : ''}
+                  {onlineMemberList.length} online
                 </span>
               </div>
             </div>
@@ -784,12 +781,12 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 type="button"
                 data-testid="lobby-copy-code-btn"
                 onClick={() => void handleCopyCode()}
-                className="cmf-btn-primary font-tech inline-flex min-h-[38px] items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase"
+                className="cmf-btn-primary inline-flex min-h-[38px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold"
               >
                 {copiedKind === 'CODE' ? (
                   <>
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    <span>Kopiert!</span>
+                    <span>Kopiert</span>
                   </>
                 ) : (
                   <>
@@ -802,12 +799,12 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 type="button"
                 data-testid="lobby-copy-link-btn"
                 onClick={() => void handleCopyLink()}
-                className="cmf-btn-secondary font-tech inline-flex min-h-[38px] items-center gap-1.5 bg-white/95 px-3 py-1.5 text-[11px] font-bold text-[var(--text-main)] uppercase"
+                className="cmf-btn-secondary inline-flex min-h-[38px] items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-[var(--text-main)]"
               >
                 {copiedKind === 'LINK' ? (
                   <>
                     <CheckCircle2 className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
-                    <span>Kopiert!</span>
+                    <span>Kopiert</span>
                   </>
                 ) : (
                   <>
@@ -1206,16 +1203,15 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
           className="cmf-module space-y-3.5 p-4 sm:p-5"
         >
           <div className="flex flex-wrap items-center justify-between gap-2 border-b cmf-divider pb-2.5">
-            <h2 className="font-industrial flex items-center gap-2 text-base font-bold text-[var(--text-main)]">
-              <Settings2 className="h-4 w-4 text-[var(--cmf-orange)]" />
-              {canEditSettings ? '2. Regeln & Gebiet einstellen' : '2. Regeln dieser Runde'}
+            <h2 className="font-industrial text-base font-bold text-[var(--text-main)]">
+              {canEditSettings ? '2. Regeln & Gebiet' : '2. Regeln dieser Runde'}
             </h2>
 
             <button
               type="button"
               data-testid="lobby-preview-map-btn"
               onClick={onViewMap}
-              className="cmf-btn-secondary font-tech inline-flex min-h-[34px] items-center gap-1.5 px-3 py-1 text-[11px] font-bold uppercase"
+              className="cmf-btn-secondary inline-flex min-h-[34px] items-center gap-1.5 px-3 py-1 text-xs font-semibold"
             >
               <Compass className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
               <span>Karte öffnen</span>
@@ -1261,17 +1257,21 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   type="button"
                   data-testid="lobby-mode-classic-btn"
                   onClick={() => handleSelectGameMode('CLASSIC')}
-                  className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
+                  className={`flex flex-col items-start gap-0.5 rounded-xl p-3 text-left transition-colors ${
                     !isManhunt
-                      ? 'cmf-btn-active ring-2 ring-[var(--cmf-teal)]'
-                      : 'cmf-well opacity-80 hover:opacity-100'
+                      ? 'cmf-btn-active'
+                      : 'cmf-well hover:bg-[#EFECE6]'
                   }`}
                 >
-                  <span className="font-dot text-xs font-bold uppercase">
+                  <span className="text-sm font-bold">
                     Klassisch (Sardinen)
                   </span>
-                  <span className="text-xs text-[var(--text-muted)]">
-                    Festes Versteck (50 m) • Tipps kaufen
+                  <span
+                    className={`text-xs ${
+                      !isManhunt ? 'text-white/75' : 'text-[var(--text-muted)]'
+                    }`}
+                  >
+                    Festes Versteck (50 m) · Tipps kaufen
                   </span>
                 </button>
 
@@ -1279,17 +1279,21 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   type="button"
                   data-testid="lobby-mode-manhunt-btn"
                   onClick={() => handleSelectGameMode('MANHUNT')}
-                  className={`flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-all ${
+                  className={`flex flex-col items-start gap-0.5 rounded-xl p-3 text-left transition-colors ${
                     isManhunt
-                      ? 'cmf-btn-active ring-2 ring-[var(--cmf-orange)]'
-                      : 'cmf-well opacity-80 hover:opacity-100'
+                      ? 'cmf-btn-active'
+                      : 'cmf-well hover:bg-[#EFECE6]'
                   }`}
                 >
-                  <span className="font-dot text-xs font-bold uppercase">
+                  <span className="text-sm font-bold">
                     Manhunt (Bewegung)
                   </span>
-                  <span className="text-xs text-[var(--text-muted)]">
-                    Frei bewegen • Standort-Ping alle 10/5 Min.
+                  <span
+                    className={`text-xs ${
+                      isManhunt ? 'text-white/75' : 'text-[var(--text-muted)]'
+                    }`}
+                  >
+                    Frei bewegen · Standort-Ping alle 10/5 Min.
                   </span>
                 </button>
               </div>
@@ -1297,13 +1301,12 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               {/* Spielgebiet */}
               <div className="space-y-2.5 border-t cmf-divider pt-3">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-1.5 font-tech text-[11px] font-bold text-[var(--text-muted)] uppercase">
-                    <MapPin className="h-3.5 w-3.5 text-[var(--cmf-orange)]" />
+                  <span className="text-xs font-semibold text-[var(--text-muted)]">
                     Spielgebiet
                   </span>
                   <span
                     data-testid="lobby-zone-summary"
-                    className="font-tech text-xs font-bold text-[var(--text-main)]"
+                    className="text-xs font-semibold text-[var(--text-main)]"
                   >
                     {activeZoneSummaryTitle} ({activeZoneSummaryDetail})
                   </span>
@@ -1521,8 +1524,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
               {/* Zeiten */}
               <div className="space-y-2.5 border-t cmf-divider pt-3">
-                <span className="flex items-center gap-1.5 font-tech text-[11px] font-bold text-[var(--text-muted)] uppercase">
-                  <Clock className="h-3.5 w-3.5 text-[var(--cmf-teal)]" />
+                <span className="block text-xs font-semibold text-[var(--text-muted)]">
                   Zeiten
                 </span>
 
